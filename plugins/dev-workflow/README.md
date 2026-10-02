@@ -179,7 +179,9 @@ exists and the session is inside tmux, the hook spawns a detached process that i
 `/compact` into the pane and sends the resume command after compaction completes. Outside
 tmux, full-cycle instead tells you the exact two commands to run manually.
 
-Both hooks are registered automatically when the plugin is loaded. Role sessions (see above) rely on the host's native auto-compaction instead: both hooks exit immediately when the `DEV_WORKFLOW_ROLE` environment variable is set, so they never touch the shared tier file or the tmux sentinel from inside a role session.
+**Role-session context** — a SessionStart hook (`hooks/role-session-context.sh`) that acts only when `DEV_WORKFLOW_ROLE` is set. A role session is given neither its agent file's path nor the plugin root, so the hook injects the absolute plugin root and standards path as session context, and the role agents resolve their relative `skills/` paths against it.
+
+All hooks are registered automatically when the plugin is loaded. Role sessions (see above) rely on the host's native auto-compaction instead: the context meter and compact injector exit immediately when the `DEV_WORKFLOW_ROLE` environment variable is set, so they never touch the shared tier file or the tmux sentinel from inside a role session.
 
 ## Installation
 
