@@ -7,7 +7,7 @@ description: "Drives the entire dev-workflow lifecycle end to end in order — c
 
 **Role:** Orchestrator — drive the entire dev-workflow lifecycle from idea to tested PR, in order, looping the stages that must repeat.
 
-**SCOPE BOUNDARY:** This skill **sequences** the existing dev-workflow skills — it does not reimplement any stage. It never writes feature code, specs, or PRs directly; each stage's own skill does that. The orchestrator's only direct actions are: talking to the user during the interactive stages, dispatching subagents for the non-interactive stages, reading PM/GitHub state to decide what runs next, and producing the end-of-run summary. This restriction holds even when the user directly asks for a mid-session fix — such a fix must always be routed through a `dev-workflow-fixer` Agent-tool dispatch, never handled with a direct `Edit`/`Bash`/`git` call in the orchestrator's own context. And whenever any new commit lands on an open PR outside the formal Review Loop / Test Loop — including one made by a mid-session `dev-workflow-fixer` dispatch — a fresh `dev-workflow-reviewer` and `dev-workflow-tester` dispatch against the new HEAD (per the Stage — reviewing-prs and Stage — testing-prs procedures below) is mandatory before the PR is reported done; if that fresh pass itself comes back changes-requested, it continues into the existing Review Loop / Test Loop machinery — including the Loop Safety Guard's cycle cap — rather than looping ad-hoc outside it (added after whoof-calc PR #165 / sc-130, where a fixer-authored commit landed on an already-approved-and-tested PR with no re-verification before the pipeline reported it done). It **never merges the PR** — a human does that.
+**SCOPE BOUNDARY:** This skill **sequences** the existing dev-workflow skills — it does not reimplement any stage. It never writes feature code, specs, or PRs directly; each stage's own skill does that. The orchestrator's only direct actions are: talking to the user during the interactive stages, launching role sessions, sending them messages, and stopping them (or dispatching subagents on the fresh-dispatch path and for the pr-state-reader and spec-writer), reading PM/GitHub state to decide what runs next, and producing the end-of-run summary. This restriction holds even when the user directly asks for a mid-session fix — such a fix must always be routed to the developer session as a `fix` message (or, on the fresh-dispatch fallback path, a fresh `dev-workflow-developer` Agent-tool dispatch in rework mode), never handled with a direct `Edit`/`Bash`/`git` call in the orchestrator's own context. And whenever any new commit lands on an open PR outside the formal Review Loop / Test Loop — including one made by a mid-session developer fix — a fresh review and test round against the new HEAD (per the Stage — reviewing-prs and Stage — testing-prs procedures below) is mandatory before the PR is reported done; if that fresh pass itself comes back changes-requested, it continues into the existing Review Loop / Test Loop machinery — including the Loop Safety Guard's cycle cap — rather than looping ad-hoc outside it (this closes the gap where a fix commit landed on an already-approved-and-tested PR with no re-verification before the pipeline reported it done). It **never merges the PR** — a human does that.
 
 ## Arguments: $ARGUMENTS
 
@@ -24,6 +24,8 @@ Read `skills/shared/adapter-loading.md` — adapter loading procedures reference
 Read `skills/shared/repo-discovery.md` — repo discovery procedure used by the stages this skill sequences.
 
 Read `skills/shared/context-compaction.md` — checkpoint protocol, sentinel format, and non-tmux fallback wording used throughout this skill.
+
+Read `skills/shared/role-sessions.md` — the role-session launch contract, message protocol, preflight, and liveness rules used by the developer, reviewer, and tester stages.
 
 Read the CLAUDE.md file in this repository before starting.
 
@@ -53,18 +55,28 @@ This is the central design decision for this skill (resolved with the user — s
 |-------|---------------|-----|
 | creating-stories | **Main orchestrator** (interactive) | Interviews the user; needs to ask questions. |
 | writing-specs | **Main orchestrator** (interactive) | Must gate development on the user's explicit spec approval. |
-| developing | **Subagent** | Non-interactive heavy implementation. |
-| reviewing-prs | **Subagent** | Non-interactive review. |
-| testing-prs | **Subagent** | Non-interactive functional testing. |
-| addressing-pr-comments (loop-back) | **Subagent** | Non-interactive fix work on the same PR. |
+| developing | **Role session** (developer; fresh subagent on the fallback path) | Non-interactive heavy implementation. |
+| reviewing-prs | **Role session** (reviewer, per PR; fresh subagent on the fallback path) | Non-interactive review. |
+| testing-prs | **Role session** (tester, per PR; fresh subagent on the fallback path) | Non-interactive functional testing. |
+| loop-back fixes (addressing-pr-comments) | **Developer role session** in rework mode (fresh developer subagent on the fallback path) | The developer that wrote the code fixes it with context, on the same PR. |
 
-A dispatched subagent has no tool to ask the user. The implementation/review/test stages (developing, reviewing-prs, testing-prs) run their underlying skill in **autonomous mode** and return a single-line key/value result (see "Autonomous mode" and "Output Mode Detection" in `standards.md`); the orchestrator reads that result only as a hint. addressing-pr-comments does **not** emit a key/value result — it implements fixes and posts PR replies — so the orchestrator never depends on its return value. For every review/test outcome the orchestrator **re-confirms the authoritative state from GitHub and the PM story** (see Reading the Authoritative Review Decision) rather than trusting any subagent self-report.
+A role session or dispatched subagent has no tool to ask the user. The implementation/review/test stages (developing, reviewing-prs, testing-prs) run their underlying skill in **autonomous mode** and return a single-line key/value result — as the body of a `result` message from a role session, or as the final response of a fresh dispatch (see "Autonomous mode" and "Output Mode Detection" in `standards.md`); the orchestrator reads that result only as a hint. addressing-pr-comments does **not** emit a key/value result — it implements fixes and posts PR replies — so the orchestrator never depends on the return value of a fix request. For every review/test outcome the orchestrator **re-confirms the authoritative state from GitHub and the PM story** (see Reading the Authoritative Review Decision) rather than trusting any subagent self-report.
 
-**PR-branch checkout for subagent stages that operate on an existing PR.** reviewing-prs and testing-prs take a PR number argument, but `dev-workflow:addressing-pr-comments` resolves the PR from the *current branch* (`gh pr status`) — a freshly dispatched subagent is not checked out on that branch. Because implementation/fix work runs inside an isolated worktree (`skills/shared/standards.md` → "Workspace Isolation"), that branch may already be checked out in a worktree elsewhere — a plain `gh pr checkout {PR_NUMBER}` fails outright when it is. The `dev-workflow-fixer` worker's body handles this: it locates the branch's worktree via `git worktree list --porcelain` and `cd`s there, falling back to `gh pr checkout {PR_NUMBER}` only when no worktree holds the branch. Pass the explicit PR number in the prompt — the worker resolves its own worktree live, so it never has to guess or ask.
+**PR-branch checkout for developer rework.** reviewing-prs and testing-prs take a PR number argument, but `dev-workflow:addressing-pr-comments` resolves the PR from the *current branch* (`gh pr status`) — a developer session or fresh dispatch handling a fix request is not necessarily checked out on that branch. Because implementation/fix work runs inside an isolated worktree (`skills/shared/standards.md` → "Workspace Isolation"), that branch may already be checked out in a worktree elsewhere — a plain `gh pr checkout {PR_NUMBER}` fails outright when it is. The `dev-workflow-developer` agent's rework mode handles this: it locates the branch's worktree via `git worktree list --porcelain` and `cd`s there, falling back to `gh pr checkout {PR_NUMBER}` only when no worktree holds the branch. Pass the explicit PR number in the request — the developer resolves its own worktree live, so it never has to guess or ask.
 
-**How to dispatch (mandatory — per `standards.md` → "Subagent Dispatch"):**
+## Role Sessions
 
-Every subagent stage below runs in a **fresh, isolated context**. To get that, you MUST
+In **standalone** full-cycle, the developer, reviewer, and tester run as persistent role sessions per `skills/shared/role-sessions.md`, which owns the launch contract, naming, message envelope, routing, liveness, teardown, and resume rules. This skill owns *when* each of those happens:
+
+- **Epic worker rule.** When full-cycle runs as an epic per-task worker — a dispatched, autonomous subagent with no way to ask the user, the same autonomous-mode detection the rest of this skill uses — it skips the preflight and launches **no** role sessions, because subagent messaging addresses the parent session. It runs the fresh-dispatch path below: every stage is an Agent-tool dispatch, and each fix loop body is a fresh `dev-workflow-developer` dispatch in rework mode followed by a fresh `dev-workflow-reviewer` or `dev-workflow-tester` dispatch.
+- **Preflight (once per run).** Before the first launch, run the preflight in `role-sessions.md` (version floor, agent view, background launch, ping handshake). The developer session is the first launched, so its `ping` is the handshake. Any failed check: announce the reason and remedy once, stop sessions already launched, and run the **entire run** on the fresh-dispatch path. Never mix modes within a run.
+- **Lazy launch.** The developer session launches when the developing stage starts. A PR's reviewer session launches at that PR's first review, and its tester session at that PR's first test. Names, model, and settings follow the launch contract.
+- **Fresh-dispatch path (fallback and epic workers).** The rest of this skill describes both paths; where a step says "send a message to the session", the fresh-dispatch path instead dispatches the same worker with the Agent tool, as described under "How to dispatch".
+- **Cost.** Each role session consumes subscription usage like an interactive session; announce the sessions launched.
+
+**How to dispatch on the fresh-dispatch path, and for the always-fresh workers (mandatory — per `standards.md` → "Subagent Dispatch"):**
+
+Every subagent stage dispatched below runs in a **fresh, isolated context**. To get that, you MUST
 dispatch it with the **Agent tool**, passing the stage's dedicated `subagent_type`. Do
 **not** invoke the `Skill` tool yourself for a downstream stage — `Skill` loads content
 into *your* context (no subagent), which is exactly the "everything runs in one agent"
@@ -85,12 +97,13 @@ Test Loop.
 |-----------------|-----------------|--------------|-----------|---------------|
 | entry-detection | `dev-workflow-pr-state-reader` | `entry-detection` | `implementation` | `sonnet` |
 | writing-specs (autonomous path only) | `dev-workflow-spec-writer` | `writing-specs` | `implementation` | `sonnet` |
-| developing | `dev-workflow-developer` | `developing` | `implementation` | `sonnet` |
+| developing / developer rework | `dev-workflow-developer` | `developing` | `implementation` | `sonnet` |
 | pr-number-read | `dev-workflow-pr-state-reader` | `pr-number-read` | `implementation` | `sonnet` |
 | reviewing-prs | `dev-workflow-reviewer` | `reviewing-prs` | `review` | `opus` |
-| addressing-pr-comments (fix loop) | `dev-workflow-fixer` | `addressing-pr-comments` | `implementation` | `sonnet` |
 | testing-prs | `dev-workflow-tester` | `testing-prs` | `review` | `opus` |
 | decision-read | `dev-workflow-pr-state-reader` | `decision-read` | `implementation` | `sonnet` |
+
+In role-session mode the developer session's model is fixed at launch from `models.stages.developing`; fix requests reuse it. The `models.stages.addressing-pr-comments` key applies only to a fresh developer rework dispatch (fallback path and epic per-task workers) and is ignored in role-session mode. A fresh rework dispatch resolves its model from `models.stages.addressing-pr-comments` → `models.implementation` → default `sonnet`.
 
 **Output mode (per `standards.md` → "Output Mode Detection").** Determine the mode at startup. The orchestrator is **interactive by nature** when it must run creating-stories or writing-specs, because those stages require user input (the spec-approval gate especially). If the skill is running non-interactively (no way to ask the user) AND the detected entry stage is creating-stories or writing-specs, STOP and surface that the pipeline needs an interactive session to define/approve the spec. When resuming at developing or later, no further interaction is required and the run may complete autonomously, emitting the flat key/value summary at Termination.
 
@@ -110,8 +123,8 @@ The skill is resumable: re-invoking it at any time must enter the pipeline at th
 | 2 | Story exists but no spec is linked, or story state is "In Spec" / earlier | **writing-specs** |
 | 3 | Spec present / story "Ready for Dev" and **no** linked PR | **developing** |
 | 4 | A repo's linked PR carries the `tested-in-dev` label and no `tests-failing` label | **finished** — testing passed for that repo; report and skip it |
-| 5 | A repo's linked PR carries the `tests-failing` label | **addressing-pr-comments → testing-prs** (test loop) for that repo |
-| 6 | A repo's linked PR `reviewDecision` is `CHANGES_REQUESTED` (and no `tests-failing` label) | **addressing-pr-comments → reviewing-prs** (review loop) for that repo |
+| 5 | A repo's linked PR carries the `tests-failing` label | **developer fix → testing-prs** (test loop) for that repo |
+| 6 | A repo's linked PR `reviewDecision` is `CHANGES_REQUESTED` (and no `tests-failing` label) | **developer fix → reviewing-prs** (review loop) for that repo |
 | 7 | A repo's linked PR is review-approved with no `tested-in-dev`/`tests-failing` label | **testing-prs** for that repo |
 | 8 | A repo's linked PR exists but has no review decision yet (`REVIEW_REQUIRED`/null) | **reviewing-prs** for that repo |
 
@@ -180,6 +193,8 @@ linked PR, enrich/update its entry from the parsed `prs=` tuples the same way, b
 proceeding. This is the only initialization path when creating-stories never ran in this
 session — it now covers every resume row (2-8), not only the rows with a linked PR.
 
+**Role sessions on resume.** When running in role-session mode, after the entry stage is known, list sessions with `claude agents --json --all` and match this story's names per `role-sessions.md` → "Resume": reuse a live responsive session (ping first), respawn a stopped one, and stop, remove, and relaunch cold an unresponsive one. Cycle counts carry over from the checkpoint. The preflight runs once for the run, before the first launch or reuse.
+
 When a repo's entry stage — as determined by the Resume / Entry Detection table above
 (rows 4-8, evaluated from the `prs=` tuple's live GitHub review/label state), not the
 checkpoint's own `stage` field — is mid-pipeline, run that stage for that repo, then
@@ -246,7 +261,7 @@ Once this gate is satisfied, no further user confirmation is required or expecte
 
 ---
 
-## Stage — developing (subagent)
+## Stage — developing (developer role session)
 
 Before dispatching, resolve the target repo's path per `shared/repo-discovery.md`'s two-path
 detection. If that procedure's single-repo shortcut applies (inside one git repo, or the
@@ -255,7 +270,7 @@ dispatch prompt below as `{resolved-repo-path}`. For a multi-repo story, do not 
 single path here — omit the `Repo path:` field entirely and let the dispatched subagent's own
 per-repo discovery-and-loop run unmodified.
 
-**Dispatch the Agent tool** with `subagent_type: dev-workflow-developer` (model: resolved from `models.stages.developing` → `models.implementation` → default `sonnet`). The worker's body already invokes `dev-workflow:developing` autonomously; your dispatch prompt supplies only the variable inputs. Worktree ISOLATION is unconditional for this developer dispatch — it always works inside an isolated worktree, never the primary checkout (see `skills/shared/standards.md` → "Workspace Isolation") — it is not an epic-specific instruction, only the PM-adapter override and branch name below are. Worktree CREATION, though, is conditional: per standards.md's live-lookup rule, the dispatched subagent creates a worktree only when `git worktree list --porcelain` finds no existing match for the target branch; if a match exists (e.g. a resumed run), it reuses that one and does not create a second. This does not extend to every stage a full-cycle run dispatches: the fixer stage in the Review Loop below *locates* an existing worktree or falls back to a plain checkout (see "PR-branch checkout for subagent stages" above), it does not create one unconditionally.
+**In role-session mode, launch the developer session** (`dev-workflow:dev-workflow-developer`, role `developer`, model resolved from `models.stages.developing` → `models.implementation` → default `sonnet`) per `role-sessions.md`, run the preflight handshake with its `ping`, then send it a `develop` message carrying the input below. **On the fresh-dispatch path, dispatch the Agent tool** with `subagent_type: dev-workflow-developer` (same model resolution). The worker's body already invokes `dev-workflow:developing` autonomously; your request supplies only the variable inputs. Worktree ISOLATION is unconditional for this developer dispatch — it always works inside an isolated worktree, never the primary checkout (see `skills/shared/standards.md` → "Workspace Isolation") — it is not an epic-specific instruction, only the PM-adapter override and branch name below are. Worktree CREATION, though, is conditional: per standards.md's live-lookup rule, the dispatched subagent creates a worktree only when `git worktree list --porcelain` finds no existing match for the target branch; if a match exists (e.g. a resumed run), it reuses that one and does not create a second. This does not extend to every stage of a full-cycle run: developer rework in the Review Loop below *locates* an existing worktree or falls back to a plain checkout (see "PR-branch checkout for developer rework" above), it does not create one unconditionally.
 
 > Story/task ID: `{story-id}`. Repo path: `{resolved-repo-path}`. Worktree isolation is required for this task — proceed without asking; if baseline tests fail, report the failure in your result and stop rather than asking whether to proceed. Run autonomously. [For an epic task, also pass the PM-adapter override and branch name.]
 
@@ -264,13 +279,13 @@ resolved above. For a multi-repo story, omit `Repo path:` entirely — there is 
 name — and let the dispatched subagent's own per-repo discovery-and-loop resolve each repo. Do not
 drop the epic-task bracketed clause in either case.
 
-The subagent branches, implements with TDD, and opens the PR (one PR per repo for a multi-repo
+After the developer's `result` message arrives (or the dispatched subagent returns), apply the wait discipline in `role-sessions.md` → "Waiting and liveness" while waiting. The developer branches, implements with TDD, and opens the PR (one PR per repo for a multi-repo
 story). It resolves its own worktree per repo, live, per `skills/shared/standards.md` →
 "Workspace Isolation" — reusing a matching one found via `git worktree list --porcelain` or
 creating a new one — so nothing about the worktree path is passed in the dispatch prompt, recorded
 in the checkpoint, or returned in the subagent's result.
 
-After it returns, **dispatch the Agent tool** with `subagent_type: dev-workflow-pr-state-reader` (model: resolved from `models.stages.pr-number-read` → `models.implementation` → default `sonnet`) to resolve the **PR number(s)** authoritatively — do not resolve this inline. Dispatch prompt:
+After it reports, **dispatch the Agent tool** with `subagent_type: dev-workflow-pr-state-reader` (model: resolved from `models.stages.pr-number-read` → `models.implementation` → default `sonnet`) to resolve the **PR number(s)** authoritatively — do not resolve this inline. Dispatch prompt:
 
 > Find any linked PRs for story `{story_id}` via the PM adapter's "Finding PRs linked to a story"
 > instructions (the subagent attaches the PR to the story on creation), falling back to
@@ -293,17 +308,17 @@ Then proceed to reviewing-prs for each resulting PR.
 
 ---
 
-## Stage — reviewing-prs (subagent)
+## Stage — reviewing-prs (reviewer role session)
 
 For each PR produced by developing:
 
-**Dispatch the Agent tool** with `subagent_type: dev-workflow-reviewer` (model: resolved from `models.stages.reviewing-prs` → `models.review` → default `opus`). The worker's body already invokes `dev-workflow:reviewing-prs` autonomously and already carries the fresh-dev-build-CI mandate; your dispatch prompt supplies only:
+**In role-session mode, launch that PR's reviewer session at its first review** (`dev-workflow:dev-workflow-reviewer`, role `reviewer`, model resolved from `models.stages.reviewing-prs` → `models.review` → default `opus`) and send it a `review` message; later rounds go to the same session. **On the fresh-dispatch path, dispatch the Agent tool** with `subagent_type: dev-workflow-reviewer` (same model resolution). The worker's body already invokes `dev-workflow:reviewing-prs` autonomously and already carries the fresh-dev-build-CI mandate; your request supplies only:
 
 > PR number: `{PR_NUMBER}`. Run autonomously.
 >
 > (Reminder, also enforced by the worker: you MUST trigger the **dev build CI** fresh on the PR's current HEAD and wait for it to reach a terminal state before reviewing. An approval without a fresh dev build CI run on current HEAD is invalid — the orchestrator treats it as a failed review. A non-passing CI result (failed/cancelled/timed-out) must yield REQUEST_CHANGES, never APPROVE. The sole exception is a repo explicitly listed in `ci_gate_exempt_repos`: there a CI-free APPROVE is **valid** and must NOT be treated as a failed stage or looped — the review body will say the gate was skipped by exemption.)
 
-After it returns, read the PR's latest **review** decision authoritatively from GitHub (see below). Use that — not the subagent's self-report — to decide the next step.
+After its `result` arrives (or it returns), read the PR's latest **review** decision authoritatively from GitHub (see below). Use that — not the worker's self-report — to decide the next step. The reviewer's `result` is a hint only.
 
 ---
 
@@ -311,28 +326,28 @@ After it returns, read the PR's latest **review** decision authoritatively from 
 
 While the latest review decision for the PR is **changes requested**:
 
-1. **Dispatch the Agent tool** with `subagent_type: dev-workflow-fixer` (model: resolved from `models.stages.addressing-pr-comments` → `models.implementation` → default `sonnet`). The worker's body already locates and lands on the PR's branch (its own worktree if one holds it, else `gh pr checkout {PR_NUMBER}` — see "PR-branch checkout" above) and invokes `dev-workflow:addressing-pr-comments`; your dispatch prompt supplies only:
-   > PR number: `{PR_NUMBER}`.
+1. **Send a `fix` message to the developer session** (wait for its `result`). On the fresh-dispatch path, **dispatch the Agent tool** with `subagent_type: dev-workflow-developer` in rework mode (model: resolved from `models.stages.addressing-pr-comments` → `models.implementation` → default `sonnet`). The developer's rework mode already locates and lands on the PR's branch (its own worktree if one holds it, else `gh pr checkout {PR_NUMBER}` — see "PR-branch checkout" above) and invokes `dev-workflow:addressing-pr-comments`; your request supplies only:
+   > PR number: `{PR_NUMBER}`. Rework mode: address the review feedback. [Short summary of the feedback, labeled unverified; the full review is on GitHub.]
 
    It implements the requested changes on the **same branch and PR** and replies to the review.
-2. Re-dispatch the reviewer via the Agent tool (`subagent_type: dev-workflow-reviewer`, model: resolved from `models.stages.reviewing-prs` → `models.review` → default `opus`) for the same PR.
-3. Re-read the authoritative review decision (the newest review submitted since this re-dispatch).
+2. Send a `review` message to the **same reviewer session** for the same PR (fresh-dispatch path: re-dispatch the reviewer via the Agent tool, `subagent_type: dev-workflow-reviewer`, model: resolved from `models.stages.reviewing-prs` → `models.review` → default `opus`).
+3. Re-read the authoritative review decision (the newest review submitted since this re-request).
 
 Repeat until the review decision is **approved**, subject to the Loop Safety Guard below. Then proceed to testing-prs.
 
 ---
 
-## Stage — testing-prs (subagent)
+## Stage — testing-prs (tester role session)
 
 Once the PR is review-approved:
 
-**Dispatch the Agent tool** with `subagent_type: dev-workflow-tester` (model: resolved from `models.stages.testing-prs` → `models.review` → default `opus`). The worker's body already invokes `dev-workflow:testing-prs` autonomously and already carries the fresh-dev-deploy mandate; your dispatch prompt supplies only:
+**In role-session mode, launch that PR's tester session at its first test** (`dev-workflow:dev-workflow-tester`, role `tester`, model resolved from `models.stages.testing-prs` → `models.review` → default `opus`) and send it a `test` message; later rounds go to the same session. **On the fresh-dispatch path, dispatch the Agent tool** with `subagent_type: dev-workflow-tester` (same model resolution). The worker's body already invokes `dev-workflow:testing-prs` autonomously and already carries the fresh-dev-deploy mandate; your request supplies only:
 
 > PR number: `{PR_NUMBER}`. Run autonomously.
 >
 > (Reminder, also enforced by the worker: you MUST run the **dev deploy CI** to deploy the branch fresh and wait for it to succeed before executing any test scenario. A test result without a fresh dev deploy is invalid — the orchestrator treats it as a failed test. A local/Makefile/script deploy never counts; without a successful dev deploy CI run the verdict is REQUEST_CHANGES + `tests-failing`, never APPROVE. The sole exception is a repo explicitly listed in `deploy_gate_exempt_repos`: there a deploy-CI-free APPROVE is **valid** and must NOT be treated as a failed stage or looped — the test report will say functional dev testing was skipped by exemption.)
 
-After it returns, read the PR's latest **test** decision authoritatively from GitHub.
+After its `result` arrives (or it returns), read the PR's latest **test** decision authoritatively from GitHub.
 
 **State ownership:** testing-prs owns its outcome labels — it submits the `APPROVE`/`REQUEST_CHANGES` review and applies `tested-in-dev` (pass) or `tests-failing` (fail). The orchestrator only reads these; it never labels or transitions the PR/story itself.
 
@@ -342,9 +357,9 @@ After it returns, read the PR's latest **test** decision authoritatively from Gi
 
 While testing **requests changes**:
 
-1. **Dispatch the Agent tool** with `subagent_type: dev-workflow-fixer` (model: resolved from `models.stages.addressing-pr-comments` → `models.implementation` → default `sonnet`) for the same PR — the worker locates and lands on the branch (its own worktree if one holds it, else `gh pr checkout`) and invokes `dev-workflow:addressing-pr-comments`; pass the PR number `{PR_NUMBER}`.
-2. Re-dispatch the tester via the Agent tool (`subagent_type: dev-workflow-tester`, model: resolved from `models.stages.testing-prs` → `models.review` → default `opus`) for the same PR.
-3. Re-read the authoritative test decision (the newest review submitted since this re-dispatch).
+1. **Send a `fix` message to the developer session** for the same PR (wait for its `result`). On the fresh-dispatch path, **dispatch the Agent tool** with `subagent_type: dev-workflow-developer` in rework mode (model: resolved from `models.stages.addressing-pr-comments` → `models.implementation` → default `sonnet`) — it locates and lands on the branch (its own worktree if one holds it, else `gh pr checkout`) and invokes `dev-workflow:addressing-pr-comments`; pass the PR number `{PR_NUMBER}`.
+2. Send a `test` message to the **same tester session** for the same PR (fresh-dispatch path: re-dispatch the tester via the Agent tool, `subagent_type: dev-workflow-tester`, model: resolved from `models.stages.testing-prs` → `models.review` → default `opus`).
+3. Re-read the authoritative test decision (the newest review submitted since this re-request).
 
 Repeat until testing **passes**, subject to the Loop Safety Guard below.
 
@@ -375,18 +390,18 @@ Read that one line. Never let the raw `gh api` JSON enter the main orchestrator 
 
 Because reviewing-prs and testing-prs both submit reviews on the same PR (and as the same bot author), recency alone cannot tell their decisions apart on a PR that has both. Disambiguate by context, not author:
 
-- **Immediately after re-dispatching a specific stage**, read the newest review created since that dispatch — that one belongs to the stage you just ran. Recency is reliable here because you control the ordering.
+- **Immediately after re-requesting a specific stage**, read the newest review created since that dispatch — that one belongs to the stage you just ran. Recency is reliable here because you control the ordering.
 - **For cold resume detection** (you did not just run a stage), do NOT infer the test outcome from review recency or from `reviewDecision` (a failed test and a failed review both produce `CHANGES_REQUESTED`). Use the durable signals instead: the `tested-in-dev` / `tests-failing` labels record testing-prs's last outcome, and `reviewDecision` reflects the review stage only after the labels have been consulted. See Resume / Entry Detection.
 
-**Reporting Discipline — forwarded claims are unverified.** Whenever a dispatch prompt to one subagent includes a root-cause or diagnostic claim reported by an earlier subagent in the same run, the prompt text must explicitly label that claim as unverified/self-reported — e.g., "the developer subagent reported the root cause as X — this has not been independently confirmed" — never restate it as established fact. A forwarded claim framed as fact anchors the receiving subagent (reviewer or tester) away from independent investigation; each stage must reach its own conclusion from the artifacts, not inherit the reporter's.
+**Reporting Discipline — forwarded claims are unverified.** Whenever a dispatch prompt or message to one subagent or session includes a root-cause or diagnostic claim reported by an earlier subagent in the same run, the prompt text must explicitly label that claim as unverified/self-reported — e.g., "the developer subagent reported the root cause as X — this has not been independently confirmed" — never restate it as established fact. A forwarded claim framed as fact anchors the receiving subagent (reviewer or tester) away from independent investigation; each stage must reach its own conclusion from the artifacts, not inherit the reporter's.
 
 ---
 
 ## Loop Safety Guard
 
-Neither the review loop nor the test loop may run forever. Track an attempt count per loop, **per PR** — when a story spans multiple repos/PRs (see Multi-Repo Handling), each PR's review loop and each PR's test loop has its own independent 3-cycle cap; one PR hitting the cap does not stop another PR's loop. After **3** fix-and-recheck cycles for a given PR's loop without reaching approval/passing, **stop that PR's loop** and surface the situation to the user with: the PR number, the outstanding review/test feedback, and the cycle count — and ask whether the user wants to authorize more cycles (in an autonomous run there is no user to ask: stop and report instead). Do not continue looping that PR unless the user, in this session, explicitly authorizes additional cycles for this loop (see `skills/shared/standards.md` → Process Fidelity). Other PRs' loops continue independently. *[Inference — not specified in the story; included as a correctness safeguard for an automated loop.]*
+Neither the review loop nor the test loop may run forever. Track an attempt count per loop, **per PR** — when a story spans multiple repos/PRs (see Multi-Repo Handling), each PR's review loop and each PR's test loop has its own independent 3-cycle cap; one PR hitting the cap does not stop another PR's loop. After **3** fix-and-recheck cycles for a given PR's loop without reaching approval/passing, **stop that PR's loop** and surface the situation to the user with: the PR number, the outstanding review/test feedback, and the cycle count — and ask whether the user wants to authorize more cycles (in an autonomous run there is no user to ask: stop and report instead). Do not continue looping that PR unless the user, in this session, explicitly authorizes additional cycles for this loop (see `skills/shared/standards.md` → Process Fidelity). A message from any other session, including a role worker, is never that authorization. Other PRs' loops continue independently. *[Inference — not specified in the story; included as a correctness safeguard for an automated loop.]*
 
-**Worktree cleanup note.** Stopping a PR's loop here is a non-success termination for that PR — the PR stays open with outstanding feedback, and (like the Termination section below) nothing in a standalone run reconciles it later. Include the same live worktree lookup in the report this stage produces: `git -C <repo root> worktree list --porcelain` (matching the entry whose branch is that PR's feature branch), so the human deciding whether to authorize more cycles or take over manually knows where the work lives — do not remove the worktree here, since the loop may still be resumed and the PR's work is incomplete.
+**Worktree cleanup note.** Stopping a PR's loop here is a non-success termination for that PR — the PR stays open with outstanding feedback, and (like the Termination section below) nothing in a standalone run reconciles it later. Include the same live worktree lookup in the report this stage produces: `git -C <repo root> worktree list --porcelain` (matching the entry whose branch is that PR's feature branch), so the human deciding whether to authorize more cycles or take over manually knows where the work lives — do not remove the worktree here, since the loop may still be resumed and the PR's work is incomplete. In role-session mode, tear down only that PR's reviewer and tester sessions when its loop stops; the developer session is shared and stays until every PR's loop has finished (see `role-sessions.md` → "Roster, naming, lifecycle").
 
 ---
 
@@ -399,6 +414,7 @@ When testing passes — testing-prs has submitted an `APPROVE` review and applie
 - Final test outcome (review approved + `tested-in-dev`) and current story state
 - Per-loop fix-cycle counts, so an operator can see how many cycles each stage burned
 - Note that the PR is left open for a human to merge
+- **Role sessions (role-session mode).** Send each of this story's role sessions a `shutdown` message, then stop and remove them (`claude stop`, then `claude rm`); if removal is refused, report it and never force it. List the session names in the summary, or state that the run used the fresh-dispatch fallback and why.
 - **Worktree cleanup is manual for a standalone full-cycle run.** Unlike `epic`, this
   skill has no later resume point that reconciles a merge, so nothing here removes any
   worktree the pipeline created. For each repo this run touched, look up its worktree live
@@ -459,7 +475,9 @@ For a story spanning multiple repos, defer to the existing skills' built-in mult
 
 The orchestrator then runs the review → test cycle (including the loops) **for each resulting PR** independently. A later stage for one PR does not block a different PR. *[Inference — the sc-1043 target (`claude-plugin-dev-workflow`) is a single repo; this generalizes the single-repo flow without changing it.]*
 
-**Batch concurrent dispatches within the review → test cycle.** When a round of this cycle's per-PR Agent-tool dispatches spans multiple distinct repos, issue the concurrent ones as multiple `Agent` tool calls within a single message — mirroring `epic/SKILL.md` Phase 6's "dispatch the concurrent ones in a single batch" rule — rather than dispatching one repo at a time. **This is batching, not backgrounding:** every dispatch in the batch is still blocked on within the same turn per the "sequential — you cannot proceed until it returns" rule above — the turn does not proceed until all of the batch's results are in hand, and none of them is fired into the background to be picked up on a later wake event. Before blocking on the batch, name what was launched — each subagent's role and target PR/repo — per `shared/standards.md`'s "Subagent Wait Discipline" → "State what's in flight before you stop." This applies only to the review → test cycle's repeated per-PR dispatches; it does not extend to developing, which is always a single Agent-tool dispatch per story — that stage's own per-repo looping happens entirely inside the dispatched `dev-workflow-developer` subagent.
+**Role-session mode, multiple repos.** Reviewer and tester requests for distinct PRs go to their distinct per-PR sessions in a single turn; name what was sent, then wait for all results or liveness verdicts. Fix requests all go to the single developer session, so serialize them: one outstanding `fix` request at a time, in repo order.
+
+**Batch concurrent dispatches within the review → test cycle (fresh-dispatch path).** When a round of this cycle's per-PR Agent-tool dispatches spans multiple distinct repos, issue the concurrent ones as multiple `Agent` tool calls within a single message — mirroring `epic/SKILL.md` Phase 6's "dispatch the concurrent ones in a single batch" rule — rather than dispatching one repo at a time. **This is batching, not backgrounding:** every dispatch in the batch is still blocked on within the same turn per the "sequential — you cannot proceed until it returns" rule above — the turn does not proceed until all of the batch's results are in hand, and none of them is fired into the background to be picked up on a later wake event. Before blocking on the batch, name what was launched — each subagent's role and target PR/repo — per `shared/standards.md`'s "Subagent Wait Discipline" → "State what's in flight before you stop." This applies only to the review → test cycle's repeated per-PR dispatches; it does not extend to developing, which is always a single Agent-tool dispatch per story — that stage's own per-repo looping happens entirely inside the dispatched `dev-workflow-developer` subagent.
 
 ---
 
@@ -467,7 +485,7 @@ The orchestrator then runs the review → test cycle (including the loops) **for
 
 - The pipeline advanced through every required stage in order, entering at the correct stage on resume.
 - writing-specs's user-approval gate was honored before development began.
-- Each non-interactive stage ran as an **Agent-tool dispatch** to its dedicated `subagent_type` (a fresh, isolated context per stage) on the resolved model — never via an inline `Skill` call. In the interactive path, creating-stories and writing-specs ran in the main agent for their gates; in the autonomous path, writing-specs ran as the `dev-workflow-spec-writer` worker.
+- In standalone runs, the developer, reviewer, and tester ran as named role sessions (developer per story; reviewer and tester per PR) reached through messages, and were torn down at Termination or loop stop; when the preflight failed, and for every epic per-task worker, they ran as **Agent-tool dispatches** to their dedicated `subagent_type` (a fresh, isolated context per stage) on the resolved model. Neither path ever used an inline `Skill` call for a downstream stage. In the interactive path, creating-stories and writing-specs ran in the main agent for their gates; in the autonomous path, writing-specs ran as the `dev-workflow-spec-writer` worker.
 - The review loop and test loop each ran until approval/passing or until the Loop Safety Guard stopped them.
 - Testing passed (review approved + `tested-in-dev` label) and the PR is left open (not merged).
 - A clear end-of-run summary was produced.

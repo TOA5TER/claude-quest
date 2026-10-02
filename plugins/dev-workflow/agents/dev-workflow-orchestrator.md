@@ -5,7 +5,7 @@ description: >
   subagent context so an epic can run each task end to end while keeping each
   task's work out of the epic orchestrator's context. CRUCIALLY retains the
   Agent tool (no `tools` restriction) so it can itself dispatch the per-stage
-  workers (developer / reviewer / tester / fixer / spec-writer / pr-state-reader)
+  workers (developer / reviewer / tester / spec-writer / pr-state-reader)
   as nested subagents — requires Claude Code v2.1.172+ for nesting. Use via
   subagent_type from the epic scheduler.
 ---

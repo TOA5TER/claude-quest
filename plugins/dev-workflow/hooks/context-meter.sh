@@ -4,6 +4,9 @@
 # emits additionalContext on tier crossings (60%, 75%). Exits 0 on any error.
 set -euo pipefail
 
+# Role sessions manage their own context; never touch shared state.
+[ -n "${DEV_WORKFLOW_ROLE:-}" ] && exit 0
+
 BASELINE="${DEV_WORKFLOW_COMPACT_BASELINE:-200000}"
 STATE_DIR="$HOME/.claude/dev-workflow/state"
 TIER_FILE="$STATE_DIR/context-meter-tier.txt"
