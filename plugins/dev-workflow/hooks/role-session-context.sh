@@ -16,7 +16,7 @@ main() {
   message="$(printf '%s\n%s\n%s' \
     "dev-workflow plugin root (resolved, authoritative): $root" \
     "dev-workflow standards path (resolved, authoritative): $standards" \
-    "Resolve every relative skills/ path in your instructions against the plugin root above. Do not search the disk for other copies.")"
+    "Resolve relative skills/ paths in the dev-workflow plugin's own agent and skill files against the plugin root above. Do not search the disk for other copies of those files.")"
 
   jq -n --arg context "$message" \
     '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $context}}'
