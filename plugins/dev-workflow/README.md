@@ -48,9 +48,6 @@ Create `~/.claude/dev-workflow/config.json`:
   "deploy_command": "Run the dev CI workflow in GitHub Actions",
   "ci_gate_exempt_repos": [],
   "deploy_gate_exempt_repos": [],
-  "role_sessions": {
-    "permission_mode": "auto"
-  },
   "models": {
     "implementation": "sonnet",
     "reasoning": "opus",
@@ -134,9 +131,9 @@ Standalone `full-cycle` runs the developer, reviewer, and tester as long-lived, 
 
 **Fallback.** A preflight runs once per run. If any check fails (old version, agent view unavailable, background launch refused, no handshake reply), the run announces the reason once and completes entirely on the fresh-dispatch path: fresh developer, reviewer, and tester dispatches, with a fresh developer dispatch in rework mode for each fix loop. Modes are never mixed within a run. `epic` per-task workers always use the fresh-dispatch path.
 
-**Config.** Optional `role_sessions.permission_mode` in `config.json` is passed as the sessions' permission mode; when unset the host default applies.
+**Config.** Optional `role_sessions.permission_mode` in `config.json` is passed as the sessions' permission mode; when unset the host default applies. Permitted values are `default`, `acceptEdits`, and `plan`; `bypassPermissions` and any other value are refused, because role sessions accept inbound messages from any local session.
 
-**Cost.** Each role session consumes subscription usage like any interactive session. A story holds one developer session plus a reviewer and a tester per PR. Sessions are stopped and removed at Termination.
+**Cost.** Each role session consumes subscription usage like any interactive session. A story holds one developer session plus a reviewer and a tester per PR. Sessions are stopped and removed at Termination. After an aborted or non-success run, any session left over is listed in the final report; remove it with `claude stop <name>` then `claude rm <name>`.
 
 ## Adapters
 

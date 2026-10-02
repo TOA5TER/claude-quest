@@ -17,6 +17,7 @@ GitHub stays the authoritative source for every review and test decision.
 - **Reviewer and tester.** One session per PR each, launched lazily at that PR's first review or first test. Per-PR sessions keep a multi-repo story's contexts separate and let different repos' rounds run concurrently.
 - **Names.** Story ID plus role, plus repo for reviewer and tester (for example `sc-1234-developer`, `sc-1234-reviewer-api`). The host may rename on a collision, so record the name and short ID printed at launch and the session ID from `claude agents --json`, and never assume the requested name was granted.
 - **Teardown.** At Termination, send a `shutdown` message, then stop and remove that story's role sessions. When one PR's Loop Safety Guard stops its loop, tear down only that PR's reviewer and tester; the developer session is shared and stays until every PR's loop has finished. If removal is refused, report it; never force it. Worktree reclamation rules are unchanged.
+- **Teardown on non-success paths.** A PR's reviewer and tester are torn down when its Loop Safety Guard loop is stopped and the user declines more cycles, or immediately in an autonomous run. While the user is still being asked, keep them. If the user authorizes more cycles after a teardown, relaunch the needed session cold. Any run that ends without reaching Termination (every PR loop stopped, a blocked stop-and-report, a second liveness failure, a per-round timeout) tears down every remaining session of the story, developer included, once no PR loop can still resume. If the user may resume later, or removal is refused, the final report lists the session names (and the commands `claude stop` then `claude rm`) for manual cleanup.
 
 ## Launch contract
 
@@ -39,7 +40,7 @@ Launch from a trusted workspace; a background launch from an untrusted directory
 
 **Launch-text caution.** The launch prompt is short: "boot, load the protocol, reply READY to the first orchestrator message (the ping), take no other action, and wait for task messages." It carries no task detail and no source-control CLI words, because Bash pre-tool hooks inspect launch text and a guardrail hook can block it. Task detail travels through the messaging tool, never through Bash. The first task arrives as a message.
 
-**Optional config.** `role_sessions.permission_mode` in `~/.claude/dev-workflow/config.json`. When set it is passed as the sessions' permission mode; when unset no flag is passed and the host default for that directory applies.
+**Optional config.** `role_sessions.permission_mode` in `~/.claude/dev-workflow/config.json`. When set it is passed as the sessions' permission mode; when unset no flag is passed and the host default for that directory applies. Permitted values are `default`, `acceptEdits`, and `plan`. `bypassPermissions` is refused, because role sessions accept inbound messages from any local session; any other value (including the unconfirmed `auto`) is also refused. On a refused value, announce it once and launch with no flag.
 
 ## Preflight, handshake, fallback
 
@@ -48,7 +49,7 @@ Once per run, before the first launch, check all of:
 1. the Claude Code version meets the floor (v2.1.224);
 2. `claude agents --json` runs (agent view not disabled);
 3. a background launch succeeds (workspace trust);
-4. the first launched session answers a `ping` within a bounded timeout.
+4. the first launched session, whatever its role, answers a `ping` within a bounded timeout.
 
 **`crossSessionInbound` prerequisite.** A worker's reply to a main session in a different permission-mode class is held for the user's approval, even when the worker accepts inbound messages itself. The orchestrator session must set `crossSessionInbound` to `accept` (or share the workers' permission class). A failed ping with a live, idle worker means its reply is almost certainly being held; the announcement names this remedy.
 
@@ -73,7 +74,7 @@ The body is plain text. A human sees only the first line in a preview, so it mus
 | Orchestrator to worker | `develop` (the story), `fix` (feedback on a PR), `review` (a PR), `test` (a PR), `ping`, `shutdown` |
 | Worker to orchestrator | `ready`, `result`, `blocked` (needs a human decision) |
 
-The `result` body is the existing flat key/value record from "Output Mode Detection" in `standards.md`, unchanged.
+The `result` body for `develop`, `review`, and `test` is the existing flat key/value record from "Output Mode Detection" in `standards.md`, unchanged. The `result` for a `fix` is a short plain-text confirmation of what changed, and the `result` acknowledging `shutdown` is the single word `shutdown`; neither is a key/value record, and the orchestrator never parses them.
 
 **Routing.**
 
@@ -102,7 +103,10 @@ After sending, the orchestrator states what is in flight (role, target PR or rep
 
 - **Blocked** (waiting on a permission prompt): an interactive run asks the user; an autonomous run stops and reports the task as blocked.
 - **Failed, stopped, or no process:** respawn once with `claude respawn`, then re-send the last request. A second failure ends role-session use for that PR with a stop-and-report.
-- **Done and idle with no result:** read the authoritative decision from GitHub; if present, proceed; otherwise re-send once, then stop and report.
+- **Still working** (listed as running or busy): this is the normal state during CI and deploy waits. Re-arm the re-check and keep waiting. Do not respawn or re-send.
+- **Done and idle with no result:** read the authoritative decision from GitHub; if present, proceed. Otherwise check the PR head for commits newer than the request (a `fix` may already have been applied); if there are none, re-send once, then stop and report.
+
+**Per-round time limit.** Each request has an overall limit of 60 minutes from the send, regardless of how many re-checks returned "still working". At the limit, stop waiting, stop and report the task as timed out, and apply the non-success teardown below. Each re-check interval is 5 minutes unless `standards.md` "Subagent Wait Discipline" sets a different one.
 
 Before every send, confirm the target is reachable. A "not reachable" send error is handled the same as a stopped session.
 

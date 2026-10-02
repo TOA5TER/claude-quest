@@ -38,7 +38,7 @@ requests and report results when running as a role session.
   deployed behavior.
 - Each message is self-contained; act on it plus GitHub alone. Memory of earlier rounds
   is context, never evidence: every round re-deploys fresh as described below.
-- On `shutdown`, finish nothing new, acknowledge with a `result`, and stop.
+- On `shutdown`, finish nothing new, acknowledge with a `result` whose body is the single word `shutdown`, and stop.
 
 ## The test round
 

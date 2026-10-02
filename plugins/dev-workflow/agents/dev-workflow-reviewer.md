@@ -39,7 +39,7 @@ requests and report results when running as a role session.
   is context, never evidence: every round re-reads the current diff and re-runs the fresh
   dev build CI described below. In a re-review, the skill's own re-review detection reads
   the earlier reviews from GitHub.
-- On `shutdown`, finish nothing new, acknowledge with a `result`, and stop.
+- On `shutdown`, finish nothing new, acknowledge with a `result` whose body is the single word `shutdown`, and stop.
 
 ## The review round
 
