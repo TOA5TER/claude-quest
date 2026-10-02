@@ -30,6 +30,8 @@ if printf '%s' "$ROLE_OUT" | jq -e . >/dev/null 2>&1; then
   CONTEXT="$(printf '%s' "$ROLE_OUT" | jq -r '.hookSpecificOutput.additionalContext')"
   case "$CONTEXT" in *"$ROOT_MARKER: $PLUGIN_ROOT"*) ;; *) fail "missing plugin root line" ;; esac
   case "$CONTEXT" in *"$STANDARDS_MARKER: $PLUGIN_ROOT/skills/shared/standards.md"*) ;; *) fail "missing standards path line" ;; esac
+  case "$CONTEXT" in *"Resolve relative skills/ paths in the dev-workflow plugin's own agent and skill files against the plugin root above."*) ;; *) fail "missing scoped resolution sentence" ;; esac
+  case "$CONTEXT" in *"Resolve every relative skills/ path"*) fail "injected instruction is not scoped to this plugin's files" ;; esac
   [ -f "$PLUGIN_ROOT/skills/shared/standards.md" ] || fail "standards file missing from the plugin"
 else
   fail "role session output is not valid JSON: $ROLE_OUT"
