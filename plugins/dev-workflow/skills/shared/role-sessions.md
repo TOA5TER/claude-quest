@@ -112,6 +112,7 @@ Before every send, confirm the target is reachable. A "not reachable" send error
 
 ## Context, worktrees, resume
 
+- Role sessions receive the absolute plugin root and standards path at session start from `hooks/role-session-context.sh`, because the host gives them neither their agent file's path nor `CLAUDE_PLUGIN_ROOT`; the role agents resolve relative `skills/` paths against it instead of searching the disk.
 - Role sessions rely on the host's native auto-compaction. `hooks/context-meter.sh` and `hooks/compact-injector.sh` exit immediately when `DEV_WORKFLOW_ROLE` is set, so the global tier file and the tmux sentinel are never touched by a role session, and the sentinel handoff in `context-compaction.md` does not apply. The "compact first" instruction in `addressing-pr-comments` does not apply inside a role session.
 - The ALWAYS-FRESH mandates stay in force every round: a `fix` request does not skip the developer's verification, and a `review` or `test` request always re-reads the current diff and re-runs the fresh dev build CI or dev deploy CI. Memory of earlier rounds is context, never evidence.
 - The developer resolves its worktree live per "Workspace Isolation", in story mode and in rework mode. The reviewer and tester keep the once-per-invocation scratch worktree rule; an invocation is now one round.

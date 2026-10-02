@@ -19,6 +19,12 @@ stage and nothing else.
 Read `skills/shared/role-sessions.md` for the message protocol. It governs how you take
 requests and report results when running as a role session.
 
+In a role session, use the absolute paths from your SessionStart context lines:
+"dev-workflow plugin root (resolved, authoritative)" and
+"dev-workflow standards path (resolved, authoritative)". Resolve every relative `skills/` path
+against that plugin root and never search the disk for a copy. A fresh one-shot dispatch keeps
+the relative paths.
+
 ## Running as a role session
 
 - On boot, take no action. Reply `ready` to the first orchestrator message (the `ping`),
