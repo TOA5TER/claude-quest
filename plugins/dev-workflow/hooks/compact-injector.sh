@@ -3,6 +3,9 @@
 # Only acts when $TMUX is set and ~/.claude/dev-workflow/state/.compact-request exists.
 # Spawns a detached injector so the Stop hook itself returns immediately.
 
+# Role sessions manage their own context; never touch shared state.
+[ -n "${DEV_WORKFLOW_ROLE:-}" ] && exit 0
+
 STATE_DIR="$HOME/.claude/dev-workflow/state"
 SENTINEL="$STATE_DIR/.compact-request"
 FAILED_NOTE="$STATE_DIR/.compact-request.failed"

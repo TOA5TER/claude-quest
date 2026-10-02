@@ -92,7 +92,7 @@ and from that point forward the **worktree root**, not the plain repo root, is "
 root" for every remaining step (implementation, commits, PR creation). Before creating a new
 worktree, always check live for an existing one: run `git -C <repo root> worktree list
 --porcelain` and match the entry whose branch equals this story's feature branch name — per
-`skills/shared/standards.md` → "Workspace Isolation" and mirroring `agents/dev-workflow-fixer.md`'s
+`skills/shared/standards.md` → "Workspace Isolation" and mirroring the developer agent's rework-mode
 lookup. If found, treat it as authoritative immediately and `cd` there — do not create a second
 worktree. If not found, create one. The multi-repo path below performs this same lookup
 independently per repo, in its own per-repo sub-agent, as described in "Multi-repo path" → Step 3.

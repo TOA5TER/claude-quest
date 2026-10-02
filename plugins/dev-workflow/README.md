@@ -77,10 +77,10 @@ The `models` section is optional. When absent, all dispatches use the built-in d
 | `models.reasoning` | `opus` | All reasoning/planning subagents (brainstorming, architecture) |
 | `models.review` | `opus` | All review/testing subagents (review board, adversarial review, test agents) |
 | `models.stages.writing-specs` | `sonnet` | full-cycle's writing-specs stage subagent (autonomous path only) |
-| `models.stages.developing` | `sonnet` | full-cycle's developing stage subagent |
-| `models.stages.reviewing-prs` | `opus` | full-cycle's reviewing-prs stage subagent |
-| `models.stages.testing-prs` | `opus` | full-cycle's testing-prs stage subagent |
-| `models.stages.addressing-pr-comments` | `sonnet` | full-cycle's fix subagent in the review and test loops |
+| `models.stages.developing` | `sonnet` | full-cycle's developing stage (the developer role session's model, fixed at launch, or the fresh developer dispatch) |
+| `models.stages.reviewing-prs` | `opus` | full-cycle's reviewing-prs stage (reviewer role session or fresh subagent) |
+| `models.stages.testing-prs` | `opus` | full-cycle's testing-prs stage (tester role session or fresh subagent) |
+| `models.stages.addressing-pr-comments` | `sonnet` | The fresh developer rework dispatch in the review and test loops (fallback path and epic per-task workers). Ignored in role-session mode, where the developer session's model is fixed at launch from `models.stages.developing`. Existing configs that set it keep working on the fallback path only. |
 | `models.stages.entry-detection` | `sonnet` | full-cycle's resume/entry-detection subagent |
 | `models.stages.pr-number-read` | `sonnet` | full-cycle's post-developing PR-number resolution subagent |
 | `models.stages.decision-read` | `sonnet` | full-cycle's authoritative review/test decision-read subagent |
@@ -112,10 +112,28 @@ A non-passing CI/deploy result on a non-exempt repo always yields `REQUEST_CHANG
 
 ```bash
 $ jq '.ci_gate_exempt_repos' ~/.claude/dev-workflow/config.json
-["whoof-app", "claude-quest", ...]
+["my-app", "claude-quest", ...]
 ```
 
 A missing verification line invalidates the exemption claim and is treated as a gate failure (`REQUEST_CHANGES`), not a pass.
+
+## Role Sessions (standalone full-cycle)
+
+Standalone `full-cycle` runs the developer, reviewer, and tester as long-lived, named background Claude Code sessions instead of fresh one-shot subagents per stage and per loop pass. A review result is routed by the orchestrator to the developer that already holds the PR's context, and the fix is routed back to the reviewer that still holds its review context; the tester works the same way. Sessions exchange messages through the orchestrator only (hub-and-spoke); workers never message each other. GitHub stays the authoritative source for every review and test decision. The protocol is in `skills/shared/role-sessions.md`.
+
+**What changed.** The separate fix-loop agent type (named in the PR description) is removed. Fix work is now the developer's rework mode: `dev-workflow-developer` given a PR number lands on the PR's branch and runs `addressing-pr-comments`. `dev-workflow-developer`, `-reviewer`, and `-tester` keep their names and still work as fresh one-shot dispatches. Downstream plugins that dispatched that agent should dispatch the developer in rework mode, or adopt the role-session protocol.
+
+**Prerequisites.**
+
+- Claude Code v2.1.224 or later.
+- The orchestrator session must accept inbound cross-session messages (`crossSessionInbound` set to `accept`), or share the workers' permission-mode class. Otherwise a worker's reply is held for approval and the run falls back.
+- Background launches need a trusted workspace.
+
+**Fallback.** A preflight runs once per run. If any check fails (old version, agent view unavailable, background launch refused, no handshake reply), the run announces the reason once and completes entirely on the fresh-dispatch path: fresh developer, reviewer, and tester dispatches, with a fresh developer dispatch in rework mode for each fix loop. Modes are never mixed within a run. `epic` per-task workers always use the fresh-dispatch path.
+
+**Config.** Optional `role_sessions.permission_mode` in `config.json` is passed as the sessions' permission mode; when unset the host default applies. Permitted values are `default`, `acceptEdits`, and `plan` (`plan` applies only to the reviewer and tester; the developer launches with no flag); optional `role_sessions.round_timeout_minutes` overrides the per-request time limit (defaults: 60 minutes for develop and fix, 120 for review and test); `bypassPermissions` and any other value are refused, because role sessions accept inbound messages from any local session.
+
+**Cost.** Each role session consumes subscription usage like any interactive session. A story holds one developer session plus a reviewer and a tester per PR. Sessions are stopped and removed at Termination. After an aborted or non-success run, any session left over is listed in the final report; remove it with `claude stop <name>` then `claude rm <name>`.
 
 ## Adapters
 
@@ -161,7 +179,7 @@ exists and the session is inside tmux, the hook spawns a detached process that i
 `/compact` into the pane and sends the resume command after compaction completes. Outside
 tmux, full-cycle instead tells you the exact two commands to run manually.
 
-Both hooks are registered automatically when the plugin is loaded.
+Both hooks are registered automatically when the plugin is loaded. Role sessions (see above) rely on the host's native auto-compaction instead: both hooks exit immediately when the `DEV_WORKFLOW_ROLE` environment variable is set, so they never touch the shared tier file or the tmux sentinel from inside a role session.
 
 ## Installation
 

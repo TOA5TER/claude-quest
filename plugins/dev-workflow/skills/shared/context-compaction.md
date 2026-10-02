@@ -42,8 +42,8 @@ code paths.
 
 **No worktree path is ever stored in the checkpoint.** A stage or subagent that needs a
 repo's worktree resolves it live via `git worktree list --porcelain` (matching the entry
-whose branch equals that repo's feature branch), exactly as `agents/dev-workflow-fixer.md`
-already does — see `skills/shared/standards.md` → "Workspace Isolation". Nothing here
+whose branch equals that repo's feature branch), exactly as the developer agent's rework mode
+does — see `skills/shared/standards.md` → "Workspace Isolation". Nothing here
 caches it, so there is no staleness or cross-repo-mixup class of bug to guard against.
 
 **Stage vocabulary.** The write points below produce four values: `"writing-specs"`,
@@ -165,6 +165,12 @@ execution.
 
 If a write fails (disk full, permissions), surface the error to the user and continue.
 Do NOT abort the pipeline. GitHub/PM state remains the resume authority.
+
+---
+
+## Role sessions
+
+Role sessions (see `skills/shared/role-sessions.md`) do not use the sentinel handoff or the context meter: both hooks exit immediately when `DEV_WORKFLOW_ROLE` is set, and a role session relies on the host's native auto-compaction. The sections below describe the single tmux-hosted orchestrator only.
 
 ---
 

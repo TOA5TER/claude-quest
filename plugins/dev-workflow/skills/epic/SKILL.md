@@ -263,7 +263,7 @@ When the epic is re-invoked against the slug, it reconciles each `awaiting-merge
 - **PR merged** (a human merged it) → set `Status` to `done` via the adapter; its dependents become
   schedulable. **Reclaim the worktree now** — one of this pipeline's designated cleanup points (see
   `skills/shared/standards.md` → "Workspace Isolation"). Resolve the worktree live, the same way
-  `agents/dev-workflow-fixer.md` does: run `git -C <that repo's root> worktree list --porcelain` and
+  the developer agent's rework mode does: run `git -C <that repo's root> worktree list --porcelain` and
   match the entry whose `branch refs/heads/<name>` equals the merged PR's branch — never guess a path
   or reuse one from a sibling repo. If no matching entry is found, skip removal and note it in the
   end-of-run report rather than guessing. Otherwise remove it per `standards.md`'s "Removal must

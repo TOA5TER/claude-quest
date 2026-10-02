@@ -15,7 +15,7 @@ Read `skills/shared/adapter-loading.md` — adapter loading procedures reference
 
 Read `skills/shared/checkpoint-seeding.md` — checkpoint seeding procedure referenced in Step 1.
 
-Compact the conversation before continuing — you are about to iterate on existing work.
+Compact the conversation before continuing — you are about to iterate on existing work. Skip this when running inside a role session (the `DEV_WORKFLOW_ROLE` environment variable is set): a persistent session keeps its context across rounds and relies on the host's native auto-compaction (see `skills/shared/role-sessions.md`).
 
 ---
 
