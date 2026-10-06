@@ -119,7 +119,7 @@ A missing verification line invalidates the exemption claim and is treated as a 
 
 ## Role Sessions (standalone full-cycle)
 
-Standalone `full-cycle` runs the developer, reviewer, and tester as long-lived, named background Claude Code sessions instead of fresh one-shot subagents per stage and per loop pass. A review result is routed by the orchestrator to the developer that already holds the PR's context, and the fix is routed back to the reviewer that still holds its review context; the tester works the same way. Sessions exchange messages through the orchestrator only (hub-and-spoke); workers never message each other. GitHub stays the authoritative source for every review and test decision. The protocol is in `skills/shared/role-sessions.md`.
+Standalone `full-cycle` runs the developer, reviewer, and tester as long-lived, named background Claude Code sessions instead of fresh one-shot subagents per stage and per loop pass. A review result is routed by the orchestrator to the repo's developer session, which already holds the PR's context, and the fix is routed back to the reviewer that still holds its review context; the tester works the same way. Sessions exchange messages through the orchestrator only (hub-and-spoke); workers never message each other. GitHub stays the authoritative source for every review and test decision. The protocol is in `skills/shared/role-sessions.md`.
 
 **What changed.** The separate fix-loop agent type (named in the PR description) is removed. Fix work is now the developer's rework mode: `dev-workflow-developer` given a PR number lands on the PR's branch and runs `addressing-pr-comments`. `dev-workflow-developer`, `-reviewer`, and `-tester` keep their names and still work as fresh one-shot dispatches. Downstream plugins that dispatched that agent should dispatch the developer in rework mode, or adopt the role-session protocol.
 
@@ -133,7 +133,7 @@ Standalone `full-cycle` runs the developer, reviewer, and tester as long-lived, 
 
 **Config.** Optional `role_sessions.permission_mode` in `config.json` is passed as the sessions' permission mode; when unset the host default applies. Permitted values are `default`, `acceptEdits`, and `plan` (`plan` applies only to the reviewer and tester; the developer launches with no flag); optional `role_sessions.round_timeout_minutes` overrides the per-request time limit (defaults: 60 minutes for develop and fix, 120 for review and test); `bypassPermissions` and any other value are refused, because role sessions accept inbound messages from any local session.
 
-**Cost.** Each role session consumes subscription usage like any interactive session. A story holds one developer session plus a reviewer and a tester per PR. Sessions are stopped and removed at Termination. After an aborted or non-success run, any session left over is listed in the final report; remove it with `claude stop <name>` then `claude rm <name>`.
+**Cost.** Each role session consumes subscription usage like any interactive session. A story holds one developer session per repo plus a reviewer and a tester per PR, each named with its repo. Sessions are never shut down, stopped, or removed without your explicit permission: at Termination and on every non-success path the orchestrator lists the live sessions, says they remain available for more work, and asks. Sessions you leave running are listed in the final report; remove one with `claude stop <name>` then `claude rm <name>`.
 
 ## Adapters
 

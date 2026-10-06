@@ -564,7 +564,7 @@ If the PM adapter does not support comments or updates — note this to the user
 
 **"Ready for Dev" transition and `claude-written` label:** Fire these **ONCE** on the single story after all specs are linked. State transitions and labels are applied once per run, not per repo.
 
-**State ownership:** writing-specs owns the "Ready for Dev" transition; developing owns the "In Development" transition. Each skill fires only its own transition — never the other's.
+**State ownership:** writing-specs owns the "Ready for Dev" transition; developing owns the "In Development" transition, except in role-session mode, where the orchestrator fires it. Each skill fires only its own transition — never the other's.
 
 ---
 

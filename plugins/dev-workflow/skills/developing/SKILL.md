@@ -76,6 +76,8 @@ as the resolved single repo root and skip re-running `skills/shared/repo-discove
 two-path detection — the orchestrator already resolved it. Only fall back to running the full
 procedure below (including its multi-repo per-repo loop) when no repo path was supplied.
 
+A supplied repo path scopes the work to that one repo even if the story names several: load only that repo's spec, take the single-repo path, and skip dependency-graph building and the multi-repo "In Development" transition (in role-session mode the orchestrator owns ordering and the transition). Behavior with no supplied repo path, and for fresh-dispatch multi-repo runs, is unchanged.
+
 Otherwise, determine which checkout(s) to operate on per `skills/shared/repo-discovery.md` (two-path detection, the "Repos to modify" precedence rules, per-item repo tags, and the single-repo shortcut). Each Path-2 repo is its own checkout in its own sibling folder with its own feature branch.
 
 Once the repo(s) are resolved, call `skills/shared/checkpoint-seeding.md`'s "Seed or Refresh
@@ -135,7 +137,7 @@ Then invoke subagent-driven execution:
 
 Move the story to **"In Development" exactly once** — at the start of the entire run, before any per-repo work begins. Do NOT repeat this transition per repo.
 
-**State ownership:** developing owns the "In Development" transition; writing-specs owns "Ready for Dev". Each skill fires only its own transition — never the other's.
+**State ownership:** developing owns the "In Development" transition, except in role-session mode, where the orchestrator fires it; writing-specs owns "Ready for Dev". Each skill fires only its own transition — never the other's.
 
 #### Step 1 — Infer the cross-repo dependency graph
 
