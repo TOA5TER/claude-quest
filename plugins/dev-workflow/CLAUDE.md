@@ -101,7 +101,7 @@ Epic state (not committed): `~/.claude/dev-workflow/epics/[epic-slug]/`
 
 ## Working on This Codebase
 
-Content is mostly Markdown skill definitions, plus a small number of static assets (e.g., `skills/writing-specs/spec-template.html`) — there is no compiled code and no build step. The only tests are the shell tests under `tests/` for the hooks; run `bash tests/test_role_session_context.sh` after touching a hook, `hooks/hooks.json` or the role agents. Changes are made by editing `.md` files (and the occasional asset file) in `skills/` and `commands/`.
+Content is mostly Markdown skill definitions, plus a small number of static assets (e.g., `skills/writing-specs/spec-template.html`) — there is no compiled code and no build step. The only tests are the shell tests under `tests/` for the hooks; run `bash tests/test_role_session_context.sh` after touching a hook, `hooks/hooks.json` or the role agents, and `bash tests/test_developer_rules.sh` after touching the worktree or attribution wording in the developing skill, repo-discovery or the developer agent. Changes are made by editing `.md` files (and the occasional asset file) in `skills/` and `commands/`.
 
 When modifying a skill:
 - Update the version in `.claude-plugin/plugin.json` if changing behavior, **and** bump the matching entry's `version` in the repo-root `.claude-plugin/marketplace.json` to the same value, both in the same PR as the behavior change — the two drift independently and only the second one is what marketplace consumers actually see
