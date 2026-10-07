@@ -98,7 +98,7 @@ in the **main agent** so their user-facing gates work — do not dispatch a work
 
 **Role sessions are the default for developer, reviewer, and tester in standalone `full-cycle`.**
 Instead of a one-shot Agent dispatch per stage and per loop pass, the orchestrator launches one
-long-lived, named background session per role and exchanges messages with it, per
+long-lived, named background session per reviewer and tester PR and per developer repo, and exchanges messages with it, per
 `skills/shared/role-sessions.md`. The same `dev-workflow-developer`, `dev-workflow-reviewer`,
 and `dev-workflow-tester` agent definitions back both modes. Agent dispatch remains for
 `dev-workflow-spec-writer`, `dev-workflow-pr-state-reader` (entry detection, decision read,
@@ -111,7 +111,7 @@ existing PR is handled by `dev-workflow-developer` in rework mode (a PR number i
 lands on the PR's branch through the live worktree lookup, falling back to a plain
 `gh pr checkout {PR_NUMBER}` only when no worktree holds the branch, then invokes
 `dev-workflow:addressing-pr-comments`. In a role session this is a `fix` message to the
-developer session; on the fallback path it is a fresh developer dispatch in rework mode.
+developer session of the PR's repo; on the fallback path it is a fresh developer dispatch in rework mode.
 
 ---
 

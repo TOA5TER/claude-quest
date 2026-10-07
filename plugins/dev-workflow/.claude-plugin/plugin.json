@@ -1,6 +1,6 @@
 {
   "name": "dev-workflow",
-  "version": "2.47.1",
+  "version": "2.48.0",
   "description": "Action-based development workflow skills with pluggable PM and notes adapters (requires guardrails-git >= 1.2.0 for worktree support)",
   "author": {
     "name": "MechanicalTyler"

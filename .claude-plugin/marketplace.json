@@ -29,7 +29,7 @@
       "name": "dev-workflow",
       "source": "./plugins/dev-workflow",
       "description": "Role-based development workflow subagents with pluggable PM and notes adapters (requires guardrails-git >= 1.2.0 for worktree support)",
-      "version": "2.47.1"
+      "version": "2.48.0"
     },
     {
       "name": "guardrails-git",
