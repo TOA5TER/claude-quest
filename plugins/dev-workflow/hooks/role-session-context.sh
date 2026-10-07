@@ -13,10 +13,11 @@ main() {
   standards="$root/skills/shared/standards.md"
   [ -f "$standards" ] || return 0
 
-  message="$(printf '%s\n%s\n%s' \
+  message="$(printf '%s\n%s\n%s\n%s' \
     "dev-workflow plugin root (resolved, authoritative): $root" \
     "dev-workflow standards path (resolved, authoritative): $standards" \
-    "Resolve relative skills/ paths in the dev-workflow plugin's own agent and skill files against the plugin root above. Do not search the disk for other copies of those files.")"
+    "Resolve relative skills/ paths in the dev-workflow plugin's own agent and skill files against the plugin root above. Do not search the disk for other copies of those files." \
+    "Role-session contract: answer every develop, fix, review, or test message with an ack, then end the request with a result or blocked message sent through the SendMessage tool; plain text is never a reply.")"
 
   jq -n --arg context "$message" \
     '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $context}}'
