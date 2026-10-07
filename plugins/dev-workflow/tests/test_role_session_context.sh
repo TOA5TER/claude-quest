@@ -148,6 +148,8 @@ for role in developer reviewer tester; do
   case "$BODY" in *'`ack`'*) ;; *) fail "$role agent contract missing backticked ack" ;; esac
   case "$BODY" in *"terminal reply"*) ;; *) fail "$role agent contract missing terminal reply" ;; esac
   case "$BODY" in *"SendMessage"*) ;; *) fail "$role agent contract missing SendMessage" ;; esac
+  case "$BODY" in *"only when you run as a role session"*) ;; *) fail "$role agent contract missing role-session-only scope" ;; esac
+  case "$BODY" in *"one-shot subagent"*) ;; *) fail "$role agent contract missing one-shot subagent carve-out" ;; esac
 done
 
 # Why: the protocol must carry the contract section and list ack as a worker-to-orchestrator type.

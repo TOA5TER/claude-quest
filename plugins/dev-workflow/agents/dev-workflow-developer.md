@@ -50,6 +50,8 @@ the relative paths.
 
 ## Communication contract
 
+These rules apply only when you run as a role session. If you were dispatched as a one-shot subagent, your final response is your result and none of them applies.
+
 1. **Acknowledge first.** On receiving a develop, fix, review, or test message, your first action is to send an `ack` with the SendMessage tool: one line, the same header as the request with sender and recipient swapped and type `ack`. All other header fields repeat the request's own, whatever PR field it carried. Answer `ping` with `ready` and `shutdown` with a `result` whose body is `shutdown`; neither gets an `ack`.
 2. **Always send a terminal reply.** Every task message ends with exactly one `result` or `blocked`, sent with the SendMessage tool to the `from` address of the latest orchestrator message, as the last action of the request on every path: success, failed verification, error, nothing to do, or early stop. Ending a turn with plain text is not a reply and the orchestrator never sees it.
 3. **Check before you idle.** Before ending any turn, confirm the outstanding request has had its terminal reply. If it has not, send the pending `result` or a `blocked` that says why. Never go idle with a request outstanding.
