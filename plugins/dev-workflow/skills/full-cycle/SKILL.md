@@ -324,7 +324,7 @@ After its `result` arrives (or it returns), read the PR's latest **review** deci
 
 While the latest review decision for the PR is **changes requested**:
 
-1. **Send a `fix` message to the developer session of the PR's repo** (name it in flight, arm the watcher, and wait for its `result`). On the fresh-dispatch path, **dispatch the Agent tool** with `subagent_type: dev-workflow-developer` in rework mode (model: resolved from `models.stages.addressing-pr-comments` → `models.implementation` → default `sonnet`). The developer's rework mode already locates and lands on the PR's branch (its own worktree if one holds it, else `gh pr checkout {PR_NUMBER}` — see "PR-branch checkout" above) and invokes `dev-workflow:addressing-pr-comments`; your request supplies only:
+1. **Send a `fix` message to the developer session of the PR's repo** (in role-session mode, name it in flight, arm the watcher, and wait for its `result`). On the fresh-dispatch path, **dispatch the Agent tool** with `subagent_type: dev-workflow-developer` in rework mode (model: resolved from `models.stages.addressing-pr-comments` → `models.implementation` → default `sonnet`). The developer's rework mode already locates and lands on the PR's branch (its own worktree if one holds it, else `gh pr checkout {PR_NUMBER}` — see "PR-branch checkout" above) and invokes `dev-workflow:addressing-pr-comments`; your request supplies only:
    > PR number: `{PR_NUMBER}`. Rework mode: address the review feedback. [Short summary of the feedback, labeled unverified; the full review is on GitHub.]
 
    It implements the requested changes on the **same branch and PR** and replies to the review.
@@ -355,7 +355,7 @@ After its `result` arrives (or it returns), read the PR's latest **test** decisi
 
 While testing **requests changes**:
 
-1. **Send a `fix` message to the developer session of the PR's repo** for the same PR (name it in flight, arm the watcher, and wait for its `result`). On the fresh-dispatch path, **dispatch the Agent tool** with `subagent_type: dev-workflow-developer` in rework mode (model: resolved from `models.stages.addressing-pr-comments` → `models.implementation` → default `sonnet`) — it locates and lands on the branch (its own worktree if one holds it, else `gh pr checkout`) and invokes `dev-workflow:addressing-pr-comments`; pass the PR number `{PR_NUMBER}`.
+1. **Send a `fix` message to the developer session of the PR's repo** for the same PR (in role-session mode, name it in flight, arm the watcher, and wait for its `result`). On the fresh-dispatch path, **dispatch the Agent tool** with `subagent_type: dev-workflow-developer` in rework mode (model: resolved from `models.stages.addressing-pr-comments` → `models.implementation` → default `sonnet`) — it locates and lands on the branch (its own worktree if one holds it, else `gh pr checkout`) and invokes `dev-workflow:addressing-pr-comments`; pass the PR number `{PR_NUMBER}`.
 2. In the turn the developer's `result` arrives, send a `test` message to the **same tester session** for the same PR, name it in flight, and arm the watcher (fresh-dispatch path: re-dispatch the tester via the Agent tool, `subagent_type: dev-workflow-tester`, model: resolved from `models.stages.testing-prs` → `models.review` → default `opus`).
 3. Re-read the authoritative test decision (the newest review submitted since this re-request).
 

@@ -123,7 +123,7 @@ ROLE_SESSIONS="$PLUGIN_ROOT/skills/shared/role-sessions.md"
 FULL_CYCLE="$PLUGIN_ROOT/skills/full-cycle/SKILL.md"
 STANDARDS="$PLUGIN_ROOT/skills/shared/standards.md"
 
-# Body of the first heading matching $2 (regex), up to the next heading whose level is at most $3 (any level when $3 is 6), trimmed and with blank lines dropped.
+# Why: extract one section's body so copies of a block can be compared byte for byte.
 section_body() {
   awk -v pat="$2" -v maxlevel="$3" '
     /^#+ / {
@@ -136,7 +136,7 @@ section_body() {
   ' "$1"
 }
 
-# Why: the worker rules must be word-for-word identical in the protocol and all three agent files so copies cannot drift.
+# Why: the worker rules must be word-for-word identical in the protocol and every worker agent file so copies cannot drift.
 CANONICAL="$(section_body "$ROLE_SESSIONS" '^### Canonical worker rules' 6)"
 [ -n "$CANONICAL" ] || fail "role-sessions.md has no Canonical worker rules body"
 for role in developer reviewer tester; do
@@ -165,7 +165,7 @@ WAIT_PARAGRAPH="$(awk '/^\*\*Message-wait variant \(role sessions\)\.\*\*/ {p=1}
 case "$WAIT_PARAGRAPH" in *"Monitor"*) ;; *) fail "Message-wait variant paragraph does not mention the Monitor" ;; esac
 case "$WAIT_PARAGRAPH" in *"arm a bounded, visible fallback re-check"*) fail "Message-wait variant paragraph keeps the old re-check wording" ;; esac
 
-# Why: the hook must carry the contract reminder for role sessions only, so it survives compaction and respawn.
+# Why: the hook must carry the contract reminder in a role session so it survives compaction and respawn.
 case "$CONTEXT" in *"$HOOK_SENTENCE"*) ;; *) fail "role session context missing the contract sentence" ;; esac
 
 # Why: the version bump must be pinned numerically without breaking on later bumps.
