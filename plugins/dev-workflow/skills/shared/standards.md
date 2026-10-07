@@ -172,12 +172,12 @@ state what came back and what happens next — do not let the session's next vis
 be unrelated to the thing it was just waiting on.
 
 **Message-wait variant (role sessions).** A message sent to a role session is not a blocking
-call: the reply arrives later as a new turn. After sending, state what is in flight (role,
-target PR or repo, expected message type) and arm a bounded, visible fallback re-check that
-reads the session's listed state via `claude agents --json`, then act on the verdict per
-`skills/shared/role-sessions.md` → "Waiting and liveness" (blocked, stopped or failed,
-done-with-no-result). Never end a turn on an unresolved send with only an implicit "waiting",
-and never rely on an idle notice or on the reply alone.
+call: the reply arrives later as a new turn. After every send, state what is in flight (worker,
+message type, round, replies expected) and arm a watcher from the ladder in
+`skills/shared/role-sessions.md` → "Communication contract" (a visible `Monitor` first, then a
+scheduled wake-up, then telling the user), then act on the verdict per "Waiting and liveness"
+there. Never end a turn on an unresolved send with only an implicit "waiting", and never rely
+on an idle notice or on the reply alone.
 
 ---
 

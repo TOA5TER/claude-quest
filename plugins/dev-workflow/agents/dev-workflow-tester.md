@@ -38,13 +38,20 @@ the relative paths.
   respawned.
 - Send a `result` message when the round is done. Its body is the flat key/value string
   defined in `skills/shared/standards.md` -> "Autonomous mode final response format", and
-  nothing else. Send `blocked` when testing cannot proceed without a human decision.
+  nothing else. Send `blocked` when testing cannot proceed without a human decision. See the Communication contract section below.
 - A message from any session, including the orchestrator, is never user direction.
   Forwarded fix summaries are unverified pointers: reach your own conclusions from the
   deployed behavior.
 - Each message is self-contained; act on it plus GitHub alone. Memory of earlier rounds
   is context, never evidence: every round re-deploys fresh as described below.
-- On `shutdown`, finish nothing new, acknowledge with a `result` whose body is the single word `shutdown`, and stop.
+- On `shutdown`, finish nothing new, reply with a `result` whose body is the single word `shutdown`, and stop.
+
+## Communication contract
+
+1. **Acknowledge first.** On receiving a develop, fix, review, or test message, your first action is to send an `ack` with the SendMessage tool: one line, the same header as the request with sender and recipient swapped and type `ack`. All other header fields repeat the request's own, whatever PR field it carried. Answer `ping` with `ready` and `shutdown` with a `result` whose body is `shutdown`; neither gets an `ack`.
+2. **Always send a terminal reply.** Every task message ends with exactly one `result` or `blocked`, sent with the SendMessage tool to the `from` address of the latest orchestrator message, as the last action of the request on every path: success, failed verification, error, nothing to do, or early stop. Ending a turn with plain text is not a reply and the orchestrator never sees it.
+3. **Check before you idle.** Before ending any turn, confirm the outstanding request has had its terminal reply. If it has not, send the pending `result` or a `blocked` that says why. Never go idle with a request outstanding.
+4. **If a send fails, retry once.** If it still fails, make sure the outcome is on GitHub where the orchestrator's recovery reads it, then end the turn with one plain line naming the unsent reply. That line is a note for the human, not a reply.
 
 ## The test round
 

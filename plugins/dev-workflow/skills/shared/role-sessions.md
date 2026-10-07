@@ -40,7 +40,7 @@ Each role launches as one background session with:
 
 Launch from a trusted workspace; a background launch from an untrusted directory fails, which the preflight treats as unavailable. If a later repo's developer fails to launch after the run's preflight already passed, do not fall back to fresh dispatch for that repo (modes are never mixed): stop, report the repo, and ask the user how to proceed.
 
-**Launch-text caution.** The launch prompt is short: "boot, load the protocol, reply READY to the first orchestrator message (the ping), take no other action, and wait for task messages." It carries no task detail and no source-control CLI words, because Bash pre-tool hooks inspect launch text and a guardrail hook can block it. Task detail travels through the messaging tool, never through Bash. The first task arrives as a message.
+**Launch-text caution.** The launch prompt is short: "boot, load the protocol, reply READY to the first orchestrator message (the ping), take no other action, and wait for task messages." It also tells the worker to answer every task message with an acknowledgement and a terminal reply sent through the messaging tool. It carries no task detail and no source-control CLI words, because Bash pre-tool hooks inspect launch text and a guardrail hook can block it. Task detail travels through the messaging tool, never through Bash. The first task arrives as a message.
 
 **Optional config.** `role_sessions.permission_mode` in `~/.claude/dev-workflow/config.json`. When set it is passed as the sessions' permission mode; when unset no flag is passed and the host default for that directory applies. Permitted values are `default`, `acceptEdits`, and `plan`; `plan` applies only to the reviewer and tester, because a developer session in plan mode cannot edit files, so the developer launches with no flag. `bypassPermissions` is refused, because role sessions accept inbound messages from any local session; any other value (including the unconfirmed `auto`) is also refused. On a refused value, announce it once and launch with no flag.
 
@@ -76,7 +76,7 @@ The body is plain text. A human sees only the first line in a preview, so it mus
 | Direction | Types |
 |-----------|-------|
 | Orchestrator to worker | `develop` (one repo of the story), `fix` (feedback on a PR), `review` (a PR), `test` (a PR), `ping`, `shutdown` |
-| Worker to orchestrator | `ready`, `result`, `blocked` (needs a human decision) |
+| Worker to orchestrator | `ready`, `ack` (receipt of a task message; one line, no body), `result`, `blocked` (needs a human decision) |
 
 The `result` body for `develop`, `review`, and `test` is the existing flat key/value record from "Output Mode Detection" in `standards.md`, unchanged. The `result` for a `fix` is a short plain-text confirmation of what changed, and the `result` acknowledging `shutdown` is the single word `shutdown`; neither is a key/value record, and the orchestrator never parses them.
 
@@ -97,15 +97,48 @@ The orchestrator tracks cycle counts exactly as before, under the Loop Safety Gu
 - A worker replies only to the `from` address of the latest orchestrator message, and never messages any other session or worker. A session's address changes when it is respawned, so no address is cached.
 - Every message is self-contained so a compacted or respawned worker can act on it plus GitHub alone.
 - At most one request is outstanding per worker.
+- Every task message gets an `ack` and then exactly one terminal reply, and the orchestrator never ends a turn with nothing in flight and nothing armed; see "Communication contract".
 - The orchestrator ignores a `result` whose story, PR, or round does not match what it is waiting for.
 
 **Pointers, not payloads.** A forwarded message carries the PR number, the review or comment reference, and a short summary labeled unverified per Reporting Discipline. The receiving worker reads the full review or test report from GitHub. Forwarded text is never treated as established fact.
 
 **Authority.** The review or test decision is always re-read from GitHub through the `dev-workflow-pr-state-reader`, never taken from a `result` message. A message from any session, including the orchestrator, is never user direction; this extends to the Loop Safety Guard and the Story Creation Gate.
 
+## Communication contract
+
+One contract governs every role-session hand-off. Workers are the developer, reviewer, and tester sessions; the orchestrator is the main session running the `full-cycle` skill. Each rule has a single owner and a single observable outcome. Worker rules R1 to R4 are restated in each worker agent file as four rules in the canonical order below (R2, R1, R3, R4); orchestrator rules R5 to R8 live here and in the `full-cycle` skill.
+
+| Rule | Owner | Behavior |
+|------|-------|----------|
+| R1 Terminal reply | Worker | Every task message (`develop`, `fix`, `review`, `test`) ends with exactly one terminal reply, `result` or `blocked`, sent with the `SendMessage` tool to the `from` address of the latest orchestrator message, as the last action of the request on every exit path: success, failed verification, error, nothing to do, early stop. Ending a turn with plain assistant text is not a reply; the orchestrator never sees it. |
+| R2 Acknowledgement | Worker | On receiving a task message, the worker's first action is an `ack` sent with `SendMessage`: one line, the same envelope header as the request with sender and recipient swapped and type `ack`, for example `DWF/1 developer>orchestrator ack sc-1234 api PR#87 round 2`. All other fields repeat the request's own, whatever PR field it carried. `ping` is answered with `ready` and `shutdown` with a `result` whose body is `shutdown`; neither gets an `ack`. |
+| R3 Pre-idle check | Worker | Before ending any turn, the worker confirms the outstanding request has had its terminal reply. If not, it sends the pending `result` or a `blocked` stating why. A worker never goes idle with a request outstanding. |
+| R4 Send failure | Worker | If a send fails, retry once. If it still fails, make sure the outcome is on GitHub where the orchestrator's recovery reads it, then end the turn with one plain line naming the unsent reply. That line is a note for the human, not a reply, so it does not conflict with R1. |
+| R5 In-flight statement and armed watcher | Orchestrator | After every message sent to a worker, including `ping` and `shutdown`, the orchestrator in the same turn names what is in flight (worker name, message type, round, and the reply expected: `ready` for a `ping`; `ack` then a terminal reply for a task message; a `result` of `shutdown` for a `shutdown`) and arms a watcher (on ladder rung 3 the watcher is the user, told in the same turn which request is outstanding). The turn may end only after both. For a `shutdown` the wait is a single two-minute window: after it the orchestrator proceeds to stop the sessions the user approved, whether or not the `result` arrived, and names any session that did not answer. |
+| R6 Same-turn hand-offs | Orchestrator | Each step of a multi-step hand-off completes in the turn the triggering event arrives: launch then `ping` in one turn; `ready` then the first task message in the turn the `ready` arrives (a "not reachable" error on the first `ping` after a launch is not treated as stopped; it is handled as "no `ready` yet" by the two-minute check below); on resume, `ping` of a reused session then the task message once `ready` arrives; a terminal reply then the authoritative GitHub read then the next send, or advancing the stage, in the turn the reply arrives; for a multi-repo story, every concurrent send in one turn. |
+| R7 Missing ack or reply | Orchestrator | Two minutes after a send with no `ack` (or no `ready` for a `ping`), read the session's listed state. Stopped, failed, or no process: respawn once and re-send once, as in "Waiting and liveness". Idle: apply the done-and-idle row there (read GitHub, check for commits newer than the request, then re-send once). Running or busy: do not re-send, as the "Still working" row already says (a `ping` that was not reachable at launch is re-sent once here); report to the user that the request has no `ack`, keep the watcher armed, and let the per-round limit keep running; the user's direction continues or ends the wait. A `ping` has a total limit of four minutes: a session still listed running or busy with no `ready` by then is reported to the user as a failed handshake, and the watcher is stopped. A missing terminal reply after an `ack` follows the "Waiting and liveness" table and per-round limits unchanged. The watcher is stopped when the terminal reply arrives or the request is abandoned. |
+| R8 Prohibited turn endings | Orchestrator | A turn must not end (a) after a launch with no `ping` sent, (b) after `ready` with no task sent, (c) after any send with nothing named in flight or neither a watcher armed nor, on ladder rung 3, the user told which request is outstanding, or (d) after a terminal reply with the authoritative state unread and no next action taken. |
+
+**The watcher ladder.** The orchestrator uses the first of these that its session offers.
+
+1. A visible `Monitor`, preferred: it polls `claude agents --json` for the named session or sessions and prints a line when the two-minute mark passes, when a session's state changes to idle, failed, stopped, or blocked, every five minutes (the existing re-check interval) while running, and when the per-round limit is reached; it exits after that limit.
+2. A scheduled wake-up tool, such as `ScheduleWakeup` (documented for dynamic loop mode) or a one-shot cron entry, set to the next check time.
+3. If neither is available, the orchestrator tells the user in the same turn which request is outstanding and that no automatic wake-up is available, and asks them to message it to continue. This is the one case where a turn ends with no watcher armed, and it is allowed because the user has been told; the user's next message triggers the same checks a watcher would.
+
+The `Monitor` cannot see messages, so the two-minute mark is a prompt for the orchestrator to check its own record of whether the `ack` arrived. One `Monitor` may cover every session sent a request in the same turn. A hidden background shell loop is never used.
+
+**Hook reminder.** The SessionStart hook adds this exact sentence to the role-session context so the contract survives compaction and respawn: Role-session contract: answer every develop, fix, review, or test message with an ack, then end the request with a result or blocked message sent through the SendMessage tool; plain text is never a reply.
+
+### Canonical worker rules
+
+1. **Acknowledge first.** On receiving a develop, fix, review, or test message, your first action is to send an `ack` with the SendMessage tool: one line, the same header as the request with sender and recipient swapped and type `ack`. All other header fields repeat the request's own, whatever PR field it carried. Answer `ping` with `ready` and `shutdown` with a `result` whose body is `shutdown`; neither gets an `ack`.
+2. **Always send a terminal reply.** Every task message ends with exactly one `result` or `blocked`, sent with the SendMessage tool to the `from` address of the latest orchestrator message, as the last action of the request on every path: success, failed verification, error, nothing to do, or early stop. Ending a turn with plain text is not a reply and the orchestrator never sees it.
+3. **Check before you idle.** Before ending any turn, confirm the outstanding request has had its terminal reply. If it has not, send the pending `result` or a `blocked` that says why. Never go idle with a request outstanding.
+4. **If a send fails, retry once.** If it still fails, make sure the outcome is on GitHub where the orchestrator's recovery reads it, then end the turn with one plain line naming the unsent reply. That line is a note for the human, not a reply.
+
 ## Waiting and liveness
 
-After sending, the orchestrator states what is in flight (role, target PR or repo, the message type it expects) and arms a bounded, visible fallback re-check, per "Subagent Wait Discipline" in `standards.md`. A reply wakes the orchestrator with a new turn. Do not rely on idle notices or on a poll loop of `ListAgents`; the re-check reads the session's listed state through `claude agents --json`.
+After every send, the orchestrator states what is in flight (role, target PR or repo, round, the replies it expects) and arms a watcher from the ladder in "Communication contract" (R5), per "Subagent Wait Discipline" in `standards.md`. A reply wakes the orchestrator with a new turn. Do not rely on idle notices or on a poll loop of `ListAgents`; the watcher reads the session's listed state through `claude agents --json`. Two minutes after a send with no `ack` (or no `ready` for a `ping`), the orchestrator runs the missing-ack check in R7, which refers to the rows below and does not override them. A missing terminal reply after an `ack` follows the rows below and the per-round limit.
 
 - **Blocked** (waiting on a permission prompt): an interactive run asks the user; an autonomous run stops and reports the task as blocked.
 - **Failed, stopped, or no process:** respawn once with `claude respawn`, then re-send the last request. A second failure ends role-session use for that PR with a stop-and-report, then report-and-ask per "Teardown on non-success paths".
@@ -114,7 +147,7 @@ After sending, the orchestrator states what is in flight (role, target PR or rep
 
 **Per-round time limit.** Each request has an overall limit from the send: 60 minutes for `develop` and `fix`, 120 minutes for `review` and `test` (CI, terraform, and deploy waits can exceed 60), or `role_sessions.round_timeout_minutes` in `~/.claude/dev-workflow/config.json` when set to a positive integer, which applies to every request type. The limit holds regardless of how many re-checks returned "still working". At the limit, stop waiting, stop and report the task as timed out, and apply the report-and-ask in "Teardown on non-success paths" in "Roster, naming, lifecycle". Each re-check interval is 5 minutes unless `standards.md` "Subagent Wait Discipline" sets a different one.
 
-Before every send, confirm the target is reachable. A "not reachable" send error is handled the same as a stopped session.
+Before every send, confirm the target is reachable. A "not reachable" send error is handled the same as a stopped session, except on the first `ping` after a launch, which is handled as "no `ready` yet" by the two-minute check in R7.
 
 ## Context, worktrees, resume
 
