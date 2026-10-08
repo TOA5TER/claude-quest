@@ -202,7 +202,8 @@ class AttentionStore:
         story_id = _story_id(session_name)
         if story_id is None:
             return ""
-        incoming = _clamp(str(event.get("story_title") or "").strip(), FIELD_MAX_CHARS)
+        raw = event.get("story_title")
+        incoming = _clamp(raw.strip(), FIELD_MAX_CHARS) if isinstance(raw, str) else ""
         if existing is None or _story_id(existing.get("session_name")) != story_id:
             return incoming
         return incoming or existing.get("story_title") or ""

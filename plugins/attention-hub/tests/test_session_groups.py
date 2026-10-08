@@ -506,3 +506,27 @@ def test_http_listing_has_groups_and_layout(hub_server):
     g = data["groups"][0]
     assert set(g) == {"story_id", "title", "color", "session_ids", "labels",
                       "waiting", "total"}
+
+
+@pytest.mark.parametrize("raw", [{"a": 1}, ["x"], 42])
+def test_non_string_title_in_event_stores_none(tmp_path, raw):
+    # Why: a malformed event must not render "{'a': 1}" as a header, matching
+    # how a malformed persisted title is dropped.
+    _, _, store = make_store(tmp_path)
+    store.upsert(event("a", "sc-1000-developer", story_title=raw))
+    assert group(store.snapshot(), "sc-1000")["title"] == "sc-1000"
+
+
+def test_ordering_ties_over_http(hub_server):
+    # Why: the tie-breaks must hold in the served listing the dashboard renders.
+    post(hub_server, event("z-card", "sc-1000"))
+    post(hub_server, event("s2", "notes"))
+    post(hub_server, event("s1", "notes"))
+    post(hub_server, event("dup2", "sc-1000-developer"))
+    post(hub_server, event("dup1", "sc-1000-developer"))
+    post(hub_server, event("lower", "sc-2000-x"))
+    post(hub_server, event("upper", "SC-2000-x"))
+    data = listing(hub_server)
+    assert layout_keys(data) == ["s1", "s2", "sc-1000", "z-card", "SC-2000", "sc-2000"]
+    assert group(data, "sc-1000")["session_ids"] == ["dup1", "dup2"]
+    assert_consistent(data)
