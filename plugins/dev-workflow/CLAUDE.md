@@ -54,7 +54,7 @@ Skills invoke superpowers throughout their workflows:
 - **tasklist PM adapter is file-backed, not config-selected:** the `epic` orchestrator pins it per dispatch (supplying the tasklist path + task ID in the subagent prompt) rather than mutating global `config.json`. It implements the full pm-adapter interface against `tasklist.md` so `full-cycle` and the stage skills run unchanged.
 - **Stage isolation via dedicated subagent types:** the orchestrators (`full-cycle`, `epic`) run every non-interactive stage in a fresh, isolated context by **dispatching the Agent tool** with a stage-specific `subagent_type` from `agents/` — never by invoking the `Skill` tool themselves (a `Skill` call loads into the *current* context, which is what made stages run in one agent). Each worker's body invokes the matching `dev-workflow:{stage}` skill autonomously, so stage logic/resumability/loops are unchanged; the `model` parameter on the dispatch overrides the worker's frontmatter default, preserving config-driven model resolution. See `skills/shared/standards.md` → "Subagent Dispatch". Workers that fan out (developer/reviewer/tester/orchestrator) keep the `Agent` tool; `pr-state-reader` is tool-restricted.
 - **Role sessions for standalone full-cycle:** the developer (one per repo, launched in that repo's checkout), reviewer, and tester (one per PR) run as persistent, named background sessions (`claude --bg --agent dev-workflow:<agent>`) reached through cross-session messages in a hub-and-spoke topology (workers reply only to the orchestrator; the orchestrator alone routes), instead of fresh dispatches per stage and loop pass. Every task message gets a receipt (`ack`) and exactly one terminal reply (`result` or `blocked`) sent through the `SendMessage` tool; plain text is never a reply, and the orchestrator never ends a turn without a named in-flight message and an armed watcher (a visible `Monitor`, then a scheduled wake-up, then telling the user). Fix work is the developer's rework mode (there is no separate fix agent). Sessions are torn down (`shutdown`, `claude stop`, `claude rm`) only with the user's explicit permission; sessions left running are listed with the manual cleanup commands. When messaging is unavailable the run falls back to fresh dispatch, and `epic` per-task workers always use fresh dispatch. `compact-injector.sh` and `context-meter.sh` exit when `DEV_WORKFLOW_ROLE` is set; `role-session-context.sh` acts only when it is set and also restates the terminal-reply contract. See `skills/shared/role-sessions.md`.
-- **Subagent nesting (Claude Code v2.1.172+):** a subagent may nest further subagents (fixed depth-5 cap) when it has the `Agent` tool. This is what lets `epic → dev-workflow-orchestrator (full-cycle) → per-stage worker` give each stage fresh context (depth 3). On builds older than v2.1.172, nesting is unavailable and a task's stages run inline within its worker — isolated per task, not per stage. See `skills/shared/standards.md` → "Subagent Nesting".
+- **Subagent nesting (Claude Code v2.1.172+):** a subagent may nest further subagents (fixed depth-5 cap) when it has the `Agent` tool. This is what lets `epic → dev-workflow:orchestrator (full-cycle) → per-stage worker` give each stage fresh context (depth 3). On builds older than v2.1.172, nesting is unavailable and a task's stages run inline within its worker — isolated per task, not per stage. See `skills/shared/standards.md` → "Subagent Nesting".
 - **Reality Filter:** All skills enforce labeling unverified content as `[Inference]`, `[Speculation]`, or `[Unverified]`
 - **Config location:** User configuration lives at `~/.claude/dev-workflow/config.json`, not in the repo
 
@@ -76,12 +76,12 @@ skills/
   notes-adapter/       # Notes storage adapters + interface spec
   shared/              # Shared protocol docs (standards, adapter-loading, context-compaction, ...)
 agents/                # Dedicated subagent types dispatched by the orchestrators (one per pipeline role)
-  dev-workflow-spec-writer.md      # writing-specs (autonomous path only)
-  dev-workflow-developer.md        # developing (story mode) + addressing-pr-comments (rework mode); role session or fresh dispatch
-  dev-workflow-reviewer.md         # reviewing-prs; role session or fresh dispatch
-  dev-workflow-tester.md           # testing-prs; role session or fresh dispatch
-  dev-workflow-pr-state-reader.md  # entry/resume detection + PR-number resolution + authoritative decision read (read-only)
-  dev-workflow-orchestrator.md     # full-cycle, dispatched per-task by epic (retains Agent tool to nest)
+  spec-writer.md      # writing-specs (autonomous path only)
+  developer.md        # developing (story mode) + addressing-pr-comments (rework mode); role session or fresh dispatch
+  reviewer.md         # reviewing-prs; role session or fresh dispatch
+  tester.md           # testing-prs; role session or fresh dispatch
+  pr-state-reader.md  # entry/resume detection + PR-number resolution + authoritative decision read (read-only)
+  orchestrator.md     # full-cycle, dispatched per-task by epic (retains Agent tool to nest)
 hooks/
   context-meter.sh     # PostToolUse: token usage meter — emits at 60%/75% of 200k baseline
   compact-injector.sh  # Stop: consumes .compact-request sentinel and injects /compact via tmux

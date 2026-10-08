@@ -113,7 +113,7 @@ MARKET_VERSION="$(jq -r '.plugins[] | select(.name == "dev-workflow") | .version
 
 # Why: each role agent must point at the injected paths so it never searches the disk for a copy.
 for role in developer reviewer tester; do
-  agent="$PLUGIN_ROOT/agents/dev-workflow-$role.md"
+  agent="$PLUGIN_ROOT/agents/$role.md"
   grep -qF "$ROOT_MARKER" "$agent" || fail "$role agent does not quote the plugin root marker"
   grep -qF "$STANDARDS_MARKER" "$agent" || fail "$role agent does not quote the standards path marker"
 done
@@ -140,7 +140,7 @@ section_body() {
 CANONICAL="$(section_body "$ROLE_SESSIONS" '^### Canonical worker rules' 6)"
 [ -n "$CANONICAL" ] || fail "role-sessions.md has no Canonical worker rules body"
 for role in developer reviewer tester; do
-  agent="$PLUGIN_ROOT/agents/dev-workflow-$role.md"
+  agent="$PLUGIN_ROOT/agents/$role.md"
   BODY="$(section_body "$agent" '^## Communication contract$' 2)"
   [ -n "$BODY" ] || fail "$role agent has no Communication contract section"
   [ "$BODY" = "$CANONICAL" ] || fail "$role agent Communication contract differs from the canonical worker rules"
@@ -181,7 +181,7 @@ version_at_least() {
   done
   return 0
 }
-version_at_least "$PLUGIN_VERSION" "2.49.0" || fail "plugin.json version $PLUGIN_VERSION is below 2.49.0"
+version_at_least "$PLUGIN_VERSION" "2.50.0" || fail "plugin.json version $PLUGIN_VERSION is below 2.50.0"
 
 if [ "$FAILURES" -gt 0 ]; then
   echo "$FAILURES check(s) failed" >&2
