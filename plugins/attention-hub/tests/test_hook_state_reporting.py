@@ -5,6 +5,8 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+import pytest
+
 HOOKS_DIR = Path(__file__).parent.parent / "hooks"
 
 
@@ -279,3 +281,80 @@ def test_subagent_stop_completes_oldest_marker_under_concurrency(base_hook_input
     spec.loader.exec_module(hub_client)
     assert hub_client._read_marker(older)["status"] == "completed"
     assert hub_client._read_marker(newer)["status"] == "active"
+
+
+# --- Subagent-originated events must never reach the hub ---
+
+SUBAGENT_MARKERS = [
+    {"agent_id": "agent-abc123", "agent_type": "Explore"},
+    {"agent_id": "agent-abc123"},
+]
+
+REPORTING_HOOKS = [
+    ("attention_hub_user_prompt_submit.py", {"prompt": "hi"}, True),
+    ("attention_hub_notification.py", {"notification_type": "permission_prompt",
+                                       "message": "needs permission"}, False),
+    ("attention_hub_post_tool_use.py", {"tool_name": "Bash"}, True),
+    ("attention_hub_stop.py", {}, True),
+    ("attention_hub_session_end.py", {}, True),
+]
+
+SUBAGENT_FILTERED_HOOKS = [h for h in REPORTING_HOOKS
+                           if h[0] != "attention_hub_notification.py"]
+
+
+@pytest.mark.parametrize("marker", SUBAGENT_MARKERS, ids=["agent_id+agent_type", "agent_id"])
+@pytest.mark.parametrize("script,extra,clears_marker", SUBAGENT_FILTERED_HOOKS,
+                         ids=[h[0] for h in SUBAGENT_FILTERED_HOOKS])
+def test_hooks_ignore_subagent_events(base_hook_input, marker_home, transcript_without_ask,
+                                      script, extra, clears_marker, marker):
+    # Why: in-process subagents share the parent's session_id, so any event they
+    # report overwrites the parent's row (or creates one for a session the hub
+    # has not seen) and can clear the parent's pending waiting marker.
+    set_marker(marker_home)
+    requests = run_hook_capture_hub(script, {
+        **base_hook_input, "transcript_path": transcript_without_ask, **extra, **marker,
+    })
+    assert requests == []
+    if clears_marker:
+        assert (marker_home / "test-session-123").exists()
+
+
+@pytest.mark.parametrize("script,extra,clears_marker", REPORTING_HOOKS,
+                         ids=[h[0] for h in REPORTING_HOOKS])
+def test_agent_session_main_thread_still_reports(base_hook_input, marker_home, transcript_without_ask,
+                                                 script, extra, clears_marker):
+    # Why: agent_type alone marks the main thread of an `--agent` session (e.g. a
+    # dev-workflow role session), which is a real session the user must see.
+    set_marker(marker_home)
+    requests = run_hook_capture_hub(script, {
+        **base_hook_input, "transcript_path": transcript_without_ask,
+        **extra, "agent_type": "dev-workflow:reviewer",
+    })
+    assert requests != []
+    if clears_marker:
+        assert not (marker_home / "test-session-123").exists()
+
+
+@pytest.mark.parametrize("marker", SUBAGENT_MARKERS, ids=["agent_id+agent_type", "agent_id"])
+def test_subagent_permission_prompt_reports_waiting_for_parent(base_hook_input, marker_home,
+                                                               transcript_without_ask, marker):
+    # Why: a subagent's permission prompt blocks the parent until the user
+    # answers it, so the parent's row must show waiting rather than working.
+    events = hub_events(run_hook_capture_hub("attention_hub_notification.py", {
+        **base_hook_input, "transcript_path": transcript_without_ask,
+        "notification_type": "permission_prompt", "message": "needs permission", **marker,
+    }))
+    assert len(events) == 1
+    assert events[0]["state"] == "waiting"
+    assert events[0]["session_id"] == base_hook_input["session_id"]
+    assert (marker_home / base_hook_input["session_id"]).exists()
+
+
+def test_main_thread_events_still_report(base_hook_input):
+    # Why: the subagent filter must not swallow the session's own events.
+    events = hub_events(run_hook_capture_hub("attention_hub_user_prompt_submit.py", {
+        **base_hook_input, "prompt": "hi",
+    }))
+    assert len(events) == 1
+    assert events[0]["state"] == "working"

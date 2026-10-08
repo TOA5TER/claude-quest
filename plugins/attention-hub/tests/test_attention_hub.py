@@ -114,6 +114,121 @@ def test_dashboard_title_is_session_name_with_id_fallback(tmp_path):
     assert "s.session_name || s.session_id" in hub.DASHBOARD_HTML
 
 
+# --- Superseded sessions ---
+
+def named_event(session_id, name="sc-1733-developer-api", cwd="/repo/api", **kwargs):
+    return {**make_event(session_id=session_id, **kwargs), "session_name": name, "cwd": cwd}
+
+
+def test_upsert_stores_cwd(tmp_path):
+    hub = load_hub()
+    store = hub.AttentionStore(str(tmp_path / "state.json"))
+    store.upsert(named_event("a"))
+    store.upsert({**make_event(session_id="a"), "session_name": "sc-1733-developer-api"})
+    assert store.list_sessions()[0]["cwd"] == "/repo/api"
+
+
+def test_continued_session_supersedes_old_row(tmp_path):
+    # Why: a continued conversation reports under a new session_id with the same
+    # name, and the old id never ends, so it lingered as a duplicate row.
+    hub = load_hub()
+    clock, store = make_clock_store(hub, tmp_path)
+    store.upsert(named_event("old", state="working"))
+    clock["now"] += 5
+    store.upsert(named_event("new", state="waiting"))
+    snapshot = store.snapshot()
+    assert [s["session_id"] for s in snapshot["sessions"]] == ["new"]
+    assert [g["session_ids"] for g in snapshot["groups"]] == [["new"]]
+
+
+def test_supersede_survives_restart(tmp_path):
+    # Why: the removal must be persisted, or a hub restart resurrects the old row.
+    hub = load_hub()
+    state_file = str(tmp_path / "state.json")
+    store = hub.AttentionStore(state_file)
+    store.upsert(named_event("old"))
+    store.upsert(named_event("new"))
+    assert [s["session_id"] for s in hub.AttentionStore(state_file).list_sessions()] == ["new"]
+
+
+@pytest.mark.parametrize("second_cwd", ["/repo/api/frontend/src", ""],
+                         ids=["subdirectory", "no-cwd"])
+def test_supersede_ignores_cwd(tmp_path, second_cwd):
+    # Why: cwd follows the session's `cd`s, so the old row may have last reported
+    # from a subdirectory while the continuation starts at the project root.
+    hub = load_hub()
+    store = hub.AttentionStore(str(tmp_path / "state.json"))
+    store.upsert(named_event("old"))
+    store.upsert(named_event("new", cwd=second_cwd))
+    assert [s["session_id"] for s in store.list_sessions()] == ["new"]
+
+
+def test_continuation_supersedes_row_saved_without_cwd(tmp_path):
+    # Why: rows persisted by an older hub carry name and host but no cwd; a
+    # continuation must still collapse them.
+    hub = load_hub()
+    state_file = tmp_path / "state.json"
+    state_file.write_text(json.dumps({"sessions": {"legacy": {
+        "session_id": "legacy", "state": "working",
+        "session_name": "sc-1733-developer-api", "host": "mac"}}}))
+    store = hub.AttentionStore(str(state_file))
+    store.upsert(named_event("new"))
+    assert [s["session_id"] for s in store.list_sessions()] == ["new"]
+
+
+@pytest.mark.parametrize("other", [
+    {"name": "sc-1733-reviewer-api"},
+    {"host": "other-host"},
+], ids=["different-name", "different-host"])
+def test_no_supersede_unless_name_and_host_match(tmp_path, other):
+    # Why: only a true continuation may collapse rows; sessions that share only
+    # part of the key are distinct sessions.
+    hub = load_hub()
+    store = hub.AttentionStore(str(tmp_path / "state.json"))
+    store.upsert(named_event("a", name=other.get("name", "sc-1733-developer-api")))
+    store.upsert(named_event("b", host=other.get("host", "mac")))
+    assert sorted(s["session_id"] for s in store.list_sessions()) == ["a", "b"]
+
+
+def test_empty_name_supersedes_nothing(tmp_path):
+    # Why: unnamed sessions all share the empty name, which is no evidence that
+    # two rows are one session.
+    hub = load_hub()
+    store = hub.AttentionStore(str(tmp_path / "state.json"))
+    store.upsert(named_event("a", name=""))
+    store.upsert(named_event("b", name=""))
+    assert sorted(s["session_id"] for s in store.list_sessions()) == ["a", "b"]
+
+
+def test_most_recent_reporter_wins_supersede(tmp_path):
+    # Why: if the older session turns out to be alive and reports again, it is the
+    # one the user is interacting with, so it takes the row back.
+    hub = load_hub()
+    clock, store = make_clock_store(hub, tmp_path)
+    store.upsert(named_event("old"))
+    clock["now"] += 5
+    store.upsert(named_event("new"))
+    clock["now"] += 5
+    store.upsert(named_event("old", state="waiting"))
+    sessions = store.list_sessions()
+    assert [s["session_id"] for s in sessions] == ["old"]
+    assert sessions[0]["state"] == "waiting"
+
+
+def test_load_sanitizes_cwd(tmp_path):
+    # Why: records persisted before cwd existed, or hand-edited ones, must load
+    # with a bounded string cwd.
+    hub = load_hub()
+    state_file = tmp_path / "state.json"
+    state_file.write_text(json.dumps({"sessions": {
+        "legacy": {"session_id": "legacy", "state": "working"},
+        "long": {"session_id": "long", "state": "working", "cwd": "/" + "d" * 9000},
+    }}))
+    by_id = {s["session_id"]: s for s in hub.AttentionStore(str(state_file)).list_sessions()}
+    assert by_id["legacy"]["cwd"] == ""
+    assert len(by_id["long"]["cwd"]) <= hub.CWD_MAX_CHARS
+
+
 # --- Store: upsert / list / delete ---
 
 def test_upsert_creates_session(tmp_path):

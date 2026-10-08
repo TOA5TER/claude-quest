@@ -54,6 +54,15 @@ def test_payload_truncates_long_message(monkeypatch):
     assert len(payload["message"]) <= 200
 
 
+def test_payload_carries_full_cwd(monkeypatch):
+    # Why: the basename in project is too coarse to tell two checkouts apart,
+    # so the hub also records the full directory.
+    monkeypatch.delenv("CLAUDE_HOST_LABEL", raising=False)
+    client = load_client()
+    assert client.build_event_payload("s", "/srv/app/", "working", None)["cwd"] == "/srv/app"
+    assert client.build_event_payload("s", "", "working", None)["cwd"] == ""
+
+
 def test_payload_empty_message_allowed(monkeypatch):
     # Why: working/removed states carry no snippet; payload building must not
     # require one. Guards the None-message path used by UserPromptSubmit.

@@ -12,6 +12,7 @@ try:
     from attention_hub_client import (
         report_state, log_hub, get_session_name, clear_waiting_marker,
         count_active_subagents, list_active_work,
+        is_subagent_event,
     )
 except ImportError:
     import importlib.util
@@ -21,6 +22,7 @@ except ImportError:
     )
     attention_hub_client = importlib.util.module_from_spec(hub_spec)
     hub_spec.loader.exec_module(attention_hub_client)
+    is_subagent_event = attention_hub_client.is_subagent_event
     report_state = attention_hub_client.report_state
     log_hub = attention_hub_client.log_hub
     get_session_name = attention_hub_client.get_session_name
@@ -47,11 +49,10 @@ def main():
     # directly to the hub. No macOS/Slack here -- that stays in notifications.
     try:
         input_data = json.load(sys.stdin)
+        if is_subagent_event(input_data):
+            sys.exit(0)
         session_id = input_data.get("session_id", "")
         transcript_path = input_data.get("transcript_path", "")
-
-        if "agent_type" in input_data:
-            sys.exit(0)
 
         if not session_id:
             sys.exit(0)
