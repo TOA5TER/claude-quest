@@ -199,24 +199,15 @@ them):
 This adapter exposes `Status` as a writable field; it does **not** itself decide when to change it —
 the stage skills and the epic orchestrator do, via this capability.
 
-### 4. Story reference in PRs
+### 4. Resolving the story from a PR
 
-Epic-driven PRs **carry no `sc-` ID** — the tasklist is the sole record. This is the documented
-exception to the "sc-XXXXX in every PR" rule, scoped to epic PRs only.
-
-Reference the task by the **branch-name convention**:
+The tasklist has no link lookup. Resolve by the **branch-name convention**:
 
 ```
 [epic-slug]-[task-id]
 ```
 
-e.g. `checkout-revamp-task-2`. The PR's "Story Reference" section reads:
-
-```markdown
-**Task:** task-2 (epic: checkout-revamp)
-```
-
-Do not insert an `sc-` identifier, a Shortcut URL, or any external PM link.
+e.g. `checkout-revamp-task-2`. Compare the full exact head branch against `[epic-slug]-[task-id]`, never a partial match, so `task-2` never resolves `task-20`. Do not add an external PM identifier or link.
 
 ### 5. Create story
 
@@ -256,7 +247,7 @@ Given `task_id`, return the task's PR:
    gh pr list --state all --head "[epic-slug]-[task-id]" --json number,url,state,reviewDecision
    ```
 
-   Match by the exact head branch — never by an `sc-` search term, because epic PRs have none.
+   Match by the exact head branch.
 
 ---
 
