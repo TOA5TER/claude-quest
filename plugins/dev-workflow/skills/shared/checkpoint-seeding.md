@@ -33,8 +33,9 @@ display.
 
 ## Seed or Refresh Stage
 
-**Inputs:** a story ID (or none), a list of repo names, a stage value, and optionally a PR
-number.
+**Inputs:** a story ID (or none), a list of repo names, a stage value, optionally a PR
+number, and optionally a story title (the title the caller already fetched from the PM
+tool).
 
 1. **No story ID resolved, or the story ID fails validation:** no-op silently. Do not write
    anything, do not warn, do not block.
@@ -86,7 +87,11 @@ number.
      never touch `review_loop_count`, `test_loop_count`, or `next_action` — those fields
      are full-cycle/epic's own bookkeeping and this procedure is a merge-upsert, not a
      replace.
-5. **Update the top-level `updated_at`** to the current ISO-8601 UTC timestamp.
+5. **Update the top-level fields.** Set `updated_at` to the current ISO-8601 UTC timestamp.
+   When a non-empty story title was supplied, set the top-level `story_title` to it. When
+   the title is omitted or empty, leave any existing `story_title` exactly as it is — this
+   procedure never clears it. The title is written under the same lock and in the same
+   atomic write as the rest of this step.
 6. **Write atomically.** Write the full updated JSON to a temp file in the same directory
    (e.g. `~/.claude/dev-workflow/state/.tmp-{story-id}-{unix-timestamp}-{pid}.json`), then
    `mv` it onto the real path — a plain rename on the same filesystem, so a concurrent
@@ -102,7 +107,8 @@ number.
 
 This procedure never touches `review_loop_count`, `test_loop_count`, `approval_text`, or
 `approval_timestamp` — those remain exclusively full-cycle/epic's own writes (see
-`context-compaction.md` → "Write points"). A dispatched subagent's own standalone self-seed
+`context-compaction.md` → "Write points"). Nor does it touch `story_title`, beyond setting a
+supplied non-empty title in step 5: it never clears or blanks one. A dispatched subagent's own standalone self-seed
 (this procedure) and full-cycle's post-return write to the same repo entry can therefore
 never clobber each other's fields, regardless of which one runs first or last within the
 same pipeline execution. The lock in step 2 additionally protects the case field
@@ -111,9 +117,13 @@ entry in the same file, where each write is a full read-modify-write of the whol
 document — the lock, not field disjointness, is what prevents one subagent's `mv` from
 silently discarding another's.
 
-This procedure's inputs and outputs (a story ID, repo names, a stage, an optional PR
-number; no return value) are unchanged by the locking added above — it is purely internal
-to this procedure's implementation, so no caller of "Seed or Refresh Stage" needs updating.
+The optional story title is the one input added beyond a story ID, repo names, a stage and
+an optional PR number (the procedure still returns nothing). It is display-only, read by
+attention-hub for its story group header. The callers that already hold the fetched story
+pass it: `writing-specs` (Phase 3), `developing`'s first call (PM Context → Repo Discovery),
+and `reviewing-prs` and `testing-prs` (Phase 2). Every other call omits it, which leaves any
+recorded title in place. The lock in step 2 is internal to this procedure and changes nothing
+for callers.
 
 ---
 

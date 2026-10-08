@@ -119,7 +119,7 @@ for consumer in reviewing-prs testing-prs addressing-pr-comments; do
 done
 
 PLUGIN_VERSION="$(jq -r '.version' "$PLUGIN_ROOT/.claude-plugin/plugin.json")"
-[ "$PLUGIN_VERSION" = "2.51.0" ] || fail "plugin version $PLUGIN_VERSION is not 2.51.0"
+[ "$PLUGIN_VERSION" = "2.52.0" ] || fail "plugin version $PLUGIN_VERSION is not 2.52.0"
 
 if [ "$FAILURES" -eq 0 ]; then
   echo "PASS"

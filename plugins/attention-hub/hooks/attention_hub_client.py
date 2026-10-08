@@ -9,6 +9,7 @@ an unreachable hub must never block or error an agent session.
 
 import json
 import os
+import re
 import shutil
 import socket
 import threading
@@ -34,6 +35,11 @@ STAGE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60  # checkpoints idle across nights/weeke
 # checkpoint by, so nothing prunes it except this cutoff and its own writer-side sweep —
 # an abandoned interview would otherwise shadow real checkpoints for the full week above.
 PENDING_PLACEHOLDER_MAX_AGE_SECONDS = 60 * 60
+
+# Mirrors STORY_NAME_RE in hub/attention_hub.py; keep both in step.
+STORY_NAME_RE = re.compile(r"([A-Za-z]+-[0-9]+)-(.+)")
+# Same rule checkpoint seeding applies before a story id becomes a filename.
+SAFE_STORY_ID_RE = re.compile(r"[A-Za-z0-9_-]+")
 
 # Container-detection signals (module-level so tests can redirect them).
 CONTAINER_MARKER_FILES = ("/.dockerenv", "/run/.containerenv")
@@ -503,6 +509,33 @@ def get_dev_workflow_stage(cwd):
         return ""
 
 
+def story_id_from_name(session_name):
+    """Story id the hub groups this session name under, or "" when it never groups."""
+    if not isinstance(session_name, str):
+        return ""
+    match = STORY_NAME_RE.fullmatch(session_name)
+    return match.group(1) if match else ""
+
+
+def get_story_title(story_id):
+    """story_title from the story's dev-workflow checkpoint, or "".
+
+    No age cutoff and no stage filter: the title is static story information.
+    Never raises.
+    """
+    try:
+        if not isinstance(story_id, str) or not SAFE_STORY_ID_RE.fullmatch(story_id):
+            return ""
+        path = Path.home() / ".claude" / "dev-workflow" / "state" / f"{story_id}.json"
+        checkpoint = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(checkpoint, dict):
+            return ""
+        title = checkpoint.get("story_title")
+        return title.strip()[:SESSION_NAME_MAX] if isinstance(title, str) else ""
+    except Exception:
+        return ""
+
+
 def build_event_payload(session_id, cwd, state, message=None, session_name=None, active_work=None):
     """Build the state-event payload identifying this session to the hub."""
     snippet = (message or "").strip()
@@ -519,6 +552,10 @@ def build_event_payload(session_id, cwd, state, message=None, session_name=None,
         "is_container": detect_container(),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+    story_id = story_id_from_name(payload["session_name"])
+    story_title = get_story_title(story_id) if story_id else ""
+    if story_title:
+        payload["story_title"] = story_title
     if active_work:
         payload["active_work"] = active_work
     return payload

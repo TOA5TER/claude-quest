@@ -13,6 +13,7 @@ Schema:
 ```json
 {
   "story_id": "sc-1043",
+  "story_title": "Group sessions by story id",
   "repos": {
     "api": {
       "pr_number": 42,
@@ -39,6 +40,12 @@ Each key under `repos` is a service/repo name, matching `repo-discovery.md`'s "s
 name" convention. A single-repo story's `repos` map has exactly one entry and behaves
 identically to the old single-valued fields, with no special-casing required by consuming
 code paths.
+
+`story_title` is optional and display-only: the story's title as fetched from the PM tool,
+read by attention-hub's reporting client for its story group header. It is never a resume
+signal and nothing in the pipeline branches on it. Only "Seed or Refresh Stage" writes it,
+when a caller passes a non-empty title (see `checkpoint-seeding.md`); a checkpoint without it
+is valid, and the hub then shows the bare story id.
 
 **No worktree path is ever stored in the checkpoint.** A stage or subagent that needs a
 repo's worktree resolves it live via `git worktree list --porcelain` (matching the entry
@@ -116,6 +123,9 @@ map, except where noted as a top-level field:
   Other repos' entries are untouched and continue independently — this is the terminal
   state a fully finished repo reaches while a sibling repo can still be mid-loop.
 
+None of these write points (the resume bootstrap, the approval write, loop-count increments,
+or the terminal `"done"` advance) touches the top-level `story_title`; it is preserved as-is.
+
 full-cycle's own mid-pipeline writes no longer anticipate a stage that hasn't started yet.
 Each stage's own self-seed (per `checkpoint-seeding.md`) is the sole writer of *its own
 stage's boundary-start value* under normal, non-resume operation — not the sole writer of
@@ -156,7 +166,8 @@ exists. It deliberately does not write a real checkpoint entry at Phase 6 on sto
 success; `writing-specs`' own Phase 3 self-seed is what eventually supersedes the placeholder,
 once a real entry exists to replace it. "Seed or Refresh Stage" shares the exact merge-upsert
 semantics described above (upsert only the fields it's given; never touch
-`review_loop_count`, `test_loop_count`, `approval_text`, or `approval_timestamp`), so a
+`review_loop_count`, `test_loop_count`, `approval_text`, or `approval_timestamp`; and never
+clear `story_title`, which it sets only when given a non-empty title), so a
 stage's own self-seed and full-cycle's own writes to the same repo entry can never clobber
 each other's fields, regardless of which one runs first or last within the same pipeline
 execution.

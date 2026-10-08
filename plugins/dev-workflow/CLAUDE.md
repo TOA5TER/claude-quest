@@ -91,7 +91,7 @@ hooks/
 ```
 
 Runtime state (not committed): `~/.claude/dev-workflow/state/`
-- `{story-id}.json` — per-story checkpoint (stage, PR numbers, loop counts, next action)
+- `{story-id}.json` — per-story checkpoint (stage, PR numbers, loop counts, next action, and an optional display-only story title)
 
 Epic state (not committed): `~/.claude/dev-workflow/epics/[epic-slug]/`
 - `tasklist.md` — the epic's single source of truth: Mermaid dependency graph + embedded per-task description/AC/testing/status. Doubles as durable cross-task resume state.

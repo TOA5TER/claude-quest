@@ -1158,3 +1158,60 @@ def test_load_defaults_missing_stage(tmp_path):
     }}), encoding="utf-8")
     store = hub.AttentionStore(str(state_file))
     assert store.list_sessions()[0]["stage"] == ""
+
+
+# --- Story-name parsing (shared table with the client tests) ---
+
+from tests.story_name_cases import GROUPED_NAMES, UNGROUPED_NAMES
+
+
+@pytest.mark.parametrize("name,story_id,role,repo,label", GROUPED_NAMES)
+def test_parse_story_name_groups_matching_names(name, story_id, role, repo, label):
+    # Why: the group key and row label come from this parse; the hub and client
+    # must agree on it, so both run the same table.
+    hub = load_hub()
+    assert hub.parse_story_name(name) == {
+        "story_id": story_id, "role": role, "repo": repo, "label": label}
+
+
+@pytest.mark.parametrize("name", UNGROUPED_NAMES)
+def test_parse_story_name_rejects_non_matching_names(name):
+    # Why: anything outside the strict letters-digits-remainder rule must stay an
+    # ungrouped card rather than form a bogus group.
+    hub = load_hub()
+    assert hub.parse_story_name(name) is None
+
+
+def test_parse_story_name_tolerates_non_string():
+    # Why: persisted records can carry hand-edited junk; parsing must not raise.
+    hub = load_hub()
+    assert hub.parse_story_name(None) is None
+    assert hub.parse_story_name(1000) is None
+
+
+# --- Dashboard: grouped layout ---
+
+def test_dashboard_consumes_groups_and_layout():
+    # Why: the dashboard holds no grouping logic of its own; it must render from
+    # the hub-computed layout, groups, labels and waiting counts.
+    hub = load_hub()
+    for marker in ("data.layout", "data.groups", "g.labels", "g.waiting", "g.total",
+                   "g.session_ids", "g.color", "g.title"):
+        assert marker in hub.DASHBOARD_HTML, f"dashboard must consume {marker!r}"
+
+
+def test_dashboard_group_text_is_text_only():
+    # Why: titles and labels are externally supplied; assigning them as markup
+    # would let a session name inject HTML into the dashboard.
+    hub = load_hub()
+    assert "innerHTML" not in hub.DASHBOARD_HTML
+    assert "head.textContent = g.title" in hub.DASHBOARD_HTML
+    assert "summary.textContent = g.waiting" in hub.DASHBOARD_HTML
+
+
+def test_dashboard_empty_state_and_count_use_flat_list():
+    # Why: the header count and empty state describe sessions, not groups, so
+    # they must keep reading the flat sessions list.
+    hub = load_hub()
+    assert 'getElementById("empty").hidden = sessions.length > 0' in hub.DASHBOARD_HTML
+    assert "sessions.length + \" session\"" in hub.DASHBOARD_HTML
