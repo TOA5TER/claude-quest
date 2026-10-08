@@ -110,10 +110,10 @@ def test_repo_suffixes_are_separate_rows(tmp_path):
 
 
 def test_identical_names_are_two_rows_both_counted_for_color(tmp_path):
-    # Why: a restarted session can share a name with its stale record; each is
-    # its own row, and a stale waiting duplicate must still count toward color.
+    # Why: sessions on different hosts can share a name; each is its own row,
+    # and a stale waiting duplicate must still count toward color.
     _, _, store = make_store(tmp_path)
-    store.upsert(event("s2", "sc-1000-developer", state="waiting"))
+    store.upsert(event("s2", "sc-1000-developer", state="waiting", host="box"))
     store.upsert(event("s1", "sc-1000-developer", state="waiting"))
     g = group(store.snapshot(), "sc-1000")
     assert g["session_ids"] == ["s1", "s2"]
@@ -274,7 +274,7 @@ def test_group_sorts_before_ungrouped_card_with_equal_key(tmp_path):
 def test_ungrouped_cards_with_same_name_order_by_session_id(tmp_path):
     # Why: identical display names still need a fixed order.
     _, _, store = make_store(tmp_path)
-    store.upsert(event("s2", "notes"))
+    store.upsert(event("s2", "notes", host="box"))
     store.upsert(event("s1", "notes"))
     assert layout_keys(store.snapshot()) == ["s1", "s2"]
 
@@ -520,9 +520,9 @@ def test_non_string_title_in_event_stores_none(tmp_path, raw):
 def test_ordering_ties_over_http(hub_server):
     # Why: the tie-breaks must hold in the served listing the dashboard renders.
     post(hub_server, event("z-card", "sc-1000"))
-    post(hub_server, event("s2", "notes"))
+    post(hub_server, event("s2", "notes", host="box"))
     post(hub_server, event("s1", "notes"))
-    post(hub_server, event("dup2", "sc-1000-developer"))
+    post(hub_server, event("dup2", "sc-1000-developer", host="box"))
     post(hub_server, event("dup1", "sc-1000-developer"))
     post(hub_server, event("lower", "sc-2000-x"))
     post(hub_server, event("upper", "SC-2000-x"))

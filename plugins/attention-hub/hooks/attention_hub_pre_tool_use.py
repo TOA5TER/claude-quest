@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 try:
-    from attention_hub_client import mark_subagent_active, mark_background_active
+    from attention_hub_client import mark_subagent_active, mark_background_active, is_subagent_event
 except ImportError:
     import importlib.util
     hub_spec = importlib.util.spec_from_file_location(
@@ -18,6 +18,7 @@ except ImportError:
     )
     attention_hub_client = importlib.util.module_from_spec(hub_spec)
     hub_spec.loader.exec_module(attention_hub_client)
+    is_subagent_event = attention_hub_client.is_subagent_event
     mark_subagent_active = attention_hub_client.mark_subagent_active
     mark_background_active = attention_hub_client.mark_background_active
 
@@ -36,6 +37,8 @@ def main():
     # worse than the "shows waiting/done while working" bug it fixes.
     try:
         input_data = json.load(sys.stdin)
+        if is_subagent_event(input_data):
+            sys.exit(0)
         tool_name = input_data.get("tool_name")
         tool_input = input_data.get("tool_input")
         if not isinstance(tool_input, dict):

@@ -5,6 +5,8 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 HOOKS_DIR = Path(__file__).parent.parent / "hooks"
 
 
@@ -143,3 +145,23 @@ def test_workflow_and_monitor_tool_names_create_no_marker(base_hook_input, activ
     run_pre_tool_use({**base_hook_input, "tool_name": "Monitor",
                        "tool_input": {"persistent": True, "description": "watch logs"}}, capsys)
     assert not (active_subagent_home / "test-session-123").exists()
+
+
+@pytest.mark.parametrize("marker", [
+    {"agent_id": "agent-abc123", "agent_type": "Explore"},
+    {"agent_id": "agent-abc123"},
+], ids=["agent_id+agent_type", "agent_id"])
+def test_subagent_originated_dispatch_creates_no_marker(base_hook_input, active_subagent_home, capsys, marker):
+    # Why: a subagent shares the parent's session_id, so a marker from its own
+    # nested dispatch lands in the parent's marker dir and holds the parent's
+    # row in working on the subagent's behalf.
+    run_pre_tool_use({**base_hook_input, "tool_name": "Agent", **marker}, capsys)
+    assert not (active_subagent_home / "test-session-123").exists()
+
+
+def test_agent_session_main_thread_dispatch_marks_active(base_hook_input, active_subagent_home, capsys):
+    # Why: agent_type without agent_id is the main thread of an `--agent` session,
+    # whose own dispatches must keep it shown as working.
+    run_pre_tool_use({**base_hook_input, "tool_name": "Agent",
+                      "agent_type": "dev-workflow:reviewer"}, capsys)
+    assert (active_subagent_home / "test-session-123").is_dir()

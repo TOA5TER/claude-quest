@@ -44,6 +44,7 @@ VALID_STATES = set(STATE_PRIORITY)
 MAX_BODY_BYTES = 64 * 1024
 MESSAGE_MAX_CHARS = 200
 FIELD_MAX_CHARS = 256
+CWD_MAX_CHARS = 4096
 
 # Bounded per-session status-transition history (oldest entries drop first).
 HISTORY_MAX = 20
@@ -174,14 +175,18 @@ class AttentionStore:
             session_name = _clamp(event.get("session_name")
                                   or (existing or {}).get("session_name")
                                   or "", FIELD_MAX_CHARS)
+            cwd = _clamp(event.get("cwd") or (existing or {}).get("cwd") or "", CWD_MAX_CHARS)
+            host = _clamp(event.get("host") or (existing or {}).get("host")
+                          or "unknown", FIELD_MAX_CHARS)
+            self._drop_superseded_locked(session_id, session_name, host)
             record = {
                 "session_id": session_id,
                 "session_name": session_name,
+                "cwd": cwd,
                 "story_title": self._next_story_title(existing, session_name, event),
                 "project": _clamp(event.get("project") or (existing or {}).get("project")
                                   or "unknown", FIELD_MAX_CHARS),
-                "host": _clamp(event.get("host") or (existing or {}).get("host")
-                               or "unknown", FIELD_MAX_CHARS),
+                "host": host,
                 "state": state,
                 "message": _clamp(event.get("message") or "", MESSAGE_MAX_CHARS),
                 "stage": _clamp(event.get("stage") or "", FIELD_MAX_CHARS),
@@ -195,6 +200,26 @@ class AttentionStore:
             self._sessions[session_id] = record
             self._save()
             return dict(record)
+
+    def _drop_superseded_locked(self, session_id, session_name, host):
+        """Remove other rows with this session's name and host.
+
+        A continued conversation reports under a new session_id but keeps its
+        name, and the old id never gets a SessionEnd, so without this the old
+        row lingers as a duplicate until pruned. cwd is not part of the key
+        because it follows the session's `cd`s, so a continuation can start
+        in a different directory than the old row last reported. Whichever
+        session reports most recently keeps the row. Unnamed sessions never
+        supersede anything.
+        """
+        if not session_name:
+            return
+        stale = [sid for sid, record in self._sessions.items()
+                 if sid != session_id
+                 and record.get("session_name") == session_name
+                 and record.get("host") == host]
+        for sid in stale:
+            del self._sessions[sid]
 
     @staticmethod
     def _next_story_title(existing, session_name, event):
@@ -321,6 +346,7 @@ class AttentionStore:
                     record["session_id"] = sid  # key wins over a hand-edited mismatch
                     record["session_name"] = _clamp(record.get("session_name") or "",
                                                     FIELD_MAX_CHARS)
+                    record["cwd"] = _clamp(record.get("cwd") or "", CWD_MAX_CHARS)
                     title = record.get("story_title")
                     record["story_title"] = (
                         _clamp(title.strip(), FIELD_MAX_CHARS)

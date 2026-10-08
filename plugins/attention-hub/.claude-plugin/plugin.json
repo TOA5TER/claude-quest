@@ -1,7 +1,7 @@
 {
   "name": "attention-hub",
   "description": "Self-hosted, zero-dependency dashboard server that tracks which coding-agent sessions are waiting on you, for any agent that reports to it",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "author": {
     "name": "MechanicalTyler"
   },

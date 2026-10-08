@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 try:
-    from attention_hub_client import report_state, log_hub, get_session_name, clear_waiting_marker
+    from attention_hub_client import report_state, log_hub, get_session_name, clear_waiting_marker, is_subagent_event
 except ImportError:
     import importlib.util
     hub_spec = importlib.util.spec_from_file_location(
@@ -18,6 +18,7 @@ except ImportError:
     )
     attention_hub_client = importlib.util.module_from_spec(hub_spec)
     hub_spec.loader.exec_module(attention_hub_client)
+    is_subagent_event = attention_hub_client.is_subagent_event
     report_state = attention_hub_client.report_state
     log_hub = attention_hub_client.log_hub
     get_session_name = attention_hub_client.get_session_name
@@ -29,6 +30,8 @@ def main():
     # Report "working" to the attention hub; never block or error the session.
     try:
         input_data = json.load(sys.stdin)
+        if is_subagent_event(input_data):
+            sys.exit(0)
         session_id = input_data.get("session_id", "")
         if not session_id:
             sys.exit(0)

@@ -123,6 +123,15 @@ def detect_container():
         return False
 
 
+def is_subagent_event(input_data):
+    """True when the hook fired inside a subagent rather than the session's own thread.
+
+    Keys on agent_id alone: agent_type is also set on the main thread of any
+    `--agent` session, and those sessions must keep reporting.
+    """
+    return bool(input_data.get("agent_id"))
+
+
 def get_session_name(input_data):
     """Best-effort session name for the hook's session.
 
@@ -545,6 +554,7 @@ def build_event_payload(session_id, cwd, state, message=None, session_name=None,
         "session_id": session_id,
         "session_name": (session_name or "").strip()[:SESSION_NAME_MAX],
         "project": os.path.basename(os.path.normpath(cwd)) if cwd else "unknown",
+        "cwd": os.path.normpath(cwd) if cwd else "",
         "host": get_host_label(),
         "state": state,
         "message": snippet,

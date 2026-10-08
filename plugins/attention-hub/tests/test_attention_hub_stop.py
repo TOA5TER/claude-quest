@@ -60,13 +60,24 @@ def test_stop_without_ask_reports_done(base_hook_input, transcript_without_ask):
 
 
 def test_subagent_session_stop_reports_nothing(base_hook_input, transcript_without_ask):
-    # Why: subagent sessions are internal; showing them as dashboard rows would
-    # recreate the notification spam this feature exists to remove.
+    # Why: a subagent's Stop shares the parent's session_id; reporting it would
+    # flip the parent's row to done while the parent is still working.
     events = hub_events(run_hook_capture_hub({
         **base_hook_input, "transcript_path": transcript_without_ask,
-        "agent_type": "Explore",
+        "agent_id": "agent-abc123", "agent_type": "Explore",
     }))
     assert events == []
+
+
+def test_agent_session_main_thread_stop_reports(base_hook_input, transcript_without_ask):
+    # Why: agent_type without agent_id is the main thread of an `--agent` session,
+    # whose own Stop must still mark it done.
+    events = hub_events(run_hook_capture_hub({
+        **base_hook_input, "transcript_path": transcript_without_ask,
+        "agent_type": "dev-workflow:reviewer",
+    }))
+    assert len(events) == 1
+    assert events[0]["state"] == "done"
 
 
 def test_stop_reports_message_snippet(base_hook_input, transcript_without_ask):
