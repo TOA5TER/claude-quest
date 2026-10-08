@@ -74,8 +74,8 @@ If the story contains screenshots, mockup images, or visual attachments you cann
 Determine the repo set per `skills/shared/repo-discovery.md` (two-path detection, the "Repos to modify" precedence rules, per-item repo tags, and the single-repo shortcut). Use the per-item repo tags in Phases 5–10 to filter scope per repo.
 
 Once the repo set is determined, call `skills/shared/checkpoint-seeding.md`'s "Seed or
-Refresh Stage" once with this story's ID, every repo in scope, and stage `"writing-specs"`
-— this is what makes a standalone `writing-specs` run visible to attention-hub immediately,
+Refresh Stage" once with this story's ID, every repo in scope, stage `"writing-specs"`, and
+the fetched story's title (attention-hub shows it in the story group header) — this is what makes a standalone `writing-specs` run visible to attention-hub immediately,
 without waiting for `full-cycle` to write anything.
 
 Immediately after that call succeeds, sweep and delete any `.pending-*.json` placeholder

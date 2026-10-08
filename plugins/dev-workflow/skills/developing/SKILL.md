@@ -84,8 +84,8 @@ A supplied repo path scopes the work to that one repo even if the story names se
 Otherwise, determine which checkout(s) to operate on per `skills/shared/repo-discovery.md` (two-path detection, the "Repos to modify" precedence rules, per-item repo tags, and the single-repo shortcut). Each Path-2 repo is a separate checkout with its own feature branch; discovery says nothing about where worktrees go. Worktrees go at `<repo root>/.worktrees/<slug>`, where the slug is the story or task ID, never in a sibling folder of the repo and never in the workspace parent folder.
 
 Once the repo(s) are resolved, call `skills/shared/checkpoint-seeding.md`'s "Seed or Refresh
-Stage" with this story's ID, every resolved repo, and stage `"developing"` — this is what
-makes a standalone `developing` run visible to attention-hub immediately, without waiting
+Stage" with this story's ID, every resolved repo, stage `"developing"`, and the fetched
+story's title (attention-hub shows it in the story group header) — this is what makes a standalone `developing` run visible to attention-hub immediately, without waiting
 for `full-cycle` to write anything. (The "No Story ID Path" above makes no call — there is
 no story ID to key a checkpoint by.)
 

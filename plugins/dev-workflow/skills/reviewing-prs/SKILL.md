@@ -109,7 +109,8 @@ Resolve the story with the PM adapter's **Resolve story from PR** capability (`s
 2. Load PM adapter per procedure in `skills/shared/adapter-loading.md` → fetch story by ID
 3. Detect service name: `git rev-parse --show-toplevel | xargs basename`
 4. Call `skills/shared/checkpoint-seeding.md`'s "Seed or Refresh Stage" with the resolved
-   story ID, the detected service name, stage `"reviewing-prs"`, and this PR's number — this
+   story ID, the detected service name, stage `"reviewing-prs"`, this PR's number, and the
+   story title fetched in step 2 (attention-hub shows it in the story group header) — this
    self-seed is the primary writer of this repo's `stage` value regardless of whether
    `full-cycle` is driving the pipeline (see `checkpoint-seeding.md`'s opening paragraph).
    Must not touch `review_loop_count`/`test_loop_count` — that stays exclusively the
