@@ -30,12 +30,12 @@ done
 # Why: a repeated plugin prefix or an unqualified role in a doc points at a name the Agent tool does not register.
 for doc in "${DOCS[@]}"; do
   if grep -nE "$PLUGIN_NAME-(developer|orchestrator|pr-state-reader|reviewer|spec-writer|tester|\\\$)" "$doc" >/dev/null; then
-    fail "$(basename "$doc") refers to an old-style worker name"
+    fail "${doc#$PLUGIN_ROOT/} refers to an old-style worker name"
   fi
 done
 for t in "$PLUGIN_ROOT"/tests/*.sh; do
   [ "$t" = "$0" ] && continue
-  grep -qE "$PLUGIN_NAME-(developer|orchestrator|pr-state-reader|reviewer|spec-writer|tester|\\\$)" "$t" && fail "$(basename "$t") refers to an old-style worker name"
+  grep -qE "$PLUGIN_NAME-(developer|orchestrator|pr-state-reader|reviewer|spec-writer|tester|\\\$)" "$t" && fail "${t#$PLUGIN_ROOT/} refers to an old-style worker name"
 done
 
 # Why: dispatch and launch values must be plugin-qualified roles that match a real agent file.
@@ -44,8 +44,8 @@ for doc in "${DISPATCH_DOCS[@]}"; do
     [ -n "$value" ] || continue
     case "$value" in
       general-purpose) ;;
-      "$PLUGIN_NAME":*) [ -f "$PLUGIN_ROOT/agents/${value#"$PLUGIN_NAME":}.md" ] || fail "$(basename "$doc") dispatch value $value has no agent file" ;;
-      *) fail "$(basename "$doc") dispatch value $value is not plugin-qualified" ;;
+      "$PLUGIN_NAME":*) [ -f "$PLUGIN_ROOT/agents/${value#"$PLUGIN_NAME":}.md" ] || fail "${doc#$PLUGIN_ROOT/} dispatch value $value has no agent file" ;;
+      *) fail "${doc#$PLUGIN_ROOT/} dispatch value $value is not plugin-qualified" ;;
     esac
   done < <(grep -oE 'subagent_type: `?[A-Za-z0-9:_-]+' "$doc" | sed -E 's/subagent_type: `?//')
 done
@@ -55,22 +55,47 @@ for doc in "$PLUGIN_ROOT/skills/full-cycle/SKILL.md" "$PLUGIN_ROOT/skills/shared
     value="${cell//\`/}"
     value="${value// /}"
     case "$value" in
-      "$PLUGIN_NAME":*) [ -f "$PLUGIN_ROOT/agents/${value#"$PLUGIN_NAME":}.md" ] || fail "$(basename "$doc") table value $value has no agent file" ;;
-      *) fail "$(basename "$doc") table value $value is not plugin-qualified" ;;
+      "$PLUGIN_NAME":*) [ -f "$PLUGIN_ROOT/agents/${value#"$PLUGIN_NAME":}.md" ] || fail "${doc#$PLUGIN_ROOT/} table value $value has no agent file" ;;
+      *) fail "${doc#$PLUGIN_ROOT/} table value $value is not plugin-qualified" ;;
     esac
   done < <(awk -F'|' '/^\| *Stage \/ dispatch/ {t=1; next} t && /^\|[- |]+$/ {next} t && /^\|/ {print $3; next} {t=0}' "$doc")
 done
 
+# Why: a launch value that is bare or has no agent file starts no session, and a grep for the qualified string elsewhere cannot catch it.
+check_launch_value() {
+  local file="$1" value="$2" role="$3" rel="${1#$PLUGIN_ROOT/}"
+  if [ "$value" != "$PLUGIN_NAME:$role" ]; then
+    fail "$rel launch value $value is not $PLUGIN_NAME:$role"
+  elif [ ! -f "$PLUGIN_ROOT/agents/$role.md" ]; then
+    fail "$rel launch value $value has no agent file"
+  fi
+}
+FULL_CYCLE="$PLUGIN_ROOT/skills/full-cycle/SKILL.md"
+ROLE_SESSIONS="$PLUGIN_ROOT/skills/shared/role-sessions.md"
 for role in developer reviewer tester; do
-  grep -qF "$PLUGIN_NAME:$role" "$PLUGIN_ROOT/skills/shared/role-sessions.md" "$PLUGIN_ROOT/skills/full-cycle/SKILL.md" || fail "no qualified launch value $PLUGIN_NAME:$role documented"
+  found=0
+  while IFS= read -r value; do
+    found=1
+    check_launch_value "$FULL_CYCLE" "$value" "$role"
+  done < <(grep -oE "\(\`[^\`]*\`, role \`$role\`" "$FULL_CYCLE" | sed -E 's/^\(`//; s/`, role.*$//')
+  [ "$found" = 1 ] || fail "skills/full-cycle/SKILL.md has no launch value for role $role"
 done
+found=0
+while IFS= read -r value; do
+  found=1
+  check_launch_value "$ROLE_SESSIONS" "$value" "${value#"$PLUGIN_NAME":}"
+done < <(grep -oE -- '--agent` \(for example `[^`]*`' "$ROLE_SESSIONS" | sed -E 's/^.*for example `//; s/`$//')
+[ "$found" = 1 ] || fail "skills/shared/role-sessions.md has no --agent example value"
 
-# Why: every relative link to an agent file must resolve.
+# Why: every relative link or backticked path to an agent file must resolve.
 for doc in "${DOCS[@]}"; do
+  rel="${doc#$PLUGIN_ROOT/}"
   while IFS= read -r link; do
-    target="$(dirname "$doc")/$link"
-    [ -f "$target" ] || fail "$(basename "$doc") links to missing agent file $link"
-  done < <(grep -oE '\]\([^)]*agents/[A-Za-z0-9._-]+\.md\)' "$doc" | sed -E 's/^\]\(//; s/\)$//')
+    [ -f "$(dirname "$doc")/$link" ] || fail "$rel links to missing agent file $link"
+  done < <(grep -oE '\]\([^)]*agents/[A-Za-z0-9._:-]+\.md\)' "$doc" | sed -E 's/^\]\(//; s/\)$//')
+  while IFS= read -r path; do
+    [ -f "$PLUGIN_ROOT/$path" ] || fail "$rel references missing agent file $path"
+  done < <(grep -oE '`agents/[A-Za-z0-9._:-]+\.md`' "$doc" | tr -d '`')
 done
 
 PLUGIN_VERSION="$(jq -r '.version' "$PLUGIN_ROOT/.claude-plugin/plugin.json")"
