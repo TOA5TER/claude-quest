@@ -7,8 +7,10 @@
 Attention hub — self-hosted session attention tracker.
 
 A zero-dependency (stdlib only) HTTP server that receives per-session state
-events from any reporting client and serves a web dashboard showing one
-color-coded row per session, sorted needs-attention first.
+events from any reporting client and serves a web dashboard. Sessions whose
+names start with a story id (e.g. sc-1000-developer) are grouped under that
+story, one color-coded row per session; every other session is its own card.
+Groups, rows and cards are ordered alphabetically, never by status.
 
 Manual start (typically inside tmux/screen):
 
@@ -34,7 +36,7 @@ DEFAULT_BIND = "0.0.0.0"
 DEFAULT_PRUNE_HOURS = 24.0
 DEFAULT_STATE_FILE = str(Path.home() / ".claude" / "attention_hub_state.json")
 
-# Lower value sorts first on the dashboard: red, yellow, green.
+# Lower value sorts first in the API's flat sessions list: red, yellow, green.
 STATE_PRIORITY = {"waiting": 0, "needs_input": 0, "done": 1, "working": 2}
 VALID_STATES = set(STATE_PRIORITY)
 
@@ -52,6 +54,85 @@ ACTIVE_WORK_MAX = 10
 def _clamp(value, limit):
     """Coerce to str and truncate to limit characters."""
     return str(value)[:limit]
+
+# Mirrored in hooks/attention_hub_client.py; keep both in step.
+STORY_NAME_RE = re.compile(r"([A-Za-z]+-[0-9]+)-(.+)")
+WAITING_STATES = {"waiting", "needs_input"}
+_DIGIT_RUN_RE = re.compile(r"([0-9]+)")
+
+
+def parse_story_name(name):
+    """Story id, role, repo and row label for a grouped session name, or None."""
+    if not isinstance(name, str):
+        return None
+    match = STORY_NAME_RE.fullmatch(name)
+    if not match:
+        return None
+    story_id, remainder = match.groups()
+    role, _, repo = remainder.partition("-")
+    if role:
+        label = role + (" · " + repo if repo else "")
+    else:
+        label = remainder
+    return {"story_id": story_id, "role": role, "repo": repo, "label": label}
+
+
+def _story_id(name):
+    parsed = parse_story_name(name)
+    return parsed["story_id"] if parsed else None
+
+
+def _natural_key(text):
+    """Case-insensitive key that compares digit runs by numeric value."""
+    parts = _DIGIT_RUN_RE.split(text.lower())
+    return [int(part) if i % 2 else part for i, part in enumerate(parts)]
+
+
+def _ordering_key(text):
+    return (_natural_key(text), text.lower(), text)
+
+
+def build_groups(rows):
+    """Story groups and the ordered top-level layout for a list of session rows."""
+    members = {}
+    top_level = []
+    for row in rows:
+        parsed = parse_story_name(row.get("session_name"))
+        if parsed is None:
+            key = row.get("session_name") or row["session_id"]
+            top_level.append((_ordering_key(key), 1, row["session_id"],
+                              {"type": "session", "session_id": row["session_id"]}))
+            continue
+        members.setdefault(parsed["story_id"], []).append((parsed, row))
+
+    groups = []
+    for story_id, entries in members.items():
+        entries.sort(key=lambda e: (e[0]["role"] != "", _natural_key(e[0]["role"]),
+                                    _natural_key(e[0]["repo"]), e[0]["label"],
+                                    e[1]["session_id"]))
+        rows_in_group = [row for _, row in entries]
+        waiting = sum(row["state"] in WAITING_STATES for row in rows_in_group)
+        titled = [row for row in rows_in_group if row.get("story_title")]
+        titled.sort(key=lambda row: (-row["last_update"], row["session_id"]))
+        title = titled[0]["story_title"] if titled else ""
+        groups.append({
+            "story_id": story_id,
+            "title": f"{story_id}: {title}" if title else story_id,
+            "color": "red" if waiting == len(rows_in_group) else "green",
+            "session_ids": [row["session_id"] for row in rows_in_group],
+            "labels": {row["session_id"]: parsed["label"] for parsed, row in entries},
+            "waiting": waiting,
+            "total": len(rows_in_group),
+        })
+        top_level.append((_ordering_key(story_id), 0, "",
+                          {"type": "group", "story_id": story_id}))
+
+    top_level.sort(key=lambda item: item[:3])
+    layout = [item[3] for item in top_level]
+    order = {item["story_id"]: i for i, item in enumerate(layout) if item["type"] == "group"}
+    groups.sort(key=lambda g: order[g["story_id"]])
+    return groups, layout
+
 
 SESSION_PATH_RE = re.compile(r"^/api/sessions/([^/]+)$")
 SESSION_STATE_PATH_RE = re.compile(r"^/api/sessions/([^/]+)/state$")
@@ -90,11 +171,13 @@ class AttentionStore:
             active_work = (self._sanitize_active_work(event.get("active_work"))
                            if "active_work" in event
                            else list((existing or {}).get("active_work") or []))
+            session_name = _clamp(event.get("session_name")
+                                  or (existing or {}).get("session_name")
+                                  or "", FIELD_MAX_CHARS)
             record = {
                 "session_id": session_id,
-                "session_name": _clamp(event.get("session_name")
-                                       or (existing or {}).get("session_name")
-                                       or "", FIELD_MAX_CHARS),
+                "session_name": session_name,
+                "story_title": self._next_story_title(existing, session_name, event),
                 "project": _clamp(event.get("project") or (existing or {}).get("project")
                                   or "unknown", FIELD_MAX_CHARS),
                 "host": _clamp(event.get("host") or (existing or {}).get("host")
@@ -112,6 +195,17 @@ class AttentionStore:
             self._sessions[session_id] = record
             self._save()
             return dict(record)
+
+    @staticmethod
+    def _next_story_title(existing, session_name, event):
+        """Sticky per-session title, cleared whenever the session's story id changes."""
+        story_id = _story_id(session_name)
+        if story_id is None:
+            return ""
+        incoming = _clamp(str(event.get("story_title") or "").strip(), FIELD_MAX_CHARS)
+        if existing is None or _story_id(existing.get("session_name")) != story_id:
+            return incoming
+        return incoming or existing.get("story_title") or ""
 
     def force_state(self, session_id, state):
         """Manually override a known session's state (dashboard force-status).
@@ -149,18 +243,32 @@ class AttentionStore:
 
     def list_sessions(self):
         """Prune stale sessions, then list all sessions with computed durations,
-        sorted needs-attention first (red, yellow, green)."""
+        sorted needs-attention first (red, yellow, green). This flat list is the
+        API's; the dashboard renders the grouped layout from snapshot()."""
         now = self._now()
         with self._lock:
             self._prune_locked(now)
-            rows = []
-            for record in self._sessions.values():
-                row = dict(record)
-                row["state_seconds"] = max(0.0, now - record["state_since"])
-                row["age_seconds"] = max(0.0, now - record["last_update"])
-                row["active_work"] = [self._with_duration(entry, now)
-                                       for entry in record.get("active_work", [])]
-                rows.append(row)
+            return self._rows_locked(now)
+
+    def snapshot(self):
+        """The flat sessions list plus story groups and the ordered layout, all
+        built from one pruned pass so they always agree."""
+        now = self._now()
+        with self._lock:
+            self._prune_locked(now)
+            rows = self._rows_locked(now)
+        groups, layout = build_groups(rows)
+        return {"sessions": rows, "groups": groups, "layout": layout}
+
+    def _rows_locked(self, now):
+        rows = []
+        for record in self._sessions.values():
+            row = dict(record)
+            row["state_seconds"] = max(0.0, now - record["state_since"])
+            row["age_seconds"] = max(0.0, now - record["last_update"])
+            row["active_work"] = [self._with_duration(entry, now)
+                                  for entry in record.get("active_work", [])]
+            rows.append(row)
         rows.sort(key=lambda r: (STATE_PRIORITY.get(r["state"], 3), r["state_since"]))
         return rows
 
@@ -212,6 +320,11 @@ class AttentionStore:
                     record["session_id"] = sid  # key wins over a hand-edited mismatch
                     record["session_name"] = _clamp(record.get("session_name") or "",
                                                     FIELD_MAX_CHARS)
+                    title = record.get("story_title")
+                    record["story_title"] = (
+                        _clamp(title.strip(), FIELD_MAX_CHARS)
+                        if isinstance(title, str) and _story_id(record["session_name"])
+                        else "")
                     record["project"] = _clamp(record.get("project") or "unknown",
                                                FIELD_MAX_CHARS)
                     record["host"] = _clamp(record.get("host") or "unknown",
@@ -308,7 +421,7 @@ class AttentionHubHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         elif self.path == "/api/sessions":
-            self._send_json(200, {"sessions": self.store.list_sessions()})
+            self._send_json(200, self.store.snapshot())
         else:
             self._send_json(404, {"error": "not found"})
 
@@ -452,6 +565,21 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                   border-radius: 6px; padding: .15rem .55rem; cursor: pointer; }
   .force button:hover:not(:disabled) { color: #e6e8eb; border-color: #8b939e; }
   .force button:disabled { opacity: .45; cursor: default; }
+  .group { background: #171a20; border-radius: 8px; border-left: 6px solid #555;
+           padding: .3rem .4rem .45rem; }
+  .group.red { border-left-color: #e5534b; }
+  .group.green { border-left-color: #46954a; }
+  .group-head { display: flex; align-items: baseline; gap: .9rem; padding: .35rem .5rem .5rem; }
+  .group-title { flex: 1; min-width: 0; font-weight: 700; overflow: hidden;
+                 text-overflow: ellipsis; white-space: nowrap; }
+  .group-summary { color: #8b939e; font-size: .85rem; white-space: nowrap; }
+  .group.red .group-summary { color: #e5534b; }
+  .members { display: flex; flex-direction: column; gap: .35rem; }
+  @media (max-width: 40rem) {
+    .row { flex-wrap: wrap; }
+    .who { flex: 1 1 100%; }
+    .snippet { flex: 1 1 100%; }
+  }
   #empty { color: #8b939e; margin-top: 2rem; }
 </style>
 </head>
@@ -586,81 +714,119 @@ function buildDetail(s) {
   return detail;
 }
 
-function render(sessions) {
+function buildCard(s, label) {
+  const card = document.createElement("div");
+  card.className = "card " + (STATE_COLOR[s.state] || "");
+
+  const row = document.createElement("div");
+  row.className = "row";
+
+  const who = document.createElement("div");
+  who.className = "who";
+  const title = document.createElement("div");
+  title.className = "title";
+  title.textContent = label || s.session_name || s.session_id;
+  who.append(title);
+  if (typeof s.stage === "string" && s.stage) {
+    const stage = document.createElement("div");
+    stage.className = "stage";
+    stage.textContent = s.stage;
+    stage.title = s.stage;
+    who.append(stage);
+  }
+
+  const state = document.createElement("div");
+  state.className = "state";
+  state.textContent = (STATE_LABEL[s.state] || s.state) + " " + fmtDuration(s.state_seconds);
+
+  const snippet = document.createElement("div");
+  snippet.className = "snippet";
+  if (s.state === "waiting" || s.state === "needs_input" || s.state === "done") {
+    snippet.textContent = s.message || "";
+    snippet.title = s.message || "";
+  }
+
+  const age = document.createElement("div");
+  age.className = "age";
+  age.textContent = "updated " + fmtDuration(s.age_seconds) + " ago";
+
+  const btn = document.createElement("button");
+  btn.className = "dismiss";
+  btn.textContent = "dismiss";
+  btn.title = "Remove this session from the hub";
+  btn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    dismiss(s.session_id);
+  });
+
+  row.append(who, state, snippet, age, btn);
+
+  const detail = buildDetail(s);
+  detail.hidden = !expandedIds.has(s.session_id);
+
+  row.addEventListener("click", () => {
+    if (expandedIds.has(s.session_id)) expandedIds.delete(s.session_id);
+    else expandedIds.add(s.session_id);
+    detail.hidden = !expandedIds.has(s.session_id);
+  });
+
+  card.append(row, detail);
+  return card;
+}
+
+function buildGroup(g, members) {
+  const group = document.createElement("div");
+  group.className = "group " + (g.color || "");
+
+  const header = document.createElement("div");
+  header.className = "group-head";
+  const head = document.createElement("div");
+  head.className = "group-title";
+  head.textContent = g.title;
+  head.title = g.title;
+  const summary = document.createElement("div");
+  summary.className = "group-summary";
+  summary.textContent = g.waiting + " of " + g.total + " waiting";
+  header.append(head, summary);
+
+  const rows = document.createElement("div");
+  rows.className = "members";
+  for (const s of members) {
+    rows.append(buildCard(s, (g.labels || {})[s.session_id]));
+  }
+  group.append(header, rows);
+  return group;
+}
+
+function render(data) {
+  const sessions = data.sessions || [];
   const container = document.getElementById("sessions");
   container.replaceChildren();
   document.getElementById("empty").hidden = sessions.length > 0;
   document.getElementById("meta").textContent =
     sessions.length + " session" + (sessions.length === 1 ? "" : "s");
-  const liveIds = new Set(sessions.map((s) => s.session_id));
+  const byId = new Map(sessions.map((s) => [s.session_id, s]));
   for (const id of expandedIds) {
-    if (!liveIds.has(id)) expandedIds.delete(id);
+    if (!byId.has(id)) expandedIds.delete(id);
   }
-  for (const s of sessions) {
-    const card = document.createElement("div");
-    card.className = "card " + (STATE_COLOR[s.state] || "");
-
-    const row = document.createElement("div");
-    row.className = "row";
-
-    const who = document.createElement("div");
-    who.className = "who";
-    const title = document.createElement("div");
-    title.className = "title";
-    title.textContent = s.session_name || s.session_id;
-    who.append(title);
-    if (typeof s.stage === "string" && s.stage) {
-      const stage = document.createElement("div");
-      stage.className = "stage";
-      stage.textContent = s.stage;
-      stage.title = s.stage;
-      who.append(stage);
+  const groups = new Map((data.groups || []).map((g) => [g.story_id, g]));
+  for (const item of data.layout || []) {
+    if (item.type === "group") {
+      const g = groups.get(item.story_id);
+      if (!g) continue;
+      const members = (g.session_ids || []).map((id) => byId.get(id)).filter(Boolean);
+      if (members.length) container.append(buildGroup(g, members));
+    } else {
+      const s = byId.get(item.session_id);
+      if (s) container.append(buildCard(s));
     }
-
-    const state = document.createElement("div");
-    state.className = "state";
-    state.textContent = (STATE_LABEL[s.state] || s.state) + " " + fmtDuration(s.state_seconds);
-
-    const snippet = document.createElement("div");
-    snippet.className = "snippet";
-    if (s.state === "waiting" || s.state === "needs_input" || s.state === "done") {
-      snippet.textContent = s.message || "";
-      snippet.title = s.message || "";
-    }
-
-    const age = document.createElement("div");
-    age.className = "age";
-    age.textContent = "updated " + fmtDuration(s.age_seconds) + " ago";
-
-    const btn = document.createElement("button");
-    btn.className = "dismiss";
-    btn.textContent = "dismiss";
-    btn.title = "Remove this session from the hub";
-    btn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      dismiss(s.session_id);
-    });
-
-    row.append(who, state, snippet, age, btn);
-
-    const detail = buildDetail(s);
-    detail.hidden = !expandedIds.has(s.session_id);
-
-    row.addEventListener("click", () => {
-      if (expandedIds.has(s.session_id)) expandedIds.delete(s.session_id);
-      else expandedIds.add(s.session_id);
-      detail.hidden = !expandedIds.has(s.session_id);
-    });
-
-    card.append(row, detail);
-    container.append(card);
   }
 }
 
 function refresh() {
   fetch("/api/sessions")
     .then((r) => r.json())
-    .then((data) => render(data.sessions))
+    .then((data) => render(data))
     .catch(() => {});
 }
 
