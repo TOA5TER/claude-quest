@@ -761,3 +761,105 @@ def test_payload_carries_matching_stage(tmp_path):
                      {"repos": {"my-project": {"stage": "development"}}})
     payload = client.build_event_payload("s", "/home/user/my-project", "working")
     assert payload["stage"] == "my-project:development"
+
+
+# --- Story title lookup ---
+
+import pytest
+
+from tests.story_name_cases import GROUPED_NAMES, UNGROUPED_NAMES
+
+
+@pytest.mark.parametrize("name,story_id,role,repo,label", GROUPED_NAMES)
+def test_story_id_from_name_matches_hub_rule(name, story_id, role, repo, label):
+    # Why: the client looks a title up by the same story id the hub groups by;
+    # both run this shared table so the two copies of the rule cannot drift.
+    assert load_client().story_id_from_name(name) == story_id
+
+
+@pytest.mark.parametrize("name", UNGROUPED_NAMES)
+def test_story_id_from_name_rejects_non_matching_names(name):
+    # Why: names the hub never groups must never trigger a checkpoint read.
+    assert load_client().story_id_from_name(name) == ""
+
+
+def test_story_title_from_seeded_checkpoint(tmp_path):
+    # Why: the checkpoint is the title's only source; a seeded one must be read.
+    client, state_dir = make_stage_client(tmp_path)
+    write_checkpoint(state_dir, "sc-1000.json",
+                     {"story_id": "sc-1000", "story_title": "Group sessions",
+                      "repos": {"proj": {"stage": "developing"}}})
+    assert client.get_story_title("sc-1000") == "Group sessions"
+
+
+def test_story_title_ignores_age_and_finished_stage(tmp_path):
+    # Why: the title is static story information, so neither the stage
+    # lookup's age cutoff nor a terminal stage may hide it.
+    client, state_dir = make_stage_client(tmp_path)
+    path = write_checkpoint(state_dir, "sc-1000.json",
+                            {"story_title": "Old story",
+                             "repos": {"proj": {"stage": "done"}}})
+    old = time.time() - 60 * 24 * 60 * 60
+    os.utime(path, (old, old))
+    assert client.get_story_title("sc-1000") == "Old story"
+
+
+@pytest.mark.parametrize("body", [
+    {"repos": {}},
+    {"story_title": ""},
+    {"story_title": 42},
+    ["not", "an", "object"],
+])
+def test_story_title_empty_without_usable_title(tmp_path, body):
+    # Why: checkpoints from older writers have no title; that is "no title".
+    client, state_dir = make_stage_client(tmp_path)
+    write_checkpoint(state_dir, "sc-1000.json", body)
+    assert client.get_story_title("sc-1000") == ""
+
+
+def test_story_title_missing_file_and_corrupt_json(tmp_path):
+    # Why: a missing or half-written checkpoint must never fail a hook.
+    client, state_dir = make_stage_client(tmp_path)
+    assert client.get_story_title("sc-1000") == ""
+    (state_dir / "sc-2000.json").write_text("{not json", encoding="utf-8")
+    assert client.get_story_title("sc-2000") == ""
+
+
+@pytest.mark.parametrize("unsafe", ["../secret", "..", "a/b", "sc-1\x00", "", None])
+def test_story_title_rejects_unsafe_story_id(tmp_path, unsafe):
+    # Why: the id becomes a path component; a traversal payload must never be
+    # read, even though a grouped name can never produce one.
+    client, state_dir = make_stage_client(tmp_path)
+    (tmp_path / ".claude" / "dev-workflow" / "secret.json").write_text(
+        json.dumps({"story_title": "leaked"}), encoding="utf-8")
+    assert client.get_story_title(unsafe) == ""
+
+
+def test_payload_includes_story_title_for_grouped_name(tmp_path):
+    # Why: the hub can only show the header title if the event carries it.
+    client, state_dir = make_stage_client(tmp_path)
+    write_checkpoint(state_dir, "sc-1000.json", {"story_title": "Group sessions"})
+    payload = client.build_event_payload("s1", "/tmp/proj", "working",
+                                         session_name="sc-1000-developer")
+    assert payload["story_title"] == "Group sessions"
+
+
+def test_payload_omits_story_title_when_empty_or_unmatched(tmp_path):
+    # Why: an empty field would be noise, and an ungrouped name must not be
+    # looked up at all.
+    client, state_dir = make_stage_client(tmp_path)
+    write_checkpoint(state_dir, "sc-1000.json", {"repos": {}})
+    payload = client.build_event_payload("s1", "/tmp/proj", "working",
+                                         session_name="sc-1000-developer")
+    assert "story_title" not in payload
+    with patch.object(client, "get_story_title", side_effect=AssertionError("looked up")):
+        payload = client.build_event_payload("s1", "/tmp/proj", "working",
+                                             session_name="notes")
+    assert "story_title" not in payload
+
+
+def test_payload_never_raises_when_title_lookup_fails(tmp_path):
+    # Why: a reporting hook must never error an agent session.
+    client = load_client()
+    with patch.object(client.Path, "home", side_effect=RuntimeError("boom")):
+        assert client.get_story_title("sc-1000") == ""
