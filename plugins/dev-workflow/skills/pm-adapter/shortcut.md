@@ -18,19 +18,16 @@ MCP tool: `mcp__shortcut__stories-create-comment` with story_id (numeric) and te
 
 MCP tool: `mcp__shortcut__stories-update` with story_id (numeric) and fields object
 
-## Story Reference in PRs
+## Resolving the story from a PR
 
-**Native attachment:** Shortcut detects the story ID automatically from:
-- Branch names containing `sc-###` separated by `/` or `-` (e.g., `feature/sc-123-add-login`, `sc-123-add-login`)
-- PR title containing `[sc-###]`
-- PR body containing `[sc-###]`
-- Commit messages containing `[sc-###]`
+Shortcut detects the story ID in branch names containing `sc-###` separated by `/` or `-` (for example `feature/sc-123-add-login`, `sc-123-add-login`). Recommended branch shapes: `username/sc-###/description` or `sc-###-description`. A repo that wants guaranteed branch-name linking can enforce the token through a branch-name ruleset.
 
-When a branch with the story ID is pushed and a PR is opened, Shortcut links the PR to the story automatically — no manual text in the PR body is required.
+Resolve in this order:
 
-**Recommended:** Name branches as `username/sc-###/description` or `sc-###-description` to trigger the native link.
+1. **Link lookup:** `mcp__shortcut__stories-get-by-external-link` with the PR URL returns the story the PR was attached to.
+2. **Branch token:** the delimited `sc-###` token in the head branch name, per the delimited-token rule in `skills/pm-adapter/interface.md`.
 
-**Fallback reference in PR body** (for reviewers without Shortcut access): `Shortcut Story: sc-XXXXX`
+**Attaching a PR to its story:** after the PR is created, add its URL with `mcp__shortcut__stories-add-external-link` (story ID and PR URL). `mcp__shortcut__stories-set-external-links` replaces the existing links, so use it only after reading them with `mcp__shortcut__stories-get-by-id`.
 
 ## Finding PRs linked to a story
 
@@ -52,10 +49,11 @@ curl -H "Shortcut-Token: $SHORTCUT_API_TOKEN" \
   | jq '.pull_requests[]'
 ```
 
-**Option 3 — GitHub search fallback:**
+**Option 3 — Branch-name match:**
 ```bash
-gh pr list --state all --search "sc-{id}"
+gh pr list --state all --limit 1000 --json number,url,state,headRefName
 ```
+Keep PRs whose `headRefName` contains the delimited `sc-{id}` token.
 
 ## Fetching Inline Image Attachments
 

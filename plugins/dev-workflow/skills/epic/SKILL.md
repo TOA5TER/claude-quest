@@ -212,7 +212,7 @@ The dispatch prompt must contain, explicitly:
 > `skills/pm-adapter/tasklist.md`). The PM "story" is task `{task_id}` in the tasklist file
 > `{tasklist_path}`. Do **not** read `pm_adapter` from config; do **not** contact
 > Shortcut/Jira/Linear/GitHub Issues. This instruction overrides the configured adapter.
-> Branch name: `{epic-slug}-{task_id}`. The PR carries **no** `sc-` ID.
+> Branch name: `{epic-slug}-{task_id}`.
 >
 > **Isolated worktree required before starting** — see `skills/shared/standards.md` →
 > "Workspace Isolation" for the mechanism. When this task's work reaches a nested

@@ -44,10 +44,9 @@ number.
    - **Validate the story ID before it touches any path.** It must match
      `^[A-Za-z0-9_-]+$` (letters, digits, underscore, hyphen only — this also rejects any
      `/` or `..` path-traversal payload). This matters because in `reviewing-prs`,
-     `testing-prs`, and `addressing-pr-comments` the story ID is parsed by an LLM out of a
-     PR's title/body text, which anyone opening a PR controls — the adapter's "Story
-     Reference in PRs" format is prose the agent is trusted to follow, not something
-     re-checked before the value becomes a path component in steps 2 and 5 below. A
+     `testing-prs`, and `addressing-pr-comments` the story ID may come from a branch name or an
+     external lookup that someone else controls, so the value is not re-checked before it becomes
+     a path component in steps 2 and 5 below. A
      non-matching value is treated exactly like "no story ID resolved": a silent no-op,
      never an error surfaced to the user.
 2. **Acquire an exclusive lock** on this story's checkpoint before reading it. Multiple

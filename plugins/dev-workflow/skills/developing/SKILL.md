@@ -27,6 +27,9 @@ Read the CLAUDE.md file in this repository before starting.
 - **ALWAYS** start by creating a new branch with prefix `feature/`, `fix/`, or `chore/`. On the story-ID path ("Implementation Planning" below), that branch is created inside the isolated worktree required by `skills/shared/standards.md` → "Workspace Isolation" — never checked out in the primary checkout first. The No Story ID path (no PM story, ad hoc interactive work) checks it out directly, as today.
 - Branch names should be descriptive: `feature/slack-monitoring`, `fix/docker-permissions`, `chore/update-dependencies`
 - Check which branch you're on first. If not on `main`, you may already be on the correct branch — check if a PR is already open.
+- **Branch name precedence:** (1) a branch name supplied by the caller or already checked out (an epic task's branch, a rework landing on the PR's branch); (2) the repo's branch-name rule; (3) the story token default.
+- **Repo branch-name rule:** before creating the branch, ask GitHub which rules apply to the candidate name: `gh api repos/OWNER/REPO/rules/branches/<candidate-branch>`. The endpoint reports every active rule for that name, from repository and organization rulesets, even if the branch does not exist yet, and needs only read access. Satisfy any branch-name pattern rule it reports (rule type `branch_name_pattern`). If a later push is rejected for naming, rename the branch and push again. If the lookup is unavailable (no permission, no rules), fall back to the prefix convention above without stopping.
+- **Story token default:** when a story ID is in scope, put the story token in the adapter's token format right after the prefix, then a short description (for example `feature/sc-123-short-description`), unless the repo rule forbids it. The token lets later stages resolve the story from the branch. A run with no story ID keeps a token-free branch name and skips the attach step below.
 
 ---
 
@@ -202,11 +205,10 @@ Each per-repo sub-agent opens its own PR itself, from inside its own worktree, o
 passes its internal code review — this keeps `gh pr create` running in the same workspace that has
 the implementation checked out. Every PR must:
 
-- Reference the single shared story using the PM adapter's "Story Reference in PRs" format.
-- Follow all PR Creation Requirements below.
+- Follow all PR Creation Requirements below, using that repo's own pull request template.
 
-Each sub-agent also attaches its own PR to the story as an external link via the PM adapter before
-returning, then reports the PR number back in its result. Nothing about the worktree path is
+Each sub-agent also attaches its own PR to the story through the PM adapter's link-attach step, as
+described in PR Creation Requirements, before returning, then reports the PR number back in its result. Nothing about the worktree path is
 reported or aggregated — a later reader resolves each repo's worktree live, per
 `skills/shared/standards.md` → "Workspace Isolation".
 
@@ -253,11 +255,11 @@ reported or aggregated — a later reader resolves each repo's worktree live, pe
 
 When creating the PR:
 - Title should be concise and descriptive
-- Body must include:
-  - **Summary**: Brief description of changes
-  - **Story Reference**: Link using PM adapter's "Story Reference in PRs" format (omit this section if there is no story ID)
-  - **How to Test**: Testing steps from Claude Instructions if available, otherwise based on changes made
+- Build the body from the target repo's `pull_request_template.md`. Look in the checkout the PR comes from, in the standard GitHub locations: the repository root, a `docs` folder, and the `.github` folder, plus a `.github/PULL_REQUEST_TEMPLATE` folder holding several templates, in which case pick the one that fits the change. Fill in every section the template defines. Add no sections the template lacks and no story reference of the workflow's own; if the template itself asks for a story or ticket, fill that field in as the template directs.
+- When the repo has no template, the body is a short **Summary** and a **How to Test** section (steps from Claude Instructions if available, otherwise based on the changes made).
+- In a multi-repo story each repo's PR follows that repo's own template.
 - NO AI-generated boilerplate or mentions of AI tools
+- Attach the PR to the story through the PM adapter's documented link-attach step when the adapter has one (Shortcut does; Jira, Linear, and the tasklist rely on the branch token). This applies to every path, not only the multi-repo sub-agents. Skip it when there is no story ID.
 
 Once the PR is created and a story ID is in scope, call `skills/shared/checkpoint-seeding.md`'s
 "Seed or Refresh Stage" again for that repo, passing stage `"developing"` — developing's own

@@ -14,7 +14,11 @@ Read `~/.claude/dev-workflow/config.json`. The `pm_adapter` field names which ad
 
 **3. Update story** — given story ID and field/value pairs, update the story
 
-**4. Story ID in PRs** — each adapter specifies how to reference the story in PR descriptions
+**4. Resolve story from PR** — given a PR (its URL and head branch name), return the story ID or "none". Never read the PR title or body. Try, in order:
+1. The tool's own link lookup, where one exists (for example a story found by the PR URL attached to it).
+2. A story token in the head branch name, using the adapter's token format. A token matches only as a delimited unit: preceded by the start of the name or a non-alphanumeric character, and followed by a non-digit or the end of the name, so `sc-12` never matches `sc-123`.
+
+A branch name supplied by the caller (an epic task's branch, or a branch already checked out) always wins over the token default. Adapters that have no link lookup rely on the branch token alone.
 
 **5. Create story** — given a story draft (title, description, story_type, reposToModify, reposToReference, acceptanceCriteria, testingInstructions, originalRequest), create a new story in the PM tool and return its ID and URL. `reposToModify` is a list of strings (one per repo/service). Adapters must follow the Multi-repo story contract below. This operation may only be executed under the Story Creation Gate in `skills/shared/standards.md` — adapters must not present Create Story as an available operation outside that gate.
 
@@ -38,4 +42,4 @@ Place a file at `~/.claude/skills/pm-adapter/{name}.md` to create a custom adapt
 
 User adapters take precedence over plugin adapters with the same name. This allows you to override any built-in adapter or create one for an unsupported PM tool.
 
-Your adapter must implement the same interface: Fetch story, Post comment, Update story, Story reference format, Create story.
+Your adapter must implement the same interface: Fetch story, Post comment, Update story, Resolve story from PR, Create story. An adapter without Resolve story from PR is handled by the generic delimited branch-token match, taking the token format from the optional `adapters.<name>.story_id_prefix` key in `~/.claude/dev-workflow/config.json`; the match is skipped when the key is absent.

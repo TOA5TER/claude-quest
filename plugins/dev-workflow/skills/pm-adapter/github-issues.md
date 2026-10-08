@@ -29,45 +29,27 @@ gh issue edit {number} --milestone "{milestone-name}"
 gh issue close {number}
 ```
 
-## Story Reference in PRs
+## Resolving the story from a PR
 
-**Native attachment:** GitHub detects issue references automatically from:
-- PR body (description) using a closing keyword: `Closes #N`, `Fixes #N`, `Resolves #N` (case-insensitive) — auto-closes the issue when the PR merges to the default branch
-- Commit messages using the same closing keywords
-- PR body with a plain mention `#N` (cross-references without auto-closing)
+Resolve in this order:
 
-**Note:** PR title alone does NOT trigger auto-close, though it creates a cross-reference visible in the issue timeline.
+1. **Link lookup:** the issues the PR closes, from GitHub's own linkage:
+   ```bash
+   gh pr view {pr-number} --json closingIssuesReferences --jq '.closingIssuesReferences[].number'
+   ```
+2. **Branch token:** the issue number directly after the branch prefix (for example `feature/123-add-login` resolves to `#123`), matched as a delimited unit per `skills/pm-adapter/interface.md`.
 
-**Recommended:** Include `Closes #XXX` in the PR description to link natively and auto-close on merge.
-
-**Fallback reference** (no auto-close): `Issue: #XXX`
+A repo that wants an issue closed automatically on merge keeps the closing keyword in its own pull request template, which the developer fills in.
 
 ## Finding PRs linked to a story
 
-**Option 1 — MCP (if `github/github-mcp-server` is configured):**
-
-```
-search_pull_requests
-  query: "repo:owner/repo closes:#{issue-number}"
-```
-
-Or to catch all keyword variants:
-```
-search_pull_requests
-  query: "repo:owner/repo #{issue-number}"
-```
-
-**Option 2 — `gh` CLI:**
+**Option 1 — `gh` CLI:**
 
 ```bash
-# Find PRs linked via closing keywords (most reliable)
 gh pr list --state all --search "linked:{issue-number}"
-
-# Or search by keyword in body
-gh pr list --state all --search "closes #{issue-number} OR fixes #{issue-number}"
 ```
 
-**Option 3 — Issue timeline API (finds all cross-references):**
+**Option 2 — Issue timeline API (finds all cross-references):**
 
 ```bash
 gh api repos/OWNER/REPO/issues/{issue-number}/timeline --paginate \

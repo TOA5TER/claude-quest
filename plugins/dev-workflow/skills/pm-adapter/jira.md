@@ -50,18 +50,9 @@ For status transitions:
 jira issue move {KEY} "In Progress"
 ```
 
-## Story Reference in PRs
+## Resolving the story from a PR
 
-**Native attachment:** Jira detects the issue key automatically from (requires the GitHub for Jira app installed):
-- Branch names containing `PROJ-###` anywhere (e.g., `feature/DEV-123-fix-login`, `DEV-123-fix-login`)
-- PR title containing `PROJ-###`
-- Commit messages containing `PROJ-###`
-
-Any one of the above is sufficient to show the PR in the Jira issue's Development panel. No special delimiters or brackets needed — `PROJ-###` as a substring is detected.
-
-**Recommended:** Include the issue key in the branch name to trigger the native link automatically.
-
-**Fallback reference in PR body** (for reviewers without Jira access): `Jira Issue: {KEY}`
+Jira has no lookup from a PR to its issue, so resolution uses the branch token alone: the delimited `PROJ-###` key in the head branch name (for example `feature/DEV-123-fix-login`, `DEV-123-fix-login`), per the delimited-token rule in `skills/pm-adapter/interface.md`. Including the key in the branch name also shows the PR in the issue's Development panel when the GitHub for Jira app is installed.
 
 ## Finding PRs linked to a story
 
@@ -99,10 +90,11 @@ curl -su "user@example.com:$JIRA_API_TOKEN" \
   | jq '.detail[].pullRequests[]'
 ```
 
-**Option 3 — GitHub search fallback:**
+**Option 3 — Branch-name match:**
 ```bash
-gh pr list --state all --search "{KEY}"
+gh pr list --state all --limit 1000 --json number,url,state,headRefName
 ```
+Keep PRs whose `headRefName` contains the delimited `{KEY}` token.
 
 ## Story reference in notes Adapter
 

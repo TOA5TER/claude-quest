@@ -88,9 +88,10 @@ Apply the full TDD cycle:
 > - No regressions in adjacent modules
 
 ### Step 6: Commit and Create PR
-- Branch naming: `fix/[brief-description]`
-- PR body: describe the bug, root cause (with file:line refs), and fix
+- Branch naming: `fix/[brief-description]`, chosen per `skills/developing/SKILL.md` → Branch Management (caller-supplied branch first, then the repo's branch-name rule looked up before creating the branch, then the story token default). A debugging run with no story keeps its token-free branch name.
+- PR body: follow `skills/developing/SKILL.md` → PR Creation Requirements; the bug, root cause (with file:line refs), and fix go in whichever template section describes the changes
 - Include test results as evidence
+- Attach the PR to the story as described in PR Creation Requirements; a run with no story skips the attach
 
 ### Step 7: Adversarial Review
 
@@ -126,6 +127,7 @@ After loading the Claude Instructions spec:
 ### Step 2: Branch
 - Check current branch — if on `main`, the new branch (`feature/`, `fix/`, or `chore/`) is created inside the isolated worktree set up in Step 2.5, not checked out here first
 - If already on a feature branch, check if a PR exists
+- Name the branch per `skills/developing/SKILL.md` → Branch Management: look up the repo's branch-name rule before creating it (`gh api repos/OWNER/REPO/rules/branches/<candidate-branch>`), and default to the story token after the prefix. A run with no story keeps a token-free branch name.
 
 ### Step 2.5: Subagent-Driven Implementation
 
@@ -169,7 +171,8 @@ With the plan written, and before creating the branch:
 
 ### Step 5: Create PR
 - Title: concise and descriptive
-- Body: summary + story reference (PM adapter format) + testing steps from Claude Instructions
+- Body: follow `skills/developing/SKILL.md` → PR Creation Requirements (the repo's pull request template)
+- Attach the PR to the story as described there
 - NO AI-generated boilerplate
 
 ### Step 6: Adversarial Review
@@ -232,7 +235,10 @@ Apply structured reception of the code review feedback before implementing:
 workspace isolation first, per `skills/shared/standards.md` → "Workspace Isolation": use
 `superpowers:using-git-worktrees` to create an isolated workspace, then create the branch
 (`fix/<story-id>-rework`, or more descriptively `fix/<story-id>-address-review-feedback`) inside
-it — not in the primary checkout, the way an unqualified `git checkout -b` would here. Work
+it — not in the primary checkout, the way an unqualified `git checkout -b` would here. These
+names embedding the story ID are the default suggestion; look up the repo's branch-name rule per
+`skills/developing/SKILL.md` → Branch Management before creating the branch, and use a different
+shape only when that rule requires one. Work
 from that worktree for every remaining step. Worktree isolation is required for this task —
 proceed without asking; if baseline tests fail, report the failure and stop rather than
 asking whether to proceed.
@@ -258,22 +264,7 @@ asking whether to proceed.
 
 ### Step 5: Create PR
 
-PR body format:
-```markdown
-## Summary
-[What was reworked and why]
-
-[Story reference in PM adapter format]
-
-## Rework Items Addressed
-1. [Item 1 from comments — what was changed]
-2. [Item 2 from comments — what was changed]
-
-## How to Test
-- [ ] [Step to verify rework item 1]
-- [ ] [Step to verify rework item 2]
-- [ ] Existing tests still pass
-```
+Build the PR body per `skills/developing/SKILL.md` → PR Creation Requirements (the repo's pull request template). List the reworked items, and what changed for each, in whichever template section describes the changes made. Attach the PR to the story as described there.
 
 ### Step 6: Adversarial Review
 

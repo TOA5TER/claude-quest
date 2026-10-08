@@ -137,7 +137,7 @@ Standalone `full-cycle` runs the developer, reviewer, and tester as long-lived, 
 
 ## Adapters
 
-**PM adapters** (`skills/pm-adapter/`): `shortcut`, `linear`, `github-issues`
+**PM adapters** (`skills/pm-adapter/`): `shortcut`, `jira`, `linear`, `github-issues`, `tasklist`
 
 **Notes adapters** (`skills/notes-adapter/`): `obsidian`, `local`
 
@@ -160,6 +160,8 @@ Set the matching name in your config:
 User adapters in `~/.claude/skills/` take precedence over plugin adapters with the same name. This means you can override a built-in adapter (e.g., create `~/.claude/skills/pm-adapter/shortcut.md` to customize Shortcut behavior) or add support for a new tool entirely.
 
 Your adapter must implement the same interface as built-in adapters — see `skills/pm-adapter/interface.md` or `skills/notes-adapter/interface.md` for the required capabilities.
+
+PM adapters must implement **Resolve story from PR** (the earlier story-reference capability is deprecated and no longer consulted). An adapter without it falls back to a generic delimited match of a story token in the PR's branch name. Any adapter name can carry the optional `adapters.<name>.story_id_prefix` key in `~/.claude/dev-workflow/config.json` (for example `"story_id_prefix": "sc-"` under `shortcut`); the token match is skipped when the key is absent.
 
 ## Context Compaction (full-cycle only)
 

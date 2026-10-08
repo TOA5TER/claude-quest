@@ -35,28 +35,19 @@ mutation CreateComment($issueId: String!, $body: String!) {
 
 Linear MCP update tool, or GraphQL mutation for state/label changes.
 
-## Story Reference in PRs
+## Resolving the story from a PR
 
-**Native attachment:** Linear detects the issue identifier automatically from:
-- Branch names containing `TEAM-###` anywhere (e.g., `username/ENG-123-fix-login`, `ENG-123-fix-login`)
-- PR title containing `TEAM-###`
-- PR description containing `TEAM-###` (use a closing keyword to auto-transition on merge: `Fixes ENG-123`, `Closes ENG-123`, `Resolves ENG-123`)
-- Commit messages containing `TEAM-###`
-
-**Note:** Detection does NOT apply to PR or issue comments — only titles, descriptions, branch names, and commit messages.
-
-**Recommended:** Use Linear's auto-generated branch names (`username/TEAM-###-short-title`) to trigger the native link. Add `Fixes TEAM-###` in the PR description to auto-close the issue on merge.
-
-**Fallback reference in PR body** (for reviewers without Linear access): `Linear Issue: TEAM-XXX`
+Linear has no lookup from a PR to its issue, so resolution uses the branch token alone: the delimited `TEAM-###` identifier in the head branch name (for example `username/ENG-123-fix-login`, `ENG-123-fix-login`), per the delimited-token rule in `skills/pm-adapter/interface.md`. Linear's auto-generated branch names (`username/TEAM-###-short-title`) carry the token.
 
 ## Finding PRs linked to a story
 
 **MCP:** Linear's official MCP server (`mcp.linear.app/mcp`) does not expose a tool to list linked GitHub PRs. No MCP option available.
 
-**GitHub search (only option):**
+**Branch-name match (only option):**
 ```bash
-gh pr list --state all --search "TEAM-{id}"
+gh pr list --state all --limit 1000 --json number,url,state,headRefName
 ```
+Keep PRs whose `headRefName` contains the delimited `TEAM-{id}` token.
 
 ## Story reference in notes Adapter
 

@@ -31,9 +31,9 @@ Parse the argument from `$ARGUMENTS`.
 
 1. Read `~/.claude/dev-workflow/config.json` to get `pm_adapter`
 2. Load PM adapter per procedure in `skills/shared/adapter-loading.md`
-3. Use the adapter's **"Finding PRs linked to a story"** instructions to look up linked PRs — adapters with native API support (Shortcut, Jira, GitHub Issues) will return authoritative results; others fall back to `gh pr list --state all --search "{story_id}"`
+3. Use the adapter's **"Finding PRs linked to a story"** instructions to look up linked PRs — adapters with native API support (Shortcut, Jira, GitHub Issues) will return authoritative results; others fall back to a branch-name match: `gh pr list --state all --limit 1000 --json number,url,state,headRefName`, keeping PRs whose head branch contains the delimited story token
 4. **If exactly one PR is found** → extract its number. Use it as the PR number for all subsequent phases.
-5. **If no PRs are found** → STOP: "No PR found referencing {story_id}. Ensure the PR is linked to the story in the format your PM adapter expects, then try again." Never create a story, ticket, or issue to fill the gap.
+5. **If no PRs are found** → STOP: "No PR found referencing {story_id}. Ensure the PR is linked to the story through the adapter's linking mechanisms (its link lookup, or a story token in the PR's branch name), then try again." Never create a story, ticket, or issue to fill the gap.
 6. **If multiple PRs are found** → list them (number, title, state) and ask the user: "Multiple PRs reference {story_id}. Which PR number should I test?"
 
 ---
@@ -95,7 +95,7 @@ Extract expected behavior, acceptance criteria, and branch name.
 
 ## Phase 2: Load Story Requirements
 
-Parse PR body for story reference using the PM adapter's "Story Reference in PRs" format. Also check PR title.
+Resolve the story with the PM adapter's **Resolve story from PR** capability (`skills/pm-adapter/interface.md`): its link lookup first, then the delimited story token in the PR's head branch name. Never read the PR title or body for a story ID. When a custom adapter lacks the capability, apply the generic delimited branch-token match, taking the token format from `adapters.<name>.story_id_prefix` in `~/.claude/dev-workflow/config.json`; with no such key, treat the story as not found.
 
 **If story ID found:**
 1. Read `~/.claude/dev-workflow/config.json` for `pm_adapter` and `notes_adapter`
