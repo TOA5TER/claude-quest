@@ -101,7 +101,7 @@ done
 PLUGIN_VERSION="$(jq -r '.version' "$PLUGIN_ROOT/.claude-plugin/plugin.json")"
 MARKET_VERSION="$(jq -r --arg n "$PLUGIN_NAME" '.plugins[] | select(.name == $n) | .version' "$REPO_ROOT/.claude-plugin/marketplace.json")"
 [ "$PLUGIN_VERSION" = "$MARKET_VERSION" ] || fail "plugin.json version $PLUGIN_VERSION differs from marketplace $MARKET_VERSION"
-[ "$PLUGIN_VERSION" = "2.51.0" ] || fail "plugin version $PLUGIN_VERSION is not 2.51.0"
+[ "$PLUGIN_VERSION" = "2.52.0" ] || fail "plugin version $PLUGIN_VERSION is not 2.52.0"
 
 if [ "$FAILURES" -gt 0 ]; then
   echo "$FAILURES check(s) failed" >&2
