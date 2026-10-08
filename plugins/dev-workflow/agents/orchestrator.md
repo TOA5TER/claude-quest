@@ -26,7 +26,7 @@ Honor every override the epic passed verbatim:
   (`skills/pm-adapter/tasklist.md`); the PM "story" is the task in the given tasklist
   file. Do **not** read `pm_adapter` from config; do **not** contact
   Shortcut/Jira/Linear/GitHub Issues.
-- **Branch name** as given; the PR carries **no** `sc-` ID.
+- **Branch name** as given.
 - **Isolated worktree required, before dispatching any stage:** see
   `skills/shared/standards.md` → "Workspace Isolation" for the mechanism. Pass the same
   requirement into every nested dispatch — each nested stage resolves its own worktree

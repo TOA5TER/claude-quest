@@ -33,9 +33,12 @@ Once the PR is resolved:
 
 1. Read `~/.claude/dev-workflow/config.json` to get `pm_adapter`
 2. Load PM adapter per procedure in `skills/shared/adapter-loading.md`
-3. Parse the PR's body and title for a story reference using the loaded adapter's "Story
-   Reference in PRs" format (the same parse `reviewing-prs`/`testing-prs` perform in their
-   own Phase 2)
+3. Resolve the story with the loaded adapter's **Resolve story from PR** capability (the same
+   resolution `reviewing-prs`/`testing-prs` perform in their own Phase 2): its link lookup first,
+   then the delimited story token in the PR's head branch name. Never read the PR title or body.
+   When a custom adapter lacks the capability, apply the generic delimited branch-token match
+   using `adapters.<name>.story_id_prefix` from `~/.claude/dev-workflow/config.json`; with no such
+   key, treat the story as not found.
 4. Detect service name: `git rev-parse --show-toplevel | xargs basename`
 5. **If a story ID is found:** call `skills/shared/checkpoint-seeding.md`'s "Seed or Refresh
    Stage" with that story ID, the detected service name, stage `"reviewing-prs"`, and this

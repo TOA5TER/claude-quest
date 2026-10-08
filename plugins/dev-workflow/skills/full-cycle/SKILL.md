@@ -133,7 +133,7 @@ The skill is resumable: re-invoking it at any time must enter the pipeline at th
 How to gather each signal, evaluated independently per repo:
 
 1. **Story state:** fetch the story via the PM adapter; read its workflow state. Treat it as a coarse, informational signal only — the plugin's built-in stages do **not** set a "Dev Complete" (or equivalent terminal) state, so resume detection must not depend on one. (A particular PM adapter may add such a transition; if present it corroborates the label, but the label is authoritative.)
-2. **Linked PR (per repo):** use the PM adapter's "Finding PRs linked to a story" instructions to find every linked PR, then resolve each PR's repo/service name from its GitHub owner/repo, matching `repo-discovery.md`'s naming convention. If none is linked there, fall back to `gh pr list --state all --search "{story_id}"`.
+2. **Linked PR (per repo):** use the PM adapter's "Finding PRs linked to a story" instructions to find every linked PR, then resolve each PR's repo/service name from its GitHub owner/repo, matching `repo-discovery.md`'s naming convention. If none is linked there, fall back to a branch-name match: `gh pr list --state all --limit 1000 --json number,url,state,headRefName`, keeping PRs whose head branch contains the delimited story token.
 3. **Review decision:** `gh pr view {PR_NUMBER} --json reviewDecision` for the aggregate, or the latest review's `state` (see Reading the Authoritative Review Decision below).
 4. **Test outcome:** testing-prs applies a `tested-in-dev` (passed) or `tests-failing` (failed) label on every run (see "testing-prs label requirement" below). These labels — not review recency or `reviewDecision` — are the durable signal that distinguishes the test stage from the review stage. If a review-approved PR carries **neither** label, treat that repo as **not yet tested** (row 7) and state that assumption to the user.
 
@@ -146,7 +146,7 @@ Gather the signals (story state, linked PRs, review decision, test labels) by
 
 > Fetch story {story-id} via the Shortcut MCP tool and read its workflow state (the row
 > 1-3 signal). Find every linked PR via the PM adapter's "Finding PRs linked to a story"
-> instructions (fall back to `gh pr list --state all --search "{story_id}"`). For each
+> instructions (fall back to a branch-name match: `gh pr list --state all --limit 1000 --json number,url,state,headRefName`, keeping PRs whose head branch contains the delimited story token). For each
 > linked PR, resolve its repo/service name from the PR's GitHub owner/repo (matching
 > `repo-discovery.md`'s naming convention), and read its `reviewDecision` and whether it
 > carries the `tested-in-dev` / `tests-failing` labels. Return **one line**:
@@ -287,7 +287,7 @@ After it reports, **dispatch the Agent tool** with `subagent_type: dev-workflow:
 
 > Find any linked PRs for story `{story_id}` via the PM adapter's "Finding PRs linked to a story"
 > instructions (the subagent attaches the PR to the story on creation), falling back to
-> `gh pr list --state all --search "{story_id}"`. For each linked PR, resolve its
+> a branch-name match: `gh pr list --state all --limit 1000 --json number,url,state,headRefName`, keeping PRs whose head branch contains the delimited story token. For each linked PR, resolve its
 > repo/service name from the PR's GitHub owner/repo (matching `repo-discovery.md`'s naming
 > convention). Return **one line**:
 >

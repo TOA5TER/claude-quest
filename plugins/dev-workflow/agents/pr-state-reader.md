@@ -20,7 +20,7 @@ The dispatching orchestrator tells you which read to perform. The three jobs:
 **1. Entry / resume detection.** Given a story/task ID, fetch the story (PM adapter / MCP
 or the `tasklist` file when overridden) and read its workflow state, find any linked PRs
 (PM adapter's "Finding PRs linked to a story" instructions; fall back to
-`gh pr list --state all --search "{story_id}"`), and for each linked PR resolve its
+a branch-name match: `gh pr list --state all --limit 1000 --json number,url,state,headRefName`, keeping PRs whose head branch contains the delimited story token), and for each linked PR resolve its
 repo/service name from its GitHub owner/repo (matching `repo-discovery.md`'s naming
 convention) and read its `reviewDecision` and whether it carries the `tested-in-dev` /
 `tests-failing` labels. Return **one line**:
@@ -47,7 +47,7 @@ convention) and read its `reviewDecision` and whether it carries the `tested-in-
 **3. PR-number resolution.** Given a story/task ID (dispatched right after
 `developing` returns, before the resulting PR is reviewed), find any linked PRs via
 the PM adapter's "Finding PRs linked to a story" instructions, falling back to
-`gh pr list --state all --search "{story_id}"`. For each linked PR, resolve its
+a branch-name match: `gh pr list --state all --limit 1000 --json number,url,state,headRefName`, keeping PRs whose head branch contains the delimited story token. For each linked PR, resolve its
 repo/service name from its GitHub owner/repo (matching `repo-discovery.md`'s naming
 convention). Return **one line**:
 
