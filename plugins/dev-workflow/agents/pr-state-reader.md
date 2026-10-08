@@ -1,5 +1,5 @@
 ---
-name: dev-workflow-pr-state-reader
+name: pr-state-reader
 description: >
   Read-only state probe for the dev-workflow pipeline. Used by full-cycle for
   entry/resume detection, resolving PR numbers linked to a story, and reading

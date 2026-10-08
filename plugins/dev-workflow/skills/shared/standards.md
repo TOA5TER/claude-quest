@@ -80,12 +80,12 @@ a worker, not a prose instruction the model can skim past). Map each stage to it
 
 | Stage / dispatch | `subagent_type` | Default model |
 |------------------|-----------------|---------------|
-| writing-specs (autonomous path only) | `dev-workflow-spec-writer` | `sonnet` |
-| developing (also fix loops, in rework mode) | `dev-workflow-developer` | `sonnet` |
-| reviewing-prs | `dev-workflow-reviewer` | `opus` |
-| testing-prs | `dev-workflow-tester` | `opus` |
-| entry/resume detection + decision read + PR-number read | `dev-workflow-pr-state-reader` | `sonnet` |
-| full-cycle driven per-task by `epic` | `dev-workflow-orchestrator` | inherit |
+| writing-specs (autonomous path only) | `dev-workflow:spec-writer` | `sonnet` |
+| developing (also fix loops, in rework mode) | `dev-workflow:developer` | `sonnet` |
+| reviewing-prs | `dev-workflow:reviewer` | `opus` |
+| testing-prs | `dev-workflow:tester` | `opus` |
+| entry/resume detection + decision read + PR-number read | `dev-workflow:pr-state-reader` | `sonnet` |
+| full-cycle driven per-task by `epic` | `dev-workflow:orchestrator` | inherit |
 
 The `model` parameter on the Agent call **always wins** over the worker's frontmatter
 `model:`, so config-driven model resolution (the order above) is preserved — pass the
@@ -99,15 +99,15 @@ in the **main agent** so their user-facing gates work — do not dispatch a work
 **Role sessions are the default for developer, reviewer, and tester in standalone `full-cycle`.**
 Instead of a one-shot Agent dispatch per stage and per loop pass, the orchestrator launches one
 long-lived, named background session per reviewer and tester PR and per developer repo, and exchanges messages with it, per
-`skills/shared/role-sessions.md`. The same `dev-workflow-developer`, `dev-workflow-reviewer`,
-and `dev-workflow-tester` agent definitions back both modes. Agent dispatch remains for
-`dev-workflow-spec-writer`, `dev-workflow-pr-state-reader` (entry detection, decision read,
+`skills/shared/role-sessions.md`. The same `dev-workflow:developer`, `dev-workflow:reviewer`,
+and `dev-workflow:tester` agent definitions back both modes. Agent dispatch remains for
+`dev-workflow:spec-writer`, `dev-workflow:pr-state-reader` (entry detection, decision read,
 PR-number read), the reviewer's perspective fan-out, and **every epic per-task worker**, which
 must not launch role sessions. When role sessions are unavailable (failed preflight) the whole
 run uses the fresh-dispatch fallback.
 
 **Fix loops use the developer's rework mode.** There is no separate fix worker. Feedback on an
-existing PR is handled by `dev-workflow-developer` in rework mode (a PR number is supplied): it
+existing PR is handled by `dev-workflow:developer` in rework mode (a PR number is supplied): it
 lands on the PR's branch through the live worktree lookup, falling back to a plain
 `gh pr checkout {PR_NUMBER}` only when no worktree holds the branch, then invokes
 `dev-workflow:addressing-pr-comments`. In a role session this is a `fix` message to the
@@ -188,7 +188,7 @@ depth of 5** — provided the `Agent` tool is in its `tools` list (omitting `too
 all tools, including `Agent`; explicitly listing `tools` without `Agent` blocks nesting by
 design). Only the top-level subagent's summary returns to its caller.
 
-This is what lets `epic → dev-workflow-orchestrator (full-cycle) → per-stage worker` run
+This is what lets `epic → dev-workflow:orchestrator (full-cycle) → per-stage worker` run
 each stage in fresh context (depth 3, well under the cap). On builds **older than
 v2.1.172**, a dispatched subagent cannot nest, so a worker that would dispatch further
 stages instead runs them inline within its own context — still isolated per task, just not
@@ -270,7 +270,7 @@ The goal: anyone tailing the output can answer "what is it doing right now, and 
 
 ## Workspace Isolation
 
-**Every dev-workflow stage that implements or fixes code against a PM story or task works inside an isolated git worktree, not the primary checkout.** For the stages that create a worktree from scratch — `agents/dev-workflow-developer.md` (wrapping developing's story-ID path) and `debugging`'s Development-mode and Rework-mode paths — this is unconditional, not something that applies only when some trigger fires; the requirement is stated at each of those call sites (`developing/SKILL.md`, `debugging/SKILL.md`, and the developer agent wrapper), referencing this section for the mechanism. `agents/dev-workflow-developer.md` in **rework mode** (a PR number is supplied, wrapping addressing-pr-comments) is different: `addressing-pr-comments/SKILL.md` itself has no worktree mechanism of its own, so rework mode *locates* isolation rather than setting it up unconditionally — it looks for an existing worktree matching the PR's branch (`git worktree list --porcelain`) and works there if found, otherwise falls back to a plain `gh pr checkout {PR_NUMBER}` in the primary checkout (same fallback `full-cycle/SKILL.md` → "PR-branch checkout for developer rework" already documents). This covers both the autonomous pipeline (full-cycle/epic dispatching these stages) and a human directly invoking them with a story ID. It does not cover developing's No Story ID path (ad hoc interactive work with no PM story), which is unaffected.
+**Every dev-workflow stage that implements or fixes code against a PM story or task works inside an isolated git worktree, not the primary checkout.** For the stages that create a worktree from scratch — `agents/developer.md` (wrapping developing's story-ID path) and `debugging`'s Development-mode and Rework-mode paths — this is unconditional, not something that applies only when some trigger fires; the requirement is stated at each of those call sites (`developing/SKILL.md`, `debugging/SKILL.md`, and the developer agent wrapper), referencing this section for the mechanism. `agents/developer.md` in **rework mode** (a PR number is supplied, wrapping addressing-pr-comments) is different: `addressing-pr-comments/SKILL.md` itself has no worktree mechanism of its own, so rework mode *locates* isolation rather than setting it up unconditionally — it looks for an existing worktree matching the PR's branch (`git worktree list --porcelain`) and works there if found, otherwise falls back to a plain `gh pr checkout {PR_NUMBER}` in the primary checkout (same fallback `full-cycle/SKILL.md` → "PR-branch checkout for developer rework" already documents). This covers both the autonomous pipeline (full-cycle/epic dispatching these stages) and a human directly invoking them with a story ID. It does not cover developing's No Story ID path (ad hoc interactive work with no PM story), which is unaffected.
 
 **`reviewing-prs` and `testing-prs` are also named call sites, for a narrower purpose: local verification (build, lint, test, `terraform plan`), not implementation.** Neither stage commits to the PR's branch, but both may run local verification commands against its code before or alongside CI. Their fallback deliberately differs from the developer's rework mode (a plain `gh pr checkout {PR_NUMBER}` in the primary checkout): rework mode must commit and push to the branch, so occupying the primary checkout is an accepted trade-off for that role; `reviewing-prs`/`testing-prs` never write to the branch and have no reason to touch the primary checkout at all. The rules for this case:
 

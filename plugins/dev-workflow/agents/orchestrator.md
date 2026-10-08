@@ -1,5 +1,5 @@
 ---
-name: dev-workflow-orchestrator
+name: orchestrator
 description: >
   Per-task pipeline driver for the epic skill. Wraps full-cycle in an isolated
   subagent context so an epic can run each task end to end while keeping each

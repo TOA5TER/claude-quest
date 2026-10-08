@@ -1,5 +1,5 @@
 ---
-name: dev-workflow-developer
+name: developer
 description: >
   Implementation and rework worker for the dev-workflow pipeline. Story mode wraps
   the developing skill: branches, implements with TDD, and opens one PR per repo.

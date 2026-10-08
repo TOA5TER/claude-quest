@@ -16,7 +16,7 @@ call — see `skills/shared/standards.md` → "Subagent Dispatch"), whose model 
 per `skills/shared/standards.md` → "Subagent Model Selection".
 
 Per-task isolation relies on subagent **nesting** (`skills/shared/standards.md` → "Subagent
-Nesting"): the epic dispatches each task as a `dev-workflow-orchestrator` worker, which on Claude
+Nesting"): the epic dispatches each task as a `dev-workflow:orchestrator` worker, which on Claude
 Code **v2.1.172+** dispatches full-cycle's stages as further nested subagents (fresh context per
 stage, within the fixed depth-5 cap). On older builds a task's stages run inline within that task's
 worker — still isolated per task, just not per stage.
@@ -185,13 +185,13 @@ The scheduler decides what runs next. It reads `tasklist.md` as the source of tr
 ## Phase 7: Per-Task Drive
 
 For each scheduled task, **dispatch the Agent tool** with
-`subagent_type: dev-workflow-orchestrator` — **one** per task — to run `full-cycle` for
+`subagent_type: dev-workflow:orchestrator` — **one** per task — to run `full-cycle` for
 that task in **autonomous mode**, pinned to the `tasklist` adapter. Resolve the subagent
 model per `standards.md` and pass it as the `model` parameter (the worker inherits
 otherwise). Do **not** invoke the `Skill` tool yourself for full-cycle — that would run the
 whole task in *this* orchestrator's context, defeating per-task isolation.
 
-The `dev-workflow-orchestrator` worker retains the `Agent` tool, so on Claude Code
+The `dev-workflow:orchestrator` worker retains the `Agent` tool, so on Claude Code
 v2.1.172+ it dispatches each of full-cycle's stages as its own nested subagent (depth-3,
 under the depth-5 cap) — every stage gets a fresh context even under the epic. On older
 builds those stages run inline within the task's worker context (still isolated per task).
@@ -241,7 +241,7 @@ self-reported pass/fail — it re-confirms PR state authoritatively from GitHub 
 When a task's `full-cycle` run reports review-approved **and** test-approved:
 
 1. Re-read the PR's authoritative review and test decisions from GitHub (dispatch the decision-read
-   via the Agent tool with `subagent_type: dev-workflow-pr-state-reader` so raw JSON stays out of the
+   via the Agent tool with `subagent_type: dev-workflow:pr-state-reader` so raw JSON stays out of the
    orchestrator). Both must be `APPROVED`.
 2. **Do not merge.** The epic never merges. Via the `tasklist` adapter's **Update story**, set the
    task `Status` to `awaiting-merge` (which also updates its Mermaid node), and confirm the

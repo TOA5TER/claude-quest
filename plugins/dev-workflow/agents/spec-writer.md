@@ -1,5 +1,5 @@
 ---
-name: dev-workflow-spec-writer
+name: spec-writer
 description: >
   Autonomous spec-writing worker for the dev-workflow pipeline. Wraps the
   writing-specs skill in an isolated subagent context for the AUTONOMOUS path only

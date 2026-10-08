@@ -6,7 +6,7 @@ PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "$PLUGIN_ROOT/../.." && pwd)"
 SKILL="$PLUGIN_ROOT/skills/developing/SKILL.md"
 DISCOVERY="$PLUGIN_ROOT/skills/shared/repo-discovery.md"
-AGENT="$PLUGIN_ROOT/agents/dev-workflow-developer.md"
+AGENT="$PLUGIN_ROOT/agents/developer.md"
 
 CANON='Worktrees go at <repo root>/.worktrees/<slug>, where the slug is the story or task ID, never in a sibling folder of the repo and never in the workspace parent folder.'
 
@@ -79,7 +79,7 @@ check_attribution "developer agent: Worktrees and attribution" "$(region "$AGENT
 PLUGIN_VERSION="$(jq -r '.version' "$PLUGIN_ROOT/.claude-plugin/plugin.json")"
 MARKET_VERSION="$(jq -r '.plugins[] | select(.name == "dev-workflow") | .version' "$REPO_ROOT/.claude-plugin/marketplace.json")"
 [ "$PLUGIN_VERSION" = "$MARKET_VERSION" ] || fail "plugin.json version $PLUGIN_VERSION differs from marketplace $MARKET_VERSION"
-[ "$(printf '%s\n%s\n' "2.49.1" "$PLUGIN_VERSION" | sort -V | head -n1)" = "2.49.1" ] || fail "plugin version $PLUGIN_VERSION is below 2.49.1"
+[ "$(printf '%s\n%s\n' "2.50.0" "$PLUGIN_VERSION" | sort -V | head -n1)" = "2.50.0" ] || fail "plugin version $PLUGIN_VERSION is below 2.50.0"
 
 if [ "$FAILURES" -eq 0 ]; then
   echo "PASS"
