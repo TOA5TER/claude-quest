@@ -76,7 +76,7 @@ Installing this plugin alone gives a Claude Code session the complete waiting/ne
 
 ## Active Work Tracking
 
-The Active work list on a card comes from two lists in the Stop hook's input, and nothing else:
+The Active work list on a card comes from these lists in the Stop hook's input, and nothing else:
 
 - `background_tasks` — one entry per in-flight shell, subagent, monitor, workflow, teammate, cloud session or MCP task. Each becomes an Active work entry with its ID, its type as the kind, its description as the label and its status verbatim. Any entry in the list counts as in flight; the hook never filters on status.
 - `session_crons` — one entry per pending scheduled wakeup (`/loop`, `ScheduleWakeup`, `CronCreate`). Each becomes an entry of kind `cron` keyed by the cron's own ID, with the prompt as the label and status `scheduled`.
@@ -102,8 +102,6 @@ A Monitor or Workflow that finishes while the session is idle is only noticed at
 - whether `idle_prompt` notifications fire while a shell, Monitor, Workflow or cron is in flight. The Notification hook reports `waiting` for every `idle_prompt` and has no in-flight guard. A tester running this must leave the terminal untouched for at least two minutes, because idle prompts only fire when you appear to be away.
 
 Until those are checked, treat a card that stays `working` or turns red during an idle wait as a known gap, and use the force-status buttons to correct it.
-
-This tracking appears in the expanded card view's **Active work** section, showing each entry's kind, label, status, and elapsed time.
 
 ## Starting the hub
 
@@ -167,7 +165,7 @@ Returns `{"sessions": [...], "groups": [...], "layout": [...]}`, all built from 
 
 ## Security
 
-The hub has **no authentication or TLS** and is intended for a trusted private network only (localhost, LAN, VPN/tailnet). Dashboard rows expose session names, story titles, project names, and message snippets. The unauthenticated `GET /api/sessions` endpoint returns each session record verbatim — including `project`, `host`, `session_id`, `story_title`, full state `history`, and `active_work` labels — along with the group list (each story's id, title, member session IDs and row labels), regardless of what the card renders. The stage line discloses the dev-workflow story most recently active for this repo, which may not be the story this session is working on — including, for a multi-repo story, the names and pipeline stages of its other repos. If remote machines do not need direct access, bind to localhost (`--bind 127.0.0.1`) or a VPN interface.
+The hub has **no authentication or TLS** and is intended for a trusted private network only (localhost, LAN, VPN/tailnet). Dashboard rows expose session names, story titles, project names, and message snippets. The unauthenticated `GET /api/sessions` endpoint returns each session record verbatim — including `project`, `host`, `session_id`, `story_title`, full state `history`, and `active_work` labels — along with the group list (each story's id, title, member session IDs and row labels), regardless of what the card renders. Active work labels are user-authored text: cron prompts and task descriptions (shell commands, subagent descriptions) are sent to the hub over plain HTTP, served by the unauthenticated `GET /api/sessions` endpoint, and written to the state file. The stage line discloses the dev-workflow story most recently active for this repo, which may not be the story this session is working on — including, for a multi-repo story, the names and pipeline stages of its other repos. If remote machines do not need direct access, bind to localhost (`--bind 127.0.0.1`) or a VPN interface.
 
 ## Requirements
 

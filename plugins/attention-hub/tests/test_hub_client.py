@@ -488,14 +488,37 @@ def test_converter_rejects_bool_ids_and_survives_non_dict_beside_idless_cron():
     assert [e["id"] for e in entries] == ["c1"]
 
 
-def test_converter_clips_every_field_so_the_event_stays_under_the_hub_body_limit():
-    # Why: an oversized field would push the Stop event past the hub's body limit,
-    # losing the report and leaving the card at its previous state.
+def test_converter_clips_every_field():
+    # Why: oversized ids, kinds and statuses must not travel at full length; the
+    # label keeps its larger limit.
     client = load_client()
     big = "x" * 5000
     entries = client.background_work_entries(
         [{"id": big, "type": big, "description": big, "status": big}], [])
-    assert all(len(v) <= client.LABEL_MAX_CHARS for v in entries[0].values())
+    assert len(entries[0]["label"]) == client.LABEL_MAX_CHARS
+    assert all(len(entries[0][k]) == client.IDENT_MAX_CHARS for k in ("id", "kind", "status"))
+
+
+def test_converter_keeps_every_entry_so_state_is_decided_from_the_full_list():
+    # Why: the send cap applies to the payload only; the working/done decision
+    # must still see work beyond the cap.
+    client = load_client()
+    tasks = [{"id": f"t{i}", "type": "shell", "status": "running"}
+             for i in range(client.ACTIVE_WORK_SEND_MAX + 5)]
+    assert len(client.background_work_entries(tasks, [])) == client.ACTIVE_WORK_SEND_MAX + 5
+
+
+def test_payload_caps_active_work_and_stays_under_the_hub_body_limit():
+    # Why: an oversized Stop event gets a 413 and is lost, leaving the card at its
+    # previous state; worst case is many entries with wide-character fields.
+    client = load_client()
+    wide = "\U0001F600" * client.LABEL_MAX_CHARS
+    tasks = [{"id": wide, "type": wide, "description": wide, "status": wide}
+             for _ in range(100)]
+    entries = client.background_work_entries(tasks, [])
+    payload = client.build_event_payload("s1", "/tmp/x", "working", wide, wide, entries)
+    assert len(payload["active_work"]) == client.ACTIVE_WORK_SEND_MAX
+    assert len(json.dumps(payload).encode("utf-8")) < 64 * 1024
 
 
 @pytest.mark.parametrize("tasks,crons", [

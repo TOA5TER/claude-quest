@@ -24,6 +24,9 @@ HUB_TIMEOUT_SECONDS = 2
 MESSAGE_SNIPPET_MAX = 200
 SESSION_NAME_MAX = 256
 LABEL_MAX_CHARS = 256
+IDENT_MAX_CHARS = 64
+# Mirrors ACTIVE_WORK_MAX in hub/attention_hub.py; keep both in step.
+ACTIVE_WORK_SEND_MAX = 10
 STAGE_TERMINAL_STAGES = frozenset({"done", "finished"})
 STAGE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60  # checkpoints idle across nights/weekends/review waits are still active
 # creating-stories' pre-story ".pending-*.json" placeholder has no story ID to key a real
@@ -236,16 +239,16 @@ def background_work_entries(background_tasks, session_crons):
             if not isinstance(task, dict) or _usable_id(task) is None:
                 continue
             entries.append({
-                "id": str(_usable_id(task))[:LABEL_MAX_CHARS],
-                "kind": str(task.get("type") or "task")[:LABEL_MAX_CHARS],
+                "id": str(_usable_id(task))[:IDENT_MAX_CHARS],
+                "kind": str(task.get("type") or "task")[:IDENT_MAX_CHARS],
                 "label": _clipped(task.get("description")),
-                "status": str(task.get("status") or "running")[:LABEL_MAX_CHARS],
+                "status": str(task.get("status") or "running")[:IDENT_MAX_CHARS],
             })
         for cron in session_crons if isinstance(session_crons, list) else []:
             if not isinstance(cron, dict) or _usable_id(cron) is None:
                 continue
             entries.append({
-                "id": str(_usable_id(cron))[:LABEL_MAX_CHARS],
+                "id": str(_usable_id(cron))[:IDENT_MAX_CHARS],
                 "kind": "cron",
                 "label": _clipped(cron.get("prompt")),
                 "status": "scheduled",
@@ -372,7 +375,7 @@ def build_event_payload(session_id, cwd, state, message=None, session_name=None,
     if story_title:
         payload["story_title"] = story_title
     if active_work is not None:
-        payload["active_work"] = active_work
+        payload["active_work"] = active_work[:ACTIVE_WORK_SEND_MAX]
     return payload
 
 
