@@ -7,8 +7,8 @@ A self-hosted, zero-dependency dashboard server *and* a full set of Claude Code 
 Many concurrent agent sessions (local, docker, remote servers) make per-machine notifications spammy and hard to track. The attention hub is a small server every session's reporting client posts state events to; its web dashboard shows each session as a color-coded card, and gathers the sessions of one story into a group with one row per session (see [Story groups](#story-groups)):
 
 - **Red** — `waiting` (blocked on a permission/question prompt) or `needs_input` (finished its turn by asking you something)
-- **Yellow** — `done` (task complete, awaiting your review)
-- **Green** — `working` (busy)
+- **Gray** — `done` (nothing in flight, waiting for you to start the next turn)
+- **Green** — `working` (busy, or work such as a background shell or a scheduled wakeup is still in flight)
 
 Each ungrouped card's title is the session name if one was reported, falling back to the session ID (a row inside a group shows its role and repo label instead) — and, when a recent dev-workflow checkpoint has the session's own repo at a non-terminal stage (checkpoints older than about a week are ignored), a second line showing that checkpoint's stage(s), one `repo:stage` entry per line for a multi-repo story. Cards show time in state, the latest message snippet, and last-update age, refresh every 3 seconds, and have a per-card dismiss control for crashed/abandoned sessions. Sessions silent for over 24 hours are pruned automatically.
 
@@ -22,11 +22,11 @@ Grouping is always on; there is no setting. A session whose name is a story id f
 - **Superseded sessions** — when a session reports with the same name and host as another row, the hub drops the other row, so a continued conversation (which gets a new session ID and never ends the old one) shows as one row. The working directory is not compared, because it follows the session's `cd`s. Whichever session reported most recently keeps the row. Sessions with no name never supersede anything.
   - **Two live sessions with one name** — if two sessions with the same name are running at the same time on the same host, they show as one row and the newest report wins. The row switches between them on each report, restarting its history and state timer, and a session waiting on you disappears as soon as the other one reports. Give concurrent sessions distinct names.
   - **Rows from earlier versions** — rows saved by an earlier hub already carry a name and host, so they are dropped the next time a session with the same name reports from the same host. A leftover duplicate whose name no longer matches any live session, for example because the live session was renamed, stays until you dismiss it or it is pruned.
-  - **Marker files** — the client does not clean up the old session's waiting or active-work marker files, because only that session's own hooks touch them. They stay under `~/.claude/attention-hub/` and are not read again unless that session reports again.
-- **Duplicate names** — sessions sharing a name on different hosts are separate rows with the same label, and both count toward the group color. A stale waiting duplicate keeps the group red until you dismiss it or it is pruned.
+  - **Marker files** — the client does not clean up the old session's waiting marker file, because only that session's own hooks touch them. They stay under `~/.claude/attention-hub/` and are not read again unless that session reports again.
+- **Duplicate names** — sessions sharing a name on different hosts are separate rows with the same label, and both count toward the group color. A stale waiting duplicate keeps the group red until you dismiss it or it is pruned, unless another member is working.
 - **Renames** — membership is worked out from each session's current name on every listing and is never stored. A rename takes effect on the session's next reported event (any hook event), not on the dashboard's own refresh. A session can be renamed into a group, out of it, or into another one; a collision suffix the host appends (such as `-2`) still groups and becomes part of the label.
-- **Group color** — a group is **red** only when every member is `waiting` or `needs_input`; otherwise it is **green**, including when every member is `done`. One agent working while the others wait is the normal case and does not mean the story is waiting on you. The header also shows how many members are waiting (`2 of 3 waiting`). Rows and ungrouped cards keep the red/yellow/green colors above.
-- **Ordering** — groups, rows and ungrouped cards are ordered alphabetically and never by status, so nothing moves when a state changes. Comparison ignores case and compares runs of digits by value (`sc-999` before `sc-1000`, `api2` before `api10`). Inside a group, rows sort by role, then repo (an empty role first), so they read `developer`, `orchestrator`, `reviewer`, `tester`. At the top level, groups sort by story id and ungrouped cards by their name (or session ID when unnamed), interleaved in one list; a group comes before a card with an equal key.
+- **Group color** — a group is **green** when any member is `working`, **gray** when every member is `done`, and **red** in every other case. A group with a waiting or `needs_input` member and no working member is red, including a mix of waiting and done. One agent working while the others wait is the normal case and does not mean the story is waiting on you. The header also shows how many members are waiting (`2 of 3 waiting`). Rows and ungrouped cards keep the red/gray/green colors above.
+- **Ordering** — groups and ungrouped cards are ordered alphabetically and never by status, so nothing moves when a state changes. Comparison ignores case and compares runs of digits by value (`sc-999` before `sc-1000`, `api2` before `api10`). Inside a group, rows are ranked by role: `orchestrator`, `developer`, `reviewer`, `tester` (case-insensitive), then every other role in alphabetical order, with an empty role first among those. Rows with the same role sort by repo. At the top level, groups sort by story id and ungrouped cards by their name (or session ID when unnamed), interleaved in one list; a group comes before a card with an equal key.
 - **Display** — headers, titles and labels are always shown as plain text, never as markup. Group headers have no dismiss or force-status controls; those stay on each row.
 - **Group title** — the header reads `<story id>: <story title>`, or just the story id when no title is known. The title comes from the optional `story_title` the reporting client reads from the story's dev-workflow checkpoint. When members carry different titles, the most recently updated member's title is shown.
 
@@ -42,7 +42,7 @@ Clicking a card or group row expands it; any number may be open at once, and ope
 - **Host** — with a `container` badge when the session runs inside a container
 - **Full session ID** and the **full last message**
 - **Last update** age
-- **Active work** — each tracked subagent entry with its kind, label, status, and time in state
+- **Active work** — each in-flight task or scheduled wakeup reported by the last Stop, with its kind, label, status, and time in state
 - **Status history** — the last 20 state transitions (most recent first), each with the time it was entered, how long it lasted, and a `manual` badge when the change came from a manual override rather than a reported event
 
 ### Forcing a status
@@ -60,38 +60,48 @@ Responses: `200` with the updated record, `400` for a missing/invalid state or m
 
 ## Reporting hooks
 
-This plugin ships seven Claude Code hooks that report session state to the dashboard automatically once installed — no configuration needed, and no other plugin required:
+This plugin ships Claude Code hooks that report session state to the dashboard automatically once installed — no configuration needed, and no other plugin required:
 
 - **Notification hook**: Reports `waiting` to the hub for actionable notification types (permission prompts, idle prompts, elicitation dialogs) and sets the waiting marker
-- **Stop hook**: Computes and reports `needs_input` (AskUserQuestion was used), `working` (a background subagent is still active), or `done` — ported from the same decision logic the notifications plugin used before this split
-- **PreToolUse hook**: Pure observer — marks the session as having active work when an `Agent` dispatch (a subagent call — see Subagent Tracking below) or a backgrounded `Bash` call is seen; every other tool is a no-op. Always exits `0` and never emits a permission-decision payload, so it can never block a tool call
+- **Stop hook**: Computes and reports `needs_input` (AskUserQuestion was used), `working` (a background subagent is still active), or `done`. The decision reads the Stop input's `background_tasks` and `session_crons` lists (see Active Work Tracking below)
 - **PostToolUse hook**: Reports `working` to the hub when a tool completes after the session was flagged `waiting` (a tool can only complete once a pending permission/question was answered). Gated by a per-session marker file, so on normal tool calls (no marker) it exits instantly with zero network activity
 - **UserPromptSubmit hook**: Reports `working` to the hub — answering a session automatically clears its needs-attention state
-- **SessionEnd hook**: Removes the session from the hub (and cleans up its waiting marker and any active-subagent markers)
-- **SubagentStop hook**: Flips one active task-kind marker for the session to `completed` (see Subagent Tracking and Retention below) — it stays visible as recently-finished work for a short retention window rather than disappearing immediately
+- **SessionEnd hook**: Removes the session from the hub (and cleans up its waiting marker)
 
-The UserPromptSubmit, PostToolUse, Stop, SessionEnd and PreToolUse hooks ignore events carrying `agent_id` (fired inside a subagent), so a subagent never overwrites its parent's row or creates one of its own. The Notification hook does not filter: a subagent's permission prompt blocks the parent, so it reports `waiting` on the parent's row. Sessions launched with `--agent` carry only `agent_type` on their main thread and are tracked normally.
+The UserPromptSubmit, PostToolUse, Stop and SessionEnd hooks ignore events carrying `agent_id` (fired inside a subagent), so a subagent never overwrites its parent's row or creates one of its own. The Notification hook does not filter: a subagent's permission prompt blocks the parent, so it reports `waiting` on the parent's row. Sessions launched with `--agent` carry only `agent_type` on their main thread and are tracked normally.
 
-Transient hook state (waiting markers, active-subagent markers) lives under `~/.claude/attention-hub/`.
+Transient hook state (waiting markers) lives under `~/.claude/attention-hub/`.
 
 Installing this plugin alone gives a Claude Code session the complete waiting/needs_input/done/working lifecycle on the dashboard — no other plugin required. If the [`notifications`](../notifications) plugin is also installed, its own hooks handle macOS/Slack notifications independently, with zero shared code between the two plugins. Any other agent that wants to report state can also POST directly to the [HTTP API](#http-api) documented below.
 
-## Subagent Tracking and Retention
+## Active Work Tracking
 
-When a session reports an active subagent (via the PreToolUse hook), the hub tracks markers for each dispatched Agent (subagent) call and each backgrounded Bash command. Each marker carries:
+The Active work list on a card comes from two lists in the Stop hook's input, and nothing else:
 
-- **Kind**: one of `task` (Agent/subagent dispatch — the marker kind is named `task` for historical reasons, but detection keys on the real `tool_name` value `Agent`) or `bash` (backgrounded Bash)
-- **Label**: friendly identifier for the work (e.g., agent name, script name)
-- **Status**: `active` or `completed`
-- **Duration**: elapsed time since the subagent started, computed from its start time (and, if completed, its finish time) — live while active, frozen once completed
+- `background_tasks` — one entry per in-flight shell, subagent, monitor, workflow, teammate, cloud session or MCP task. Each becomes an Active work entry with its ID, its type as the kind, its description as the label and its status verbatim. Any entry in the list counts as in flight; the hook never filters on status.
+- `session_crons` — one entry per pending scheduled wakeup (`/loop`, `ScheduleWakeup`, `CronCreate`). Each becomes an entry of kind `cron` keyed by the cron's own ID, with the prompt as the label and status `scheduled`.
 
-The hub prunes markers based on three retention policies:
+The state rule at each Stop is: `needs_input` when the transcript shows an `AskUserQuestion`, else `working` when either list has an entry, else `done`. A Stop with no `background_tasks` field is treated as nothing in flight and reports `done`; there is no marker fallback. Builds of Claude Code whose Stop input lacks these fields therefore report `done` with no background tracking. The minimum build that carries the fields has not been pinned yet.
 
-- **Active task-kind markers** (ACTIVE_SUBAGENT_TTL_SECONDS): pruned after 2 hours of inactivity, so long-running dispatches are tracked across your session
-- **Active background-kind markers** (bash; BACKGROUND_SUBAGENT_TTL_SECONDS): pruned after 15 minutes, since these tend to finish faster
-- **Completed task-kind markers** (COMPLETED_RETENTION_SECONDS): stay visible in the expanded card view for 5 minutes before being pruned, so you can see recent work that finished
+- **Refresh** — the list refreshes only at a Stop. A Stop that finds nothing in flight sends an explicit empty list, which clears the card's previous Active work; `UserPromptSubmit` and `PostToolUse` omit the field, so the hub keeps the list from the last Stop while the session works.
+- **Finished work is not shown** — the lists contain only in-flight work, so a task disappears from the card at the first Stop after it ends.
+- **Durations** — the hub fills in each entry's start time: it reuses the start time of the entry with the same ID in the session's previous list, and uses the event time for a new ID. Durations therefore keep counting across Stops.
+- **Subagents** — a Stop fired inside a subagent (it carries `agent_id`) reports nothing, so a subagent never overwrites its parent's row.
 
-Tracking Workflow or Monitor dispatches was investigated and found not achievable via this hook — Claude Code's PreToolUse event only fires for a fixed set of tools (`Bash`, `Edit`, `Write`, `Read`, `Glob`, `Grep`, `Agent`, `WebFetch`, `WebSearch`, `AskUserQuestion`, `ExitPlanMode`, and MCP tools), which does not include Workflow or Monitor. This is tracked as a follow-up (a different mechanism would be needed), not shipped as non-functional code.
+### Why hooks, not a Claude Code mod
+
+Mods are early access and their API can change between releases without notice. They install only from a terminal session on a recent CLI, which would tie a hub built for docker, remote and non-Claude reporters to one install path. Classic hooks already carry the signal in `background_tasks` and `session_crons`.
+
+### Monitor and Workflow completion (not yet verified live)
+
+A Monitor or Workflow that finishes while the session is idle is only noticed at the next Stop or prompt. These behaviors have not been verified against a live session, so the card may stay `working` after such a task ends until the next Stop or prompt:
+
+- whether a Monitor or Workflow completion fires `UserPromptSubmit` when it wakes the agent;
+- the race where a task ends between the agent's last action and its Stop (Stop reports `done`, then the completion wakes the agent);
+- the silent finish, where the task ends, no turn starts, and no Stop arrives;
+- whether `idle_prompt` notifications fire while a shell, Monitor, Workflow or cron is in flight. The Notification hook reports `waiting` for every `idle_prompt` and has no in-flight guard. A tester running this must leave the terminal untouched for at least two minutes, because idle prompts only fire when you appear to be away.
+
+Until those are checked, treat a card that stays `working` or turns red during an idle wait as a known gap, and use the force-status buttons to correct it.
 
 This tracking appears in the expanded card view's **Active work** section, showing each entry's kind, label, status, and elapsed time.
 
@@ -135,7 +145,7 @@ Reports (creates or updates) a session's state. Body is a JSON object:
 | `session_name` | no | Friendly display name; falls back to `session_id` when omitted. A name that starts with a story id groups the session (see [Story groups](#story-groups)) |
 | `is_container` | no | Boolean; badges the card when the session runs inside a container |
 | `story_title` | no | Title of the story the session name's story id refers to; shown in the group header. Sticky across events that omit it, cleared when the session's story id changes, and never stored for a session whose name has no story id |
-| `active_work` | no | Array of per-subagent records — `{id, kind, label, status, started_at, completed_at?}` (see Subagent Tracking and Retention above); sanitized, capped, and persisted server-side; sticky across events that omit the field |
+| `active_work` | no | Array of in-flight work records — `{id, kind, label, status, started_at?, completed_at?}` (see Active Work Tracking above). `status` is any non-empty string; `started_at` is optional and, when absent, is the earlier start time for the same ID in the session's previous list, else the event time. Sanitized, capped, and persisted server-side; sticky across events that omit the field, and an explicit empty list clears it |
 
 Responses: `200` with the stored record, `400` for a missing `session_id` or invalid `state`, `413` for an oversized body, `415` for a non-`application/json` `Content-Type`.
 
@@ -151,8 +161,8 @@ Removes a session from the dashboard. `200` on success, `404` if unknown.
 
 Returns `{"sessions": [...], "groups": [...], "layout": [...]}`, all built from one snapshot of the store so they always agree.
 
-- `sessions` — every tracked session with computed `state_seconds` and `age_seconds`, plus each `active_work` entry annotated with a computed `duration_seconds` (live while `active`, frozen once `completed`). This flat list is sorted needs-attention first (red, yellow, green), then by time in state.
-- `groups` — one entry per story id: `story_id`, `title` (the full header text, `sc-1000: <title>` or the bare id), `color` (`red` or `green`), `session_ids` (in display order), `labels` (row label per session ID), `waiting` (members `waiting` or `needs_input`) and `total`.
+- `sessions` — every tracked session with computed `state_seconds` and `age_seconds`, plus each `active_work` entry annotated with a computed `duration_seconds` (frozen once `completed`, live otherwise). This flat list is sorted needs-attention first (red), then done (gray), then working (green), then by time in state.
+- `groups` — one entry per story id: `story_id`, `title` (the full header text, `sc-1000: <title>` or the bare id), `color` (`red`, `gray` or `green`), `session_ids` (in display order), `labels` (row label per session ID), `waiting` (members `waiting` or `needs_input`) and `total`.
 - `layout` — the ordered top-level list the dashboard renders; each item is `{"type": "group", "story_id": ...}` or `{"type": "session", "session_id": ...}` for an ungrouped session.
 
 ## Security
