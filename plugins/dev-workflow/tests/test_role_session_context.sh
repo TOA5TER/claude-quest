@@ -203,7 +203,9 @@ need "role-sessions.md mode change" "$RS_TEXT" "an earlier worker may have left 
 # Why: the epic worker rule must be defined by what epic dispatches, not by having no user to ask.
 refuse "full-cycle SKILL.md" "$FC_TEXT" "the same autonomous-mode detection the rest of this skill uses"
 need "full-cycle SKILL.md" "$FC_TEXT" "the per-task run the epic skill dispatched"
-need "full-cycle SKILL.md" "$FC_TEXT" "always runs the preflight"
+need "full-cycle SKILL.md" "$FC_TEXT" "An epic worker runs the fresh-dispatch path below"
+refuse "full-cycle SKILL.md" "$FC_TEXT" "always runs the preflight. It runs the fresh-dispatch path"
+need "full-cycle SKILL.md" "$FC_TEXT" "is not an epic worker and always runs the preflight."
 need "full-cycle SKILL.md" "$FC_TEXT" "Mid-run mode change"
 need "full-cycle SKILL.md" "$FC_TEXT" "when an executed preflight check failed"
 

@@ -124,7 +124,8 @@ has "$SHORTCUT_TEXT" "users-get-current-teams" || fail "shortcut.md: Create Stor
 has "$SHORTCUT_TEXT" "- type: infer from context" || fail "shortcut.md: Create Story does not use the type parameter"
 has "$SHORTCUT_TEXT" "story_type: infer" && fail "shortcut.md: Create Story still passes story_type"
 has "$SHORTCUT_TEXT" "workflow_state_id" && fail "shortcut.md: Create Story still passes workflow_state_id"
-has "$SHORTCUT_TEXT" "full: true" || fail "shortcut.md: Fetch Story does not use full: true"
+FETCH_TEXT="$(awk '/^## Fetch Story/ {p=1; next} p && /^## / {exit} p' "$ADAPTERS/shortcut.md" | normalise)"
+has "$FETCH_TEXT" "with numeric story id and full: true" || fail "shortcut.md: Fetch Story does not use full: true"
 has "$SHORTCUT_TEXT" "treat the story type as unknown and never assert it" || fail "shortcut.md: Fetch Story does not tell readers to treat a missing type as unknown"
 has "$(whole "$PLUGIN_ROOT/skills/writing-specs/spec-template.html")" "feature | bug | chore | unknown" || fail "spec-template.html: story type placeholder does not allow unknown"
 
