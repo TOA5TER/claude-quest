@@ -415,7 +415,7 @@ Read `spec-template.html` (located in this skill's own directory, next to this S
 
 ### Design requirements (every generated spec must satisfy all of these)
 
-1. **Header meta bar** — title plus compact pills for story ID, status (Draft/Approved), repo, story type, and date.
+1. **Header meta bar** — title plus compact pills for story ID, status (Draft/Approved), repo, story type (or "unknown" when the PM adapter did not return it), and date.
 2. **TL;DR card** — a visually distinct 2–3 sentence what/why/impact summary placed before any detail, followed by a key-facts strip.
 3. **Sticky table of contents with scroll tracking** — a navigation rail that stays visible while scrolling, highlights the section currently in view, and collapses gracefully on narrow windows. One TOC entry per `h2` section, in document order.
 4. **Collapsible sections** — supporting detail (alternatives considered, background, edge-case notes) goes in native `<details>` disclosure blocks, collapsed by default. Works without JavaScript and via keyboard.

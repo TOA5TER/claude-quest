@@ -170,6 +170,49 @@ case "$WAIT_PARAGRAPH" in *"arm a bounded, visible fallback re-check"*) fail "Me
 # Why: the hook must carry the contract reminder in a role session so it survives compaction and respawn.
 case "$CONTEXT" in *"$HOOK_SENTENCE"*) ;; *) fail "role session context missing the contract sentence" ;; esac
 
+flat_text() {
+  sed -e 's/^[[:space:]]*>[[:space:]]*//' -e 's/^[[:space:]]*//' -e 's/`//g' -e 's/\*\*//g' "$1" | tr '\n' ' ' | sed -e 's/  */ /g'
+}
+RS_TEXT="$(flat_text "$ROLE_SESSIONS")"
+FC_TEXT="$(flat_text "$FULL_CYCLE")"
+DEV_TEXT="$(flat_text "$PLUGIN_ROOT/skills/developing/SKILL.md")"
+AGENT_TEXT="$(flat_text "$PLUGIN_ROOT/agents/developer.md")"
+need() {
+  case "$2" in *"$3"*) ;; *) fail "$1 missing: $3" ;; esac
+}
+refuse() {
+  case "$2" in *"$3"*) fail "$1 still contains: $3" ;; esac
+}
+
+# Why: a nested-launch claim stated flat for every background session made a standalone run skip the preflight on inference.
+refuse "role-sessions.md" "$RS_TEXT" "a background session cannot launch its own background session"
+need "role-sessions.md Scope" "$RS_TEXT" "is not an epic worker: it always runs the preflight and launches role sessions"
+need "role-sessions.md Scope" "$RS_TEXT" "settled by running preflight check 3, never by reasoning about what kind of session it is"
+
+# Why: preflight checks must be executed, and only an observed failure may end role-session use.
+need "role-sessions.md Preflight" "$RS_TEXT" "Executed, not inferred."
+need "role-sessions.md Preflight" "$RS_TEXT" "A check fails only when it was run and its failure was observed"
+need "role-sessions.md Preflight" "$RS_TEXT" "quoting the observed output"
+
+# Why: a run that switches from fresh dispatch to role sessions needs a defined hand-over.
+need "role-sessions.md" "$RS_TEXT" "### Mid-run mode change"
+need "role-sessions.md mode change" "$RS_TEXT" "Do not stop an in-flight fresh developer until it has returned or has committed a work-in-progress checkpoint"
+need "role-sessions.md mode change" "$RS_TEXT" "the run stays on fresh dispatch with the observed failure announced"
+need "role-sessions.md mode change" "$RS_TEXT" "an earlier worker may have left changes in the worktree"
+
+# Why: the epic worker rule must be defined by what epic dispatches, not by having no user to ask.
+refuse "full-cycle SKILL.md" "$FC_TEXT" "the same autonomous-mode detection the rest of this skill uses"
+need "full-cycle SKILL.md" "$FC_TEXT" "the per-task run the epic skill dispatched"
+need "full-cycle SKILL.md" "$FC_TEXT" "always runs the preflight"
+need "full-cycle SKILL.md" "$FC_TEXT" "Mid-run mode change"
+need "full-cycle SKILL.md" "$FC_TEXT" "when an executed preflight check failed"
+
+# Why: the developer that inherits a worktree must inspect it and report what it kept or discarded.
+need "developing SKILL.md" "$DEV_TEXT" "decide deliberately to keep or discard each uncommitted change (never silently)"
+need "developing SKILL.md" "$DEV_TEXT" "in the message field of your first result"
+need "developing SKILL.md multi-repo" "$DEV_TEXT" "first inspecting it as in the single-repo flow"
+need "developer agent" "$AGENT_TEXT" "first inspect it per the developing skill"
+
 # Why: the version bump must be pinned numerically without breaking on later bumps.
 version_at_least() {
   local IFS=.

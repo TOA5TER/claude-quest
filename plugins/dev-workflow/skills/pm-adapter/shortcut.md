@@ -4,9 +4,11 @@ Story ID format: `sc-XXXXX` or numeric `XXXXX` (strip "sc-" prefix before MCP ca
 
 ## Fetch Story
 
-MCP tool: `mcp__shortcut__stories-get-by-id` with numeric story ID
+MCP tool: `mcp__shortcut__stories-get-by-id` with numeric story ID and `full: true`
 
 Returns: name, description, comments[], workflow_state, story_type
+
+`story_type` is returned only with `full: true`; the compact default response omits it. When it is absent, readers (reviewers included) treat the story type as unknown and never assert it.
 
 Also fetch comments with: `mcp__shortcut__stories-get-history` for full comment thread
 
@@ -92,8 +94,10 @@ Format: `sc-XXXXX`
 MCP tool: `mcp__shortcut__stories-create` with fields:
 - `name`: story title
 - `description`: full markdown body (see body format below)
-- `story_type`: infer from context ("feature" for new capabilities, "bug" for fixes, "chore" for maintenance)
-- `workflow_state_id`: use default workflow — call `mcp__shortcut__workflows-get-default` to get the starting state ID
+- `type`: infer from context ("feature" for new capabilities, "bug" for fixes, "chore" for maintenance); the draft's `story_type` maps to this parameter
+- `team`: the team id from `mcp__shortcut__users-get-current-teams`; with one team, use it; with several, ask in interactive runs and stop and report otherwise
+
+The tool accepts no starting state, so a new story starts in the workflow's default initial state.
 
 ### Story body format
 

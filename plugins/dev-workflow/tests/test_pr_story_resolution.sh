@@ -118,8 +118,18 @@ for consumer in reviewing-prs testing-prs addressing-pr-comments; do
   has "$(whole "$PLUGIN_ROOT/skills/$consumer/SKILL.md")" "resolve story from pr" || fail "$consumer: does not use Resolve story from PR"
 done
 
+# Why: Create Story must pass the tool's own field names and a team, and Fetch Story must ask for the full record to get the type.
+SHORTCUT_TEXT="$(whole "$ADAPTERS/shortcut.md")"
+has "$SHORTCUT_TEXT" "users-get-current-teams" || fail "shortcut.md: Create Story does not resolve the team via users-get-current-teams"
+has "$SHORTCUT_TEXT" "- type: infer from context" || fail "shortcut.md: Create Story does not use the type parameter"
+has "$SHORTCUT_TEXT" "story_type: infer" && fail "shortcut.md: Create Story still passes story_type"
+has "$SHORTCUT_TEXT" "workflow_state_id" && fail "shortcut.md: Create Story still passes workflow_state_id"
+has "$SHORTCUT_TEXT" "full: true" || fail "shortcut.md: Fetch Story does not use full: true"
+has "$SHORTCUT_TEXT" "treat the story type as unknown and never assert it" || fail "shortcut.md: Fetch Story does not tell readers to treat a missing type as unknown"
+has "$(whole "$PLUGIN_ROOT/skills/writing-specs/spec-template.html")" "feature | bug | chore | unknown" || fail "spec-template.html: story type placeholder does not allow unknown"
+
 PLUGIN_VERSION="$(jq -r '.version' "$PLUGIN_ROOT/.claude-plugin/plugin.json")"
-[ "$PLUGIN_VERSION" = "2.52.0" ] || fail "plugin version $PLUGIN_VERSION is not 2.52.0"
+[ "$PLUGIN_VERSION" = "2.53.0" ] || fail "plugin version $PLUGIN_VERSION is not 2.53.0"
 
 if [ "$FAILURES" -eq 0 ]; then
   echo "PASS"
