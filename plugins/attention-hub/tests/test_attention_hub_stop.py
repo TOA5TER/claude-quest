@@ -10,6 +10,8 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+import pytest
+
 HOOKS_DIR = Path(__file__).parent.parent / "hooks"
 
 
@@ -133,8 +135,6 @@ def test_stop_exits_zero_when_hub_down(base_hook_input, transcript_without_ask, 
 
 # Fixtures in fixtures/stop_background_work.json are synthetic: built from the
 # Stop input field list in the Claude Code hooks reference, not live captures.
-
-import pytest
 
 WORK = json.loads((Path(__file__).parent / "fixtures" / "stop_background_work.json").read_text())
 TASK_TYPES = ["shell", "subagent", "monitor", "workflow", "teammate",
@@ -280,3 +280,20 @@ def test_removed_scripts_and_marker_helpers_no_longer_exist():
         assert not hasattr(client, name), name
     for name in ("set_waiting_marker", "has_waiting_marker", "clear_waiting_marker"):
         assert hasattr(client, name), name
+
+
+def test_stop_events_through_the_hub_clear_work_once_the_shell_exits(
+        base_hook_input, transcript_without_ask, tmp_path):
+    # Why: end-to-end guard for the stuck-working bug; the empty-list Stop must
+    # wipe the card's Active work and settle the session at done in the real store.
+    hub_spec = importlib.util.spec_from_file_location(
+        "attention_hub", HOOKS_DIR.parent / "hub" / "attention_hub.py")
+    hub = importlib.util.module_from_spec(hub_spec)
+    hub_spec.loader.exec_module(hub)
+    store = hub.AttentionStore(str(tmp_path / "state.json"))
+    first = stop_events(base_hook_input, transcript_without_ask, background_tasks=[WORK["shell"]])
+    record = store.upsert(first[0])
+    assert record["state"] == "working" and len(record["active_work"]) == 1
+    second = stop_events(base_hook_input, transcript_without_ask, background_tasks=[])
+    record = store.upsert(second[0])
+    assert record["state"] == "done" and record["active_work"] == []

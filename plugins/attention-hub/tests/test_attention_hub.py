@@ -1099,6 +1099,33 @@ def test_active_work_missing_started_at_gets_event_time_then_keeps_it(tmp_path):
     assert record["active_work"][1]["started_at"] == 1060.0
 
 
+def test_cron_entry_keeps_one_start_time_across_stops(tmp_path):
+    # Why: a pending wakeup stays on the card across many Stops; keyed by the
+    # cron's own id, its duration must keep counting instead of resetting.
+    hub = load_hub()
+    clock = {"now": 1000.0}
+    store = hub.AttentionStore(str(tmp_path / "state.json"), now=lambda: clock["now"])
+    cron = {"id": "cron-1", "kind": "cron", "label": "check", "status": "scheduled"}
+    store.upsert({"session_id": "s1", "state": "working", "active_work": [cron]})
+    clock["now"] = 1500.0
+    record = store.upsert({"session_id": "s1", "state": "working", "active_work": [cron]})
+    assert record["active_work"][0]["started_at"] == 1000.0
+
+
+def test_idless_entries_do_not_inherit_each_others_start_time(tmp_path):
+    # Why: third-party reporters may omit ids; entries with an empty id must not
+    # share one remembered start time.
+    hub = load_hub()
+    clock = {"now": 1000.0}
+    store = hub.AttentionStore(str(tmp_path / "state.json"), now=lambda: clock["now"])
+    store.upsert({"session_id": "s1", "state": "working",
+                  "active_work": [{"status": "running"}]})
+    clock["now"] = 2000.0
+    record = store.upsert({"session_id": "s1", "state": "working",
+                           "active_work": [{"status": "running"}]})
+    assert record["active_work"][0]["started_at"] == 2000.0
+
+
 def test_active_work_supplied_started_at_wins_over_previous(tmp_path):
     # Why: existing API clients that send started_at must be unaffected by the
     # hub's start-time reuse.

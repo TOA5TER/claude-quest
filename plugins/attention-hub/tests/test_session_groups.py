@@ -272,8 +272,8 @@ def test_same_role_rows_sort_by_repo(tmp_path):
     assert ids == ["o", "a", "w"]
 
 
-def test_other_roles_follow_the_four_alphabetically(tmp_path):
-    # Why: roles outside the four must still be deterministic and come last;
+def test_other_roles_follow_the_ranked_roles_alphabetically(tmp_path):
+    # Why: roles outside the ranked set must still be deterministic and come last;
     # spec-writer parses as role spec, repo writer.
     _, _, store = make_store(tmp_path)
     ids = _group_ids(store, {"s": "sc-1000-spec-writer", "n": "sc-1000-analyst",
@@ -291,7 +291,7 @@ def test_role_rank_ignores_letter_case(tmp_path):
 
 
 def test_empty_role_sorts_first_among_other_roles(tmp_path):
-    # Why: a row with no role is not one of the four ranked roles, so it follows
+    # Why: a row with no role is not a ranked role, so it follows
     # the tester and leads the remaining roles.
     _, _, store = make_store(tmp_path)
     ids = _group_ids(store, {"a": "sc-1000-architect", "e": "sc-1000--x",

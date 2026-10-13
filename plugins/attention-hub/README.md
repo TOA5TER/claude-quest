@@ -63,7 +63,7 @@ Responses: `200` with the updated record, `400` for a missing/invalid state or m
 This plugin ships Claude Code hooks that report session state to the dashboard automatically once installed — no configuration needed, and no other plugin required:
 
 - **Notification hook**: Reports `waiting` to the hub for actionable notification types (permission prompts, idle prompts, elicitation dialogs) and sets the waiting marker
-- **Stop hook**: Computes and reports `needs_input` (AskUserQuestion was used), `working` (a background subagent is still active), or `done`. The decision reads the Stop input's `background_tasks` and `session_crons` lists (see Active Work Tracking below)
+- **Stop hook**: Computes and reports `needs_input` (AskUserQuestion was used), `working` (a background task or scheduled wakeup is still in flight), or `done`. The decision reads the Stop input's `background_tasks` and `session_crons` lists (see Active Work Tracking below)
 - **PostToolUse hook**: Reports `working` to the hub when a tool completes after the session was flagged `waiting` (a tool can only complete once a pending permission/question was answered). Gated by a per-session marker file, so on normal tool calls (no marker) it exits instantly with zero network activity
 - **UserPromptSubmit hook**: Reports `working` to the hub — answering a session automatically clears its needs-attention state
 - **SessionEnd hook**: Removes the session from the hub (and cleans up its waiting marker)

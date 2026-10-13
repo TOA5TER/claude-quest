@@ -313,7 +313,7 @@ class AttentionStore:
     @staticmethod
     def _with_duration(entry, now):
         """entry plus a computed duration_seconds: frozen (completed_at -
-        started_at) once completed, live (now - started_at) while active."""
+        started_at) once completed, live (now - started_at) otherwise."""
         item = dict(entry)
         if entry.get("status") == "completed" and "completed_at" in entry:
             item["duration_seconds"] = max(0.0, entry["completed_at"] - entry["started_at"])
@@ -413,7 +413,8 @@ class AttentionStore:
         the previous list, else takes the event time. Malformed entries drop."""
         known = {}
         for old in previous or []:
-            if isinstance(old, dict) and isinstance(old.get("started_at"), (int, float)):
+            if (isinstance(old, dict) and old.get("id")
+                    and isinstance(old.get("started_at"), (int, float))):
                 known.setdefault(old.get("id"), float(old["started_at"]))
         clean = []
         if isinstance(raw, list):

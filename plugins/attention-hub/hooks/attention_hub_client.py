@@ -236,16 +236,16 @@ def background_work_entries(background_tasks, session_crons):
             if not isinstance(task, dict) or _usable_id(task) is None:
                 continue
             entries.append({
-                "id": str(_usable_id(task)),
-                "kind": str(task.get("type") or "task"),
+                "id": str(_usable_id(task))[:LABEL_MAX_CHARS],
+                "kind": str(task.get("type") or "task")[:LABEL_MAX_CHARS],
                 "label": _clipped(task.get("description")),
-                "status": str(task.get("status") or "running"),
+                "status": str(task.get("status") or "running")[:LABEL_MAX_CHARS],
             })
         for cron in session_crons if isinstance(session_crons, list) else []:
             if not isinstance(cron, dict) or _usable_id(cron) is None:
                 continue
             entries.append({
-                "id": str(_usable_id(cron)),
+                "id": str(_usable_id(cron))[:LABEL_MAX_CHARS],
                 "kind": "cron",
                 "label": _clipped(cron.get("prompt")),
                 "status": "scheduled",

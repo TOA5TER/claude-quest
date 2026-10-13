@@ -478,6 +478,26 @@ def test_converter_skips_entries_without_usable_id():
     assert entries == []
 
 
+def test_converter_rejects_bool_ids_and_survives_non_dict_beside_idless_cron():
+    # Why: True is an int in Python and must not become the id "True"; a non-dict
+    # cron sitting beside an id-less one must not abort the rest of the list.
+    client = load_client()
+    entries = client.background_work_entries(
+        [{"id": True, "type": "shell"}],
+        [None, {"prompt": "no id"}, {"id": "c1", "prompt": "ok"}])
+    assert [e["id"] for e in entries] == ["c1"]
+
+
+def test_converter_clips_every_field_so_the_event_stays_under_the_hub_body_limit():
+    # Why: an oversized field would push the Stop event past the hub's body limit,
+    # losing the report and leaving the card at its previous state.
+    client = load_client()
+    big = "x" * 5000
+    entries = client.background_work_entries(
+        [{"id": big, "type": big, "description": big, "status": big}], [])
+    assert all(len(v) <= client.LABEL_MAX_CHARS for v in entries[0].values())
+
+
 @pytest.mark.parametrize("tasks,crons", [
     (None, None),
     ("not a list", {"id": "c"}),
