@@ -2,7 +2,7 @@
 
 Standalone `full-cycle` runs the developer, reviewer, and tester as long-lived, named background Claude Code sessions instead of fresh one-shot subagents. Each repo's developer fixes every round of review and test feedback for that repo's PR; the same reviewer re-reviews and the same tester re-tests, each keeping its own context. The sessions talk through cross-session messaging in a **hub-and-spoke** topology: workers message only the orchestrator, and the orchestrator alone decides who receives what next.
 
-**Scope.** Standalone `full-cycle` only. `epic` is descoped: a background session cannot launch its own background session (the platform's permission classifier denies a nested background launch), and a subagent's outbound messages carry its parent's address, so worker replies would land in the wrong conversation. When `full-cycle` runs as an epic per-task worker (a dispatched, autonomous subagent with no way to ask the user), it launches no role sessions, skips the preflight below, and runs the fresh-dispatch path described under "Fallback path".
+**Scope.** Standalone `full-cycle` only. `epic` is descoped: an epic per-task worker is a subagent, a subagent cannot launch its own background session (the platform's permission classifier denies a nested background launch), and a subagent's outbound messages carry its parent's address, so worker replies would land in the wrong conversation. When `full-cycle` runs as an epic per-task worker (the per-task run the `epic` skill dispatched), it launches no role sessions, skips the preflight below, and runs the fresh-dispatch path described under "Fallback path". A standalone `full-cycle`, including one running as a background job, is not an epic worker: it always runs the preflight and launches role sessions unless an executed check fails. Whether a given session can launch is settled by running preflight check 3, never by reasoning about what kind of session it is.
 
 **Other workers are unchanged.** `dev-workflow:spec-writer`, `dev-workflow:pr-state-reader`, and the reviewer's parallel perspective fan-out stay fresh one-shot subagents.
 
@@ -38,7 +38,7 @@ Each role launches as one background session with:
 - a working directory: the developer launches with that repo's checkout as its working directory (resolved per the repo discovery procedure, whether the orchestrator started inside one repo or in a parent folder), using the simplest mechanism the host supports, for example changing into the checkout before running the launch command. Each repo checkout must pass the host's workspace-trust check; if the host offers no way to set the working directory, report that instead of inventing one. Reviewer and tester launch as before;
 - inline `--settings` JSON that sets `crossSessionInbound` to `accept`, sets `worktree.bgIsolation` to `none` (Workspace Isolation in `standards.md` already owns worktree creation and the live lookup), and sets the env var `DEV_WORKFLOW_ROLE` to the role name (`developer`, `reviewer`, or `tester`).
 
-Launch from a trusted workspace; a background launch from an untrusted directory fails, which the preflight treats as unavailable. If a later repo's developer fails to launch after the run's preflight already passed, do not fall back to fresh dispatch for that repo (modes are never mixed): stop, report the repo, and ask the user how to proceed.
+Launch from a trusted workspace; a background launch from an untrusted directory fails, which the preflight treats as unavailable. If a later repo's developer fails to launch after the run's preflight already passed, do not fall back to fresh dispatch for that repo (a run's remaining work is never split across both paths): stop, report the repo, and ask the user how to proceed.
 
 **Launch-text caution.** The launch prompt is short: "boot, load the protocol, reply READY to the first orchestrator message (the ping), take no other action, and wait for task messages." It also tells the worker to answer every task message with an acknowledgement and a terminal reply sent through the messaging tool. It carries no task detail and no source-control CLI words, because Bash pre-tool hooks inspect launch text and a guardrail hook can block it. Task detail travels through the messaging tool, never through Bash. The first task arrives as a message.
 
@@ -46,22 +46,32 @@ Launch from a trusted workspace; a background launch from an untrusted directory
 
 ## Preflight, handshake, fallback
 
-Once per run, before the first launch, check all of:
+Once per run, before the first role-session launch (wherever in the run that is), execute all of:
 
 1. the Claude Code version meets the floor (v2.1.224);
 2. `claude agents --json` runs (agent view not disabled);
 3. a background launch succeeds (workspace trust);
 4. the first launched session, whatever its role, answers a `ping` within a bounded timeout.
 
+**Executed, not inferred.** Run checks 1 to 4 as real commands or handshakes before the first launch. A check fails only when it was run and its failure was observed (an error, a non-zero exit, a timeout). An expectation, an assumption about the session's type, or a remembered earlier result is not a failure. Skipping or short-cutting a check is a process violation.
+
 **Per-session handshake.** Every newly launched session, whatever its role or repo, receives its own `ping` and must answer `ready` before its first task message is sent; a session replies `ready` to its first message and takes no other action, so a task sent first would be ignored. The preflight check above covers only the first launched session; later launches (including lazily launched developers, reviewers, and testers) get the same ping/ready handshake, and a failed later handshake follows the later-launch failure rule in the launch contract (stop, report, ask).
 
 **`crossSessionInbound` prerequisite.** A worker's reply to a main session in a different permission-mode class is held for the user's approval, even when the worker accepts inbound messages itself. The orchestrator session must set `crossSessionInbound` to `accept` (or share the workers' permission class). A failed ping with a live, idle worker means its reply is almost certainly being held; the announcement names this remedy.
 
-Any failed check ends the run's use of role sessions: announce the reason once, report any sessions already launched by name and ask before stopping them (per "Permission before teardown"), and run the entire run on fresh dispatch. Never mix modes within a run. Never wait silently for a reply that may be parked behind a dialog.
+Any failed check ends the run's use of role sessions: announce the reason once, naming the failed check and quoting the observed output, report any sessions already launched by name and ask before stopping them (per "Permission before teardown"), and run the remaining work on fresh dispatch. No stage runs on both paths at once. Never wait silently for a reply that may be parked behind a dialog.
 
 ### Fallback path
 
-The fallback loop body is a fresh `dev-workflow:developer` dispatch in rework mode (a PR number is supplied), followed by a fresh `dev-workflow:reviewer` or `dev-workflow:tester` dispatch. This is the path used when preflight fails and by every epic per-task worker.
+The fallback loop body is a fresh `dev-workflow:developer` dispatch in rework mode (a PR number is supplied), followed by a fresh `dev-workflow:reviewer` or `dev-workflow:tester` dispatch. This is the path used when an executed preflight check fails and by every epic per-task worker.
+
+### Mid-run mode change
+
+A run may move from fresh dispatch to role sessions part-way (for example after a user correction). The move replaces the remaining work; no stage runs on both paths at once.
+
+- The executed preflight runs at the switch, before the first role-session launch. If it fails, the run stays on fresh dispatch with the observed failure announced, and nothing is stopped.
+- Do not stop an in-flight fresh developer until it has returned or has committed a work-in-progress checkpoint on the story branch (ask it by message). If it cannot be messaged, wait for it to return; stop it only with the user's explicit direction, then report the unverified worktree state to the user and pass it on to the successor.
+- Tell the first developer session for that repo that an earlier worker may have left changes in the worktree. Per the developing skill, it inspects the worktree and reports what it kept or discarded in the `message` field of its first result.
 
 ## Message protocol
 

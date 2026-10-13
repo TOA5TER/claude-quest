@@ -99,7 +99,7 @@ worktree, always check live for an existing one: run `git -C <repo root> worktre
 --porcelain` and match the entry whose branch equals this story's feature branch name — per
 `skills/shared/standards.md` → "Workspace Isolation" and mirroring the developer agent's rework-mode
 lookup. If found, treat it as authoritative immediately and `cd` there — do not create a second
-worktree. If not found, create one. The multi-repo path below performs this same lookup
+worktree — then inspect it first: check `git status`, decide deliberately to keep or discard each uncommitted change (never silently), remove untracked files and folders that are not gitignored and that you did not intend (leave ignored build output alone), and state what you found and decided in the `message` field of your first result. Treat leftover code as unverified. If not found, create one. The multi-repo path below performs this same lookup
 independently per repo, in its own per-repo sub-agent, as described in "Multi-repo path" → Step 3.
 
 ---
@@ -130,7 +130,7 @@ Then invoke subagent-driven execution:
 > `skills/shared/standards.md` → "Workspace Isolation" — the worktree carries the feature
 > branch (see "Repo Discovery" above and "Branch Management" for why it is never checked
 > out in the primary checkout first). Worktree isolation is required for this task —
-> proceed without asking; if baseline tests fail, report the failure and stop rather than
+> proceed without asking; if baseline tests still fail after the dependency-folder step in Workspace Isolation, report the failure and stop rather than
 > asking whether to proceed. When this reaches a nested `finishing-a-development-branch`
 > invocation, pass it the cleanup instruction that skill needs (preserve the worktree; a
 > human iterates on PR feedback there), not the creation requirement above — that skill
@@ -183,8 +183,8 @@ Process each level as follows:
    - Workspace isolation per `skills/shared/standards.md` → "Workspace Isolation": before creating a
      new workspace, this sub-agent checks live for an existing one for its own repo — `git -C <repo
      root> worktree list --porcelain`, matching the entry whose branch equals this story's feature
-     branch — and `cd`s there and reuses it if found; otherwise it creates one. Worktree isolation is
-     required for this task — proceed without asking; if baseline tests fail, report the failure and
+     branch — and `cd`s there and reuses it if found, first inspecting it as in the single-repo flow (deliberately keep or discard each uncommitted change, remove unintended non-ignored untracked files, report the outcome in its result `message`); otherwise it creates one. Worktree isolation is
+     required for this task — proceed without asking; if baseline tests still fail after the dependency-folder step in Workspace Isolation, report the failure and
      stop rather than asking whether to proceed. When this reaches a nested
      `finishing-a-development-branch` invocation, pass it the cleanup instruction that skill needs
      (preserve the worktree for PR-feedback iteration), not the creation requirement above — that

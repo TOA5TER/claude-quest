@@ -75,9 +75,9 @@ repo, resolve its worktree live rather than trusting any passed value: run
 `git -C <repo root> worktree list --porcelain` and match the entry whose branch equals this
 story/task's feature branch. If found, `cd` there and reuse it. If not found, create one
 via `superpowers:using-git-worktrees`, the same as a first-time run - do not assume the
-lookup always succeeds. For a multi-repo dispatch, each per-repo sub-agent you fan out to
+lookup always succeeds. When the lookup finds an existing worktree, first inspect it per the `developing` skill: keep or discard each uncommitted change deliberately, remove unintended non-ignored untracked files, and report what you did in the `message` field of your first result. For a multi-repo dispatch, each per-repo sub-agent you fan out to
 does this same lookup for its own repo independently. Worktree isolation is required for
-this task - proceed without asking; if baseline tests fail, report the failure in your
+this task - proceed without asking; if baseline tests still fail after the dependency-folder step in Workspace Isolation, report the failure in your
 result and stop rather than asking whether to proceed.
 
 ## Rework mode (`fix`, or a one-shot dispatch with a PR number)

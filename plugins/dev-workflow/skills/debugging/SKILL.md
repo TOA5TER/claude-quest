@@ -141,7 +141,7 @@ With the plan written, and before creating the branch:
 > REQUIRED: Set up workspace isolation before starting, per `skills/shared/standards.md` →
 > "Workspace Isolation" — the worktree carries the feature branch (see Step 2 above).
 > Worktree isolation is required for this task — proceed without asking; if baseline tests
-> fail, report the failure and stop rather than asking whether to proceed. When this
+> still fail after the dependency-folder step in Workspace Isolation, report the failure and stop rather than asking whether to proceed. When this
 > reaches a nested `finishing-a-development-branch` invocation, pass it the cleanup
 > instruction that skill needs (preserve the worktree for PR-feedback iteration), not the
 > creation requirement above — that skill only tears down.
@@ -240,7 +240,7 @@ names embedding the story ID are the default suggestion; look up the repo's bran
 `skills/developing/SKILL.md` → Branch Management before creating the branch, and use a different
 shape only when that rule requires one. Work
 from that worktree for every remaining step. Worktree isolation is required for this task —
-proceed without asking; if baseline tests fail, report the failure and stop rather than
+proceed without asking; if baseline tests still fail after the dependency-folder step in Workspace Isolation, report the failure and stop rather than
 asking whether to proceed.
 
 ### Step 4: Implement with TDD

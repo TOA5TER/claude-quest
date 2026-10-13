@@ -75,6 +75,33 @@ check_attribution "developing: Commit and PR Process" "$(region "$SKILL" '^## Co
 check_attribution "developing: multi-repo attribution bullet" "$(region "$SKILL" '^   - Commit and PR attribution:' bullet)"
 check_attribution "developer agent: Worktrees and attribution" "$(region "$AGENT" '^## Worktrees and attribution' h2)"
 
+# Why: a dependency folder linked from another checkout can make the baseline red on unmodified code.
+CLAUSE='after the dependency-folder step in Workspace Isolation'
+STANDARDS_TEXT="$(whole "$PLUGIN_ROOT/skills/shared/standards.md")"
+has "$STANDARDS_TEXT" "Dependency folders linked from another checkout" || fail "standards.md: missing the dependency-folder step"
+has "$STANDARDS_TEXT" "installed from the worktree's own lockfile" || fail "standards.md: dependency-folder step does not require a lockfile install"
+has "$STANDARDS_TEXT" "never its target" || fail "standards.md: dependency-folder step does not protect the link target"
+has "$STANDARDS_TEXT" "never modify the shared checkout in any way" || fail "standards.md: dependency-folder step does not protect the shared checkout"
+has "$STANDARDS_TEXT" "$CLAUSE, report a still-red baseline" || fail "standards.md: red-baseline policy lacks the dependency-folder clause"
+has "$STANDARDS_TEXT" "an environment failure fixed by that install, not a code failure" || fail "standards.md: missing environment-failure statement"
+check_clause() {
+  local label="$1" text="$2"
+  [ -n "$text" ] || { fail "$label: region not found"; return; }
+  has "$text" "baseline tests still fail $CLAUSE" || fail "$label: red-baseline sentence lacks the dependency-folder clause"
+}
+check_clause "developing: REQUIRED isolation block" "$(region "$SKILL" 'REQUIRED: Set up workspace isolation' quote)"
+check_clause "developing: multi-repo isolation bullet" "$(region "$SKILL" '^   - Workspace isolation per' bullet)"
+DEBUGGING="$PLUGIN_ROOT/skills/debugging/SKILL.md"
+check_clause "debugging: dispatch block" "$(region "$DEBUGGING" 'REQUIRED: Set up workspace isolation before starting' quote)"
+check_clause "debugging: Step 3" "$(region "$DEBUGGING" '^### Step 3: Create New Branch' h2)"
+check_clause "developer agent: story mode" "$(region "$AGENT" '^## Story mode' h2)"
+check_clause "full-cycle: developer dispatch text" "$(whole "$PLUGIN_ROOT/skills/full-cycle/SKILL.md")"
+for f in skills/developing/SKILL.md skills/debugging/SKILL.md agents/developer.md skills/full-cycle/SKILL.md; do
+  if has "$(whole "$PLUGIN_ROOT/$f")" "if baseline tests fail,"; then
+    fail "$f: still carries a red-baseline sentence with no dependency-folder clause"
+  fi
+done
+
 # Why: the version bump must land in both manifests together and not fall below the patch that carries these rules.
 PLUGIN_VERSION="$(jq -r '.version' "$PLUGIN_ROOT/.claude-plugin/plugin.json")"
 MARKET_VERSION="$(jq -r '.plugins[] | select(.name == "dev-workflow") | .version' "$REPO_ROOT/.claude-plugin/marketplace.json")"
