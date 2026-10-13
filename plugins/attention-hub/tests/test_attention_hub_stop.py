@@ -1,6 +1,6 @@
 """
 Tests for attention_hub_stop.py — attention-hub's own Stop hook. Computes
-needs_input/working(active-subagents)/done and reports directly to the hub;
+needs_input/working(background_tasks, session_crons)/done and reports directly to the hub;
 no macOS/Slack (that stays in the notifications plugin).
 """
 
@@ -81,7 +81,7 @@ def test_agent_session_main_thread_stop_reports(base_hook_input, transcript_with
 
 
 def test_stop_reports_message_snippet(base_hook_input, transcript_without_ask):
-    # Why: red/yellow rows must show WHAT the session finished with.
+    # Why: waiting and done rows must show WHAT the session finished with.
     events = hub_events(run_hook_capture_hub({
         **base_hook_input, "transcript_path": transcript_without_ask,
     }))
@@ -112,44 +112,6 @@ def test_stop_clears_waiting_marker(base_hook_input, transcript_without_ask, mar
     assert not (marker_home / "test-session-123").exists()
 
 
-def test_stop_with_active_subagent_reports_working_not_done(base_hook_input, transcript_without_ask, active_subagent_home):
-    # Why: the core fix -- a Stop while a subagent is still running must report
-    # "working", not "done".
-    marker_dir = active_subagent_home / "test-session-123"
-    marker_dir.mkdir(parents=True)
-    (marker_dir / "marker-1").touch()
-    events = hub_events(run_hook_capture_hub({
-        **base_hook_input, "transcript_path": transcript_without_ask,
-    }))
-    assert len(events) == 1
-    assert events[0]["state"] == "working"
-
-
-def test_stop_with_active_subagent_and_genuine_ask_reports_needs_input(base_hook_input, transcript_with_ask, active_subagent_home):
-    # Why: needs_input always wins, even with background subagents active.
-    marker_dir = active_subagent_home / "test-session-123"
-    marker_dir.mkdir(parents=True)
-    (marker_dir / "marker-1").touch()
-    events = hub_events(run_hook_capture_hub({
-        **base_hook_input, "transcript_path": transcript_with_ask,
-    }))
-    assert len(events) == 1
-    assert events[0]["state"] == "needs_input"
-
-
-def test_stop_forwards_active_work_on_working_branch(base_hook_input, transcript_without_ask, active_subagent_home):
-    # Why: the payload must carry active_work when a subagent is running so the
-    # dashboard can show per-item detail.
-    marker_dir = active_subagent_home / "test-session-123"
-    marker_dir.mkdir(parents=True)
-    (marker_dir / "marker-1").touch()
-    events = hub_events(run_hook_capture_hub({
-        **base_hook_input, "transcript_path": transcript_without_ask,
-    }))
-    assert len(events) == 1
-    assert len(events[0]["active_work"]) == 1
-
-
 def test_stop_exits_zero_when_hub_down(base_hook_input, transcript_without_ask, monkeypatch):
     # Why: graceful degradation -- a dead hub must never error the hook.
     monkeypatch.setenv("CLAUDE_ATTENTION_HUB_URL", "http://127.0.0.1:1")
@@ -167,3 +129,154 @@ def test_stop_exits_zero_when_hub_down(base_hook_input, transcript_without_ask, 
         except SystemExit as e:
             exit_code = e.code or 0
     assert exit_code == 0
+
+
+# Fixtures in fixtures/stop_background_work.json are synthetic: built from the
+# Stop input field list in the Claude Code hooks reference, not live captures.
+
+import pytest
+
+WORK = json.loads((Path(__file__).parent / "fixtures" / "stop_background_work.json").read_text())
+TASK_TYPES = ["shell", "subagent", "monitor", "workflow", "teammate",
+              "cloud session", "MCP task", "unseen"]
+
+
+def stop_events(base_hook_input, transcript, **fields):
+    return hub_events(run_hook_capture_hub({
+        **base_hook_input, "transcript_path": transcript, **fields,
+    }))
+
+
+@pytest.mark.parametrize("task_type", TASK_TYPES)
+def test_stop_with_one_task_reports_working_with_matching_entry(
+        base_hook_input, transcript_without_ask, task_type):
+    # Why: each in-flight task type must make the card working and surface as one
+    # entry carrying its id, type, description and status. Synthetic payload.
+    task = WORK[task_type]
+    events = stop_events(base_hook_input, transcript_without_ask, background_tasks=[task])
+    assert len(events) == 1
+    assert events[0]["state"] == "working"
+    assert events[0]["active_work"] == [{
+        "id": task["id"], "kind": task["type"],
+        "label": task["description"], "status": task["status"],
+    }]
+
+
+def test_stop_with_empty_lists_reports_done_and_explicit_empty_active_work(
+        base_hook_input, transcript_without_ask):
+    # Why: nothing in flight means done, and the explicit empty list is what makes
+    # the hub drop the previous Active work.
+    events = stop_events(base_hook_input, transcript_without_ask,
+                         background_tasks=[], session_crons=[])
+    assert events[0]["state"] == "done"
+    assert events[0]["active_work"] == []
+
+
+def test_stop_without_background_fields_reports_done(base_hook_input, transcript_without_ask):
+    # Why: older Claude Code builds omit both lists; they must read as nothing in
+    # flight, with no marker fallback.
+    events = stop_events(base_hook_input, transcript_without_ask)
+    assert events[0]["state"] == "done"
+    assert events[0]["active_work"] == []
+
+
+@pytest.mark.parametrize("tasks", ["running", 5, {"id": "t"}, [None, "x", 3]])
+def test_stop_with_non_list_or_malformed_tasks_does_not_crash(
+        base_hook_input, transcript_without_ask, tasks):
+    # Why: hook input is untrusted JSON; garbage must degrade to done, not raise.
+    events = stop_events(base_hook_input, transcript_without_ask, background_tasks=tasks)
+    assert len(events) == 1
+    assert events[0]["state"] == "done"
+
+
+def test_stop_counts_only_valid_entries_among_malformed(base_hook_input, transcript_without_ask):
+    # Why: one bad entry must not hide the valid in-flight task beside it.
+    events = stop_events(base_hook_input, transcript_without_ask,
+                         background_tasks=[None, WORK["shell"], "junk"])
+    assert events[0]["state"] == "working"
+    assert [e["id"] for e in events[0]["active_work"]] == ["task-shell-1"]
+
+
+def test_stop_needs_input_wins_over_in_flight_work(base_hook_input, transcript_with_ask):
+    # Why: a pending question outranks background work, but the list must still
+    # reach the card.
+    events = stop_events(base_hook_input, transcript_with_ask,
+                         background_tasks=[WORK["shell"]])
+    assert events[0]["state"] == "needs_input"
+    assert [e["id"] for e in events[0]["active_work"]] == ["task-shell-1"]
+
+
+def test_stop_with_cron_alone_reports_working_with_cron_entry(
+        base_hook_input, transcript_without_ask):
+    # Why: a pending scheduled wakeup means the session will wake itself, so it
+    # is working; the entry id is the cron's own id. Synthetic payload.
+    events = stop_events(base_hook_input, transcript_without_ask,
+                         session_crons=[WORK["cron"]])
+    assert events[0]["state"] == "working"
+    assert events[0]["active_work"] == [{
+        "id": "cron-001", "kind": "cron", "label": "check the build", "status": "scheduled",
+    }]
+
+
+def test_stop_with_cron_and_task_reports_both_entries(base_hook_input, transcript_without_ask):
+    # Why: tasks and crons share one Active work list.
+    events = stop_events(base_hook_input, transcript_without_ask,
+                         background_tasks=[WORK["shell"]], session_crons=[WORK["cron"]])
+    assert events[0]["state"] == "working"
+    assert [e["id"] for e in events[0]["active_work"]] == ["task-shell-1", "cron-001"]
+
+
+def test_stop_skips_cron_without_id(base_hook_input, transcript_without_ask):
+    # Why: without an id the hub cannot keep a stable start time, and an unusable
+    # entry must not flip a finished session to working.
+    events = stop_events(base_hook_input, transcript_without_ask,
+                         session_crons=[{"schedule": "* * * * *", "prompt": "no id"}])
+    assert events[0]["state"] == "done"
+    assert events[0]["active_work"] == []
+
+
+def test_stop_after_shell_exits_reports_working_then_done(base_hook_input, transcript_without_ask):
+    # Why: regression for the stuck-working bug; a shell that exited used to leave
+    # a marker that kept the next Stop at working. Synthetic payloads.
+    first = stop_events(base_hook_input, transcript_without_ask,
+                        background_tasks=[WORK["shell"]])
+    second = stop_events(base_hook_input, transcript_without_ask, background_tasks=[])
+    assert first[0]["state"] == "working"
+    assert len(first[0]["active_work"]) == 1
+    assert second[0]["state"] == "done"
+    assert second[0]["active_work"] == []
+
+
+def test_subagent_originated_stop_with_tasks_reports_nothing(
+        base_hook_input, transcript_without_ask):
+    # Why: a subagent's Stop shares the parent's session_id; its task list must
+    # not overwrite the parent's card.
+    events = stop_events(base_hook_input, transcript_without_ask,
+                         background_tasks=[WORK["shell"]], agent_id="agent-abc123")
+    assert events == []
+
+
+def test_hooks_json_registers_no_pre_tool_use_or_subagent_stop():
+    # Why: the marker design is gone; a lingering registration would launch a
+    # process per tool call (PreToolUse) or flip state on subagent exit.
+    registered = json.loads((HOOKS_DIR / "hooks.json").read_text())["hooks"]
+    assert "PreToolUse" not in registered
+    assert "SubagentStop" not in registered
+
+
+def test_removed_scripts_and_marker_helpers_no_longer_exist():
+    # Why: dead marker code would silently keep the old guess-based state logic
+    # reachable; waiting-marker helpers must survive.
+    assert not (HOOKS_DIR / "attention_hub_pre_tool_use.py").exists()
+    assert not (HOOKS_DIR / "attention_hub_subagent_stop.py").exists()
+    spec = importlib.util.spec_from_file_location(
+        "attention_hub_client", HOOKS_DIR / "attention_hub_client.py")
+    client = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(client)
+    for name in ("mark_subagent_active", "mark_background_active", "list_active_work",
+                 "count_active_subagents", "clear_active_subagent",
+                 "clear_all_active_subagents", "ACTIVE_SUBAGENT_TTL_SECONDS",
+                 "BACKGROUND_SUBAGENT_TTL_SECONDS", "COMPLETED_RETENTION_SECONDS"):
+        assert not hasattr(client, name), name
+    for name in ("set_waiting_marker", "has_waiting_marker", "clear_waiting_marker"):
+        assert hasattr(client, name), name

@@ -1,0 +1,11 @@
+{
+  "shell": {"id": "task-shell-1", "type": "shell", "status": "running", "description": "tail logs", "command": "tail -f /var/log/app.log"},
+  "subagent": {"id": "task-sub-1", "type": "subagent", "status": "running", "description": "explore the repo", "agent_type": "Explore"},
+  "monitor": {"id": "task-mon-1", "type": "monitor", "status": "running", "description": "watch deploy", "server": "example-server", "tool": "watch"},
+  "workflow": {"id": "task-wf-1", "type": "workflow", "status": "running", "description": "nightly checks", "name": "nightly"},
+  "teammate": {"id": "task-team-1", "type": "teammate", "status": "running", "description": "review helper"},
+  "cloud session": {"id": "task-cloud-1", "type": "cloud session", "status": "running", "description": "remote build"},
+  "MCP task": {"id": "task-mcp-1", "type": "MCP task", "status": "running", "description": "index docs", "server": "example-server", "tool": "index"},
+  "unseen": {"id": "task-new-1", "type": "hologram", "status": "warming", "description": "a type the code has never seen"},
+  "cron": {"id": "cron-001", "schedule": "0 9 * * 1-5", "recurring": true, "prompt": "check the build"}
+}

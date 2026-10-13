@@ -70,14 +70,6 @@ def marker_home(isolated_home):
 
 
 @pytest.fixture
-def active_subagent_home(isolated_home):
-    """HOME is already redirected by isolated_home. Returns the
-    active-subagents directory path (parent of each session's own marker
-    subdirectory)."""
-    return isolated_home / ".claude" / "attention-hub" / "active-subagents"
-
-
-@pytest.fixture
 def base_hook_input():
     """Base stdin payload common to all hooks."""
     return {
