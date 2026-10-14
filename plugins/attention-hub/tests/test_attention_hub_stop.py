@@ -324,7 +324,7 @@ def test_stop_with_only_a_cron_sets_inflight_marker(
 
 def test_stop_with_empty_lists_clears_inflight_marker(
         base_hook_input, transcript_without_ask, inflight_home):
-    # Why: once the work is gone a later idle_prompt is real and must report waiting.
+    # Why: once the work is gone the guard must lift so an interrupted turn's idle_prompt can end the card.
     inflight_home.mkdir(parents=True)
     (inflight_home / "test-session-123").touch()
     stop_events(base_hook_input, transcript_without_ask,

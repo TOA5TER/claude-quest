@@ -151,15 +151,118 @@ def test_idle_prompt_with_work_in_flight_reports_nothing(
     assert not (marker_home / "test-session-123").exists()
 
 
-def test_idle_prompt_without_work_in_flight_reports_waiting(
+def test_idle_prompt_with_nothing_pending_reports_done_and_sets_no_marker(
         base_hook_input, transcript_without_ask, marker_home):
-    # Why: with nothing in flight an idle prompt is a real wait and must still show.
+    # Why: live v2 run (2.1.299): every done card turned red about a minute after Stop
+    # because idle_prompt reported waiting. With nothing in flight and nothing pending
+    # the session is idle, so it reports done (this also ends a card an Esc interrupt
+    # left at working, since an interrupted turn sends no Stop) and never waiting.
     events = hub_events(run_hook_capture_hub({
         **base_hook_input, "notification_type": "idle_prompt",
         "transcript_path": transcript_without_ask,
     }))
-    assert [e["state"] for e in events] == ["waiting"]
+    assert [e["state"] for e in events] == ["done"]
+    assert not (marker_home / "test-session-123").exists()
+
+
+def test_idle_prompt_never_overwrites_a_pending_permission_wait(
+        base_hook_input, transcript_without_ask, marker_home):
+    # Why: a permission or elicitation wait is real; a later idle_prompt must not
+    # replace it with done.
+    marker_home.mkdir(parents=True)
+    (marker_home / "test-session-123").touch()
+    requests = run_hook_capture_hub({
+        **base_hook_input, "notification_type": "idle_prompt",
+        "transcript_path": transcript_without_ask,
+    })
+    assert hub_events(requests) == []
     assert (marker_home / "test-session-123").is_file()
+
+
+def test_idle_prompt_leaves_a_needs_input_card_alone(
+        base_hook_input, transcript_with_ask, marker_home):
+    # Why: a Stop after AskUserQuestion reported needs_input; an idle prompt while that
+    # question is still open must not turn the card done.
+    events = hub_events(run_hook_capture_hub({
+        **base_hook_input, "notification_type": "idle_prompt",
+        "transcript_path": transcript_with_ask,
+    }))
+    assert events == []
+
+
+def replay_through_hub(tmp_path, steps):
+    """Feed each hook's real event through the hub store and return the state after each."""
+    import importlib.util as ilu
+    spec = ilu.spec_from_file_location("attention_hub", HOOKS_DIR.parent / "hub" / "attention_hub.py")
+    hub = ilu.module_from_spec(spec)
+    spec.loader.exec_module(hub)
+    store = hub.AttentionStore(str(tmp_path / "state.json"))
+    states = []
+    for script, hook_input in steps:
+        if script == "notification":
+            events = hub_events(run_hook_capture_hub(hook_input))
+        else:
+            events = stop_hook_events(hook_input)
+        for event in events:
+            store.upsert(event)
+        states.append(store.list_sessions()[0]["state"] if store.list_sessions() else None)
+    return states
+
+
+def stop_hook_events(hook_input):
+    spec = importlib.util.spec_from_file_location("attention_hub_stop", HOOKS_DIR / "attention_hub_stop.py")
+    requests = []
+
+    def capture(req, timeout=None):
+        requests.append(json.loads(req.data.decode("utf-8")) if req.data else None)
+        return MagicMock(status=200)
+
+    with patch("sys.stdin", StringIO(json.dumps(hook_input))), \
+         patch("urllib.request.urlopen", side_effect=capture):
+        mod = importlib.util.module_from_spec(spec)
+        try:
+            spec.loader.exec_module(mod)
+            mod.main()
+        except SystemExit:
+            pass
+    return [r for r in requests if r and "state" in r]
+
+
+def test_replay_done_then_idle_prompt_keeps_the_card_done(
+        base_hook_input, transcript_without_ask, tmp_path):
+    # Why: this is the trace from the live run: done at Stop, then an idle_prompt about
+    # a minute later turned the card waiting. It must stay done.
+    base = {**base_hook_input, "transcript_path": transcript_without_ask}
+    states = replay_through_hub(tmp_path, [
+        ("stop", {**base, "background_tasks": [], "session_crons": []}),
+        ("notification", {**base, "notification_type": "idle_prompt"}),
+    ])
+    assert states == ["done", "done"]
+
+
+def test_replay_in_flight_work_survives_idle_prompt(
+        base_hook_input, transcript_without_ask, tmp_path):
+    # Why: the earlier in-flight case must still hold: working stays working.
+    base = {**base_hook_input, "transcript_path": transcript_without_ask}
+    shell = {"id": "b1", "type": "shell", "status": "running", "description": "sleep"}
+    states = replay_through_hub(tmp_path, [
+        ("stop", {**base, "background_tasks": [shell], "session_crons": []}),
+        ("notification", {**base, "notification_type": "idle_prompt"}),
+    ])
+    assert states == ["working", "working"]
+
+
+def test_replay_permission_prompt_still_turns_the_card_waiting(
+        base_hook_input, transcript_without_ask, tmp_path):
+    # Why: only idle_prompt was demoted; a permission prompt after a done Stop must
+    # still show as waiting, and a later idle_prompt must not clear it.
+    base = {**base_hook_input, "transcript_path": transcript_without_ask}
+    states = replay_through_hub(tmp_path, [
+        ("stop", {**base, "background_tasks": [], "session_crons": []}),
+        ("notification", {**base, "notification_type": "permission_prompt"}),
+        ("notification", {**base, "notification_type": "idle_prompt"}),
+    ])
+    assert states == ["done", "waiting", "waiting"]
 
 
 @pytest.mark.parametrize("notification_type", ["permission_prompt", "elicitation_dialog"])
