@@ -41,7 +41,8 @@ def main():
         clear_waiting_marker(session_id)
 
         success = report_state(session_id, input_data.get("cwd", ""), "working",
-                               session_name=get_session_name(input_data))
+                               session_name=get_session_name(input_data),
+                               transcript_path=input_data.get("transcript_path"))
         log_hub(f"UserPromptSubmit -> working for {session_id}: {'ok' if success else 'hub unreachable'}")
         sys.exit(0)
     except json.JSONDecodeError:

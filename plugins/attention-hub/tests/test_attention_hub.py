@@ -1442,3 +1442,86 @@ def test_dashboard_empty_state_and_count_use_flat_list():
     hub = load_hub()
     assert 'getElementById("empty").hidden = sessions.length > 0' in hub.DASHBOARD_HTML
     assert "sessions.length + \" session\"" in hub.DASHBOARD_HTML
+
+
+def supersedes_event(session_id, supersedes, **kwargs):
+    return {**named_event(session_id, name="", **kwargs), "supersedes": supersedes}
+
+
+def test_unnamed_continuation_drops_the_old_working_row(tmp_path):
+    # Why: an unnamed session moved to a new ID mid-turn left the old ID's row at
+    # working forever, because name-based supersede never applies to unnamed rows.
+    hub = load_hub()
+    store = hub.AttentionStore(str(tmp_path / "state.json"))
+    store.upsert(named_event("old", name="", state="working"))
+    store.upsert(supersedes_event("new", ["old"], state="done"))
+    assert [(s["session_id"], s["state"]) for s in store.list_sessions()] == [("new", "done")]
+    reloaded = hub.AttentionStore(str(tmp_path / "state.json"))
+    assert [s["session_id"] for s in reloaded.list_sessions()] == ["new"]
+
+
+def test_continuation_chain_drops_every_listed_row(tmp_path):
+    # Why: A continued into B and B into C; the newest session lists both ancestors
+    # and both stale rows must go.
+    hub = load_hub()
+    store = hub.AttentionStore(str(tmp_path / "state.json"))
+    for sid in ("a", "b"):
+        store.upsert(named_event(sid, name="", state="working"))
+    store.upsert(supersedes_event("c", ["a", "b"]))
+    assert [s["session_id"] for s in store.list_sessions()] == ["c"]
+
+
+def test_continuation_leaves_unlisted_and_finished_rows_alone(tmp_path):
+    # Why: only the IDs the reporter proved are removed; an unrelated session, even
+    # one that legitimately finished, must keep its row.
+    hub = load_hub()
+    store = hub.AttentionStore(str(tmp_path / "state.json"))
+    store.upsert(named_event("finished", name="", state="done"))
+    store.upsert(named_event("busy", name="", state="working"))
+    store.upsert(named_event("old", name="", state="working"))
+    store.upsert(supersedes_event("new", ["old"]))
+    assert sorted(s["session_id"] for s in store.list_sessions()) == ["busy", "finished", "new"]
+
+
+def test_continuation_ignores_rows_from_another_host(tmp_path):
+    # Why: session IDs are only unique per machine's reporter, so a list from one
+    # host must not delete another host's row.
+    hub = load_hub()
+    store = hub.AttentionStore(str(tmp_path / "state.json"))
+    store.upsert(named_event("old", name="", host="other-mac", state="working"))
+    store.upsert(supersedes_event("new", ["old"], host="mac"))
+    assert sorted(s["session_id"] for s in store.list_sessions()) == ["new", "old"]
+
+
+def test_continuation_never_removes_the_reporters_own_row(tmp_path):
+    # Why: a list naming the reporter itself must not delete the row being written.
+    hub = load_hub()
+    store = hub.AttentionStore(str(tmp_path / "state.json"))
+    store.upsert(supersedes_event("same", ["same"]))
+    assert [s["session_id"] for s in store.list_sessions()] == ["same"]
+
+
+@pytest.mark.parametrize("bad", [
+    "old", {"old": 1}, 7, None, [None], [7], [["old"]], [{"id": "old"}], [True], [""],
+    ["../old"], ["o" * 5000],
+])
+def test_malformed_continuation_lists_remove_nothing_and_do_not_crash(tmp_path, bad):
+    # Why: the event body is untrusted JSON; a wrong-typed or hostile list must
+    # neither crash the handler nor delete a row that merely looks similar.
+    hub = load_hub()
+    store = hub.AttentionStore(str(tmp_path / "state.json"))
+    store.upsert(named_event("old", name="", state="working"))
+    store.upsert(supersedes_event("new", bad))
+    assert sorted(s["session_id"] for s in store.list_sessions()) == ["new", "old"]
+
+
+def test_continuation_list_is_capped(tmp_path):
+    # Why: a body can carry an enormous list; only the first entries are honored so
+    # one event cannot sweep the whole table.
+    hub = load_hub()
+    store = hub.AttentionStore(str(tmp_path / "state.json"))
+    ids = [f"s{i}" for i in range(hub.SUPERSEDES_MAX + 3)]
+    for sid in ids:
+        store.upsert(named_event(sid, name="", state="working"))
+    store.upsert(supersedes_event("new", ids))
+    assert sorted(s["session_id"] for s in store.list_sessions()) == sorted(ids[hub.SUPERSEDES_MAX:] + ["new"])

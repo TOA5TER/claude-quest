@@ -25,6 +25,11 @@ MESSAGE_SNIPPET_MAX = 200
 SESSION_NAME_MAX = 256
 LABEL_MAX_CHARS = 256
 IDENT_MAX_CHARS = 64
+CONTINUATION_MAX_IDS = 10
+CONTINUATION_MAX_HOPS = 5
+CONTINUATION_HEAD_BYTES = 256 * 1024
+CONTINUATION_TAIL_BYTES = 8 * 1024
+SESSION_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}")
 # Mirrors ACTIVE_WORK_MAX in hub/attention_hub.py; keep both in step.
 ACTIVE_WORK_SEND_MAX = 10
 STAGE_TERMINAL_STAGES = frozenset({"done", "finished"})
@@ -395,7 +400,74 @@ def get_story_title(story_id):
         return ""
 
 
-def build_event_payload(session_id, cwd, state, message=None, session_name=None, active_work=None):
+def _continued_in(transcript_dir, old_id):
+    """The session ID a transcript says it continued into, or None.
+
+    Claude Code ends the old transcript with a continued-in record when it moves
+    a running conversation to a new session ID. Best-effort: any read or parse
+    problem means "no continuation".
+    """
+    try:
+        path = transcript_dir / f"{old_id}.jsonl"
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            f.seek(max(0, size - CONTINUATION_TAIL_BYTES))
+            lines = f.read().splitlines()
+        record = json.loads(lines[-1]) if lines else None
+        if not isinstance(record, dict) or record.get("type") != "continued-in":
+            return None
+        target = record.get("continuedInSessionId")
+        if isinstance(target, str) and SESSION_ID_RE.fullmatch(target):
+            return target
+    except Exception:
+        pass
+    return None
+
+
+def continued_from(transcript_path, session_id):
+    """IDs of earlier sessions this session continues, oldest first. Never raises.
+
+    A continued conversation copies the old records into the new transcript with
+    their original `session_id` kept, but the copy alone is not proof: a fork
+    copies them too while the original keeps running. So each candidate ID counts
+    only if its own transcript's last record is a continued-in link that leads,
+    within a few hops, to this session.
+    """
+    try:
+        if not transcript_path or not session_id:
+            return []
+        transcript = Path(transcript_path)
+        with open(transcript, "rb") as f:
+            head = f.read(CONTINUATION_HEAD_BYTES)
+        candidates = []
+        for line in head.splitlines():
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            old_id = record.get("session_id") if isinstance(record, dict) else None
+            if (isinstance(old_id, str) and old_id != session_id
+                    and SESSION_ID_RE.fullmatch(old_id) and old_id not in candidates):
+                candidates.append(old_id)
+        found = []
+        for start in candidates:
+            chain, current = [], start
+            for _ in range(CONTINUATION_MAX_HOPS):
+                chain.append(current)
+                current = _continued_in(transcript.parent, current)
+                if current is None or current in chain:
+                    break
+                if current == session_id:
+                    found.extend(i for i in chain if i not in found)
+                    break
+        return found[:CONTINUATION_MAX_IDS]
+    except Exception:
+        return []
+
+
+def build_event_payload(session_id, cwd, state, message=None, session_name=None, active_work=None,
+                        supersedes=None):
     """Build the state-event payload identifying this session to the hub."""
     snippet = (message or "").strip()
     if len(snippet) > MESSAGE_SNIPPET_MAX:
@@ -418,6 +490,8 @@ def build_event_payload(session_id, cwd, state, message=None, session_name=None,
         payload["story_title"] = story_title
     if active_work is not None:
         payload["active_work"] = active_work[:ACTIVE_WORK_SEND_MAX]
+    if supersedes:
+        payload["supersedes"] = list(supersedes)[:CONTINUATION_MAX_IDS]
     return payload
 
 
@@ -471,11 +545,13 @@ def _request(url, method, body=None):
     return result["ok"]
 
 
-def report_state(session_id, cwd, state, message=None, session_name=None, active_work=None):
+def report_state(session_id, cwd, state, message=None, session_name=None, active_work=None,
+                 transcript_path=None):
     """POST a state event to the hub. Swallows every failure; returns success bool."""
     if not session_id:
         return False
-    payload = build_event_payload(session_id, cwd, state, message, session_name, active_work)
+    payload = build_event_payload(session_id, cwd, state, message, session_name, active_work,
+                                  supersedes=continued_from(transcript_path, session_id))
     return _request(f"{get_hub_url()}/api/events", "POST", payload)
 
 

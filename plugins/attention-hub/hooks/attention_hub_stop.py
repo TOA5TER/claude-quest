@@ -80,6 +80,7 @@ def main():
 
         success = report_state(session_id, input_data.get("cwd", ""), hub_state, message,
                                session_name=get_session_name(input_data),
+                               transcript_path=input_data.get("transcript_path"),
                                active_work=active_work)
         log_hub(f"Stop -> {hub_state} for {session_id}: {'ok' if success else 'hub unreachable'}")
         sys.exit(0)

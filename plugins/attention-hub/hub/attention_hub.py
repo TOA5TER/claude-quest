@@ -50,6 +50,7 @@ CWD_MAX_CHARS = 4096
 
 # Bounded per-session status-transition history (oldest entries drop first).
 HISTORY_MAX = 20
+SUPERSEDES_MAX = 10
 HISTORY_SOURCES = {"hook", "manual"}
 ACTIVE_WORK_MAX = 10
 
@@ -191,6 +192,7 @@ class AttentionStore:
             host = _clamp(event.get("host") or (existing or {}).get("host")
                           or "unknown", FIELD_MAX_CHARS)
             self._drop_superseded_locked(session_id, session_name, host)
+            self._drop_continued_locked(session_id, event.get("supersedes"), host)
             record = {
                 "session_id": session_id,
                 "session_name": session_name,
@@ -232,6 +234,23 @@ class AttentionStore:
                  and record.get("host") == host]
         for sid in stale:
             del self._sessions[sid]
+
+    def _drop_continued_locked(self, session_id, supersedes, host):
+        """Remove the rows this session says it continues, named or not.
+
+        The reporting hook proves each ID from the transcripts (the old one ends
+        with a link to the new one), so the hub trusts the list but still bounds
+        it: only strings, a capped number of them, never the reporter's own row,
+        and only rows from the same host.
+        """
+        if not isinstance(supersedes, list):
+            return
+        for old_id in supersedes[:SUPERSEDES_MAX]:
+            if not isinstance(old_id, str) or old_id == session_id:
+                continue
+            record = self._sessions.get(old_id)
+            if record is not None and record.get("host") == host:
+                del self._sessions[old_id]
 
     @staticmethod
     def _next_story_title(existing, session_name, event):
