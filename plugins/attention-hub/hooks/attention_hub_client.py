@@ -26,6 +26,7 @@ MESSAGE_SNIPPET_MAX = 200
 SESSION_NAME_MAX = 256
 LABEL_MAX_CHARS = 256
 IDENT_MAX_CHARS = 64
+IDLE_TRANSCRIPT_QUIET_SECONDS = 30
 CONTINUATION_MAX_IDS = 10
 CONTINUATION_MAX_HOPS = 5
 CONTINUATION_HEAD_BYTES = 256 * 1024
@@ -418,6 +419,22 @@ def _open_regular(path):
     except Exception:
         os.close(fd)
         raise
+
+
+def transcript_recently_modified(transcript_path, within_seconds=IDLE_TRANSCRIPT_QUIET_SECONDS):
+    """True if the transcript regular file was written to within the last few seconds.
+
+    A turn that is actively running keeps appending to its transcript, so a recent
+    write means the session is not idle. A missing, unreadable or special file counts
+    as not recent. Never raises, never blocks, reads no content.
+    """
+    try:
+        if not transcript_path:
+            return False
+        with _open_regular(transcript_path) as f:
+            return time.time() - os.fstat(f.fileno()).st_mtime < within_seconds
+    except Exception:
+        return False
 
 
 def _continued_in(transcript_dir, old_id):

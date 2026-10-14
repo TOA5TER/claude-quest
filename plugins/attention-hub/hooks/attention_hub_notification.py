@@ -10,7 +10,7 @@ from pathlib import Path
 
 try:
     from attention_hub_client import report_state, log_hub, get_session_name, set_waiting_marker, has_inflight_marker, \
-        has_waiting_marker
+        has_waiting_marker, transcript_recently_modified
 except ImportError:
     import importlib.util
     hub_spec = importlib.util.spec_from_file_location(
@@ -25,6 +25,7 @@ except ImportError:
     set_waiting_marker = attention_hub_client.set_waiting_marker
     has_inflight_marker = attention_hub_client.has_inflight_marker
     has_waiting_marker = attention_hub_client.has_waiting_marker
+    transcript_recently_modified = attention_hub_client.transcript_recently_modified
 
 try:
     from attention_hub_transcript import extract_latest_message, has_ask_user_question
@@ -39,13 +40,15 @@ except ImportError:
     extract_latest_message = attention_hub_transcript.extract_latest_message
     has_ask_user_question = attention_hub_transcript.has_ask_user_question
 
-# Notification types that mean the agent is blocked and needs user action.
+# Notification types this hook handles. permission_prompt and elicitation_dialog mean the
+# user is blocked and report waiting; idle_prompt has its own rule in main().
 ACTIONABLE_NOTIFICATION_TYPES = {"permission_prompt", "idle_prompt", "elicitation_dialog"}
 
 
 def main():
-    # Notification: report "waiting" to the hub for actionable notification
-    # types only. No macOS/Slack here -- that stays in the notifications plugin.
+    # Notification: report "waiting" for permission and elicitation prompts; idle_prompt
+    # never reports waiting (see below). No macOS/Slack here -- that stays in the
+    # notifications plugin.
     try:
         input_data = json.load(sys.stdin)
         session_id = input_data.get("session_id", "")
@@ -68,8 +71,14 @@ def main():
             if has_waiting_marker(session_id) or has_ask_user_question(transcript_path):
                 log_hub(f"Notification idle_prompt ignored for {session_id}: a wait or question is pending")
                 sys.exit(0)
+            # A late idle_prompt can land just after a new prompt was submitted; a turn
+            # that is running keeps writing its transcript, so a recent write means the
+            # card is genuinely working and must not be set to done.
+            if transcript_recently_modified(transcript_path):
+                log_hub(f"Notification idle_prompt ignored for {session_id}: transcript is still being written")
+                sys.exit(0)
             # No Stop is sent when a turn is interrupted, which leaves the card working;
-            # an idle prompt with nothing pending is the only sign it ended.
+            # an idle prompt on a quiet transcript is the only sign it ended.
             message = extract_latest_message(transcript_path) or input_data.get("message", "")
             success = report_state(session_id, input_data.get("cwd", ""), "done", message,
                                    session_name=get_session_name(input_data),
