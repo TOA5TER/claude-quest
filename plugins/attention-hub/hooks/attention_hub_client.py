@@ -11,6 +11,7 @@ import json
 import os
 import re
 import socket
+import stat
 import threading
 import time
 import urllib.error
@@ -400,6 +401,25 @@ def get_story_title(story_id):
         return ""
 
 
+def _open_regular(path):
+    """Open a regular file for reading without ever blocking, or raise.
+
+    A FIFO would block a plain open() until a writer appears and a character
+    device such as /dev/zero would read forever, either of which would hang or
+    exhaust a hook. O_NONBLOCK makes the open return at once and fstat on the
+    opened descriptor (after any symlink is followed) rejects anything that is
+    not a regular file.
+    """
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError("not a regular file")
+        return os.fdopen(fd, "rb")
+    except Exception:
+        os.close(fd)
+        raise
+
+
 def _continued_in(transcript_dir, old_id):
     """The session ID a transcript says it continued into, or None.
 
@@ -409,11 +429,11 @@ def _continued_in(transcript_dir, old_id):
     """
     try:
         path = transcript_dir / f"{old_id}.jsonl"
-        with open(path, "rb") as f:
+        with _open_regular(path) as f:
             f.seek(0, os.SEEK_END)
             size = f.tell()
             f.seek(max(0, size - CONTINUATION_TAIL_BYTES))
-            lines = f.read().splitlines()
+            lines = f.read(CONTINUATION_TAIL_BYTES).splitlines()
         record = json.loads(lines[-1]) if lines else None
         if not isinstance(record, dict) or record.get("type") != "continued-in":
             return None
@@ -438,7 +458,7 @@ def continued_from(transcript_path, session_id):
         if not transcript_path or not session_id:
             return []
         transcript = Path(transcript_path)
-        with open(transcript, "rb") as f:
+        with _open_regular(transcript) as f:
             head = f.read(CONTINUATION_HEAD_BYTES)
         candidates = []
         for line in head.splitlines():

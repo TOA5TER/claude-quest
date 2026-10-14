@@ -231,3 +231,99 @@ def test_stop_hook_still_reports_when_the_transcript_is_unreadable(tmp_path):
                       {"session_id": "s", "transcript_path": str(tmp_path / "missing.jsonl"), "cwd": "/fake/p"})
     assert [e["state"] for e in events] == ["done"]
     assert "supersedes" not in events[0]
+
+
+import os
+import resource
+import subprocess
+import sys
+
+CHILD = """
+import importlib.util, json, resource, sys
+resource.setrlimit(resource.RLIMIT_AS, (1 << 30, 1 << 30))
+spec = importlib.util.spec_from_file_location("c", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+print(json.dumps(mod.continued_from(sys.argv[2], sys.argv[3])))
+"""
+
+
+def continued_from_in_child(transcript, session_id):
+    """Run continued_from in a child process with a deadline and a memory cap.
+
+    A regression that blocks on a FIFO or reads a device forever then fails the
+    test by timeout instead of hanging or exhausting memory in the test run.
+    """
+    done = subprocess.run(
+        [sys.executable, "-I", "-c", CHILD, str(HOOKS_DIR / "attention_hub_client.py"), transcript, session_id],
+        capture_output=True, text=True, timeout=10)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+def make_special(directory, name, kind):
+    path = directory / f"{name}.jsonl"
+    if kind == "fifo":
+        os.mkfifo(path)
+    else:
+        if not Path("/dev/zero").exists():
+            pytest.skip("no /dev/zero on this platform")
+        os.symlink("/dev/zero", path)
+    return path
+
+
+@pytest.mark.parametrize("kind", ["fifo", "chardev"])
+def test_open_regular_rejects_special_files_at_once(client, tmp_path, kind):
+    # Why: the guard itself must refuse a FIFO or a symlink to a character device
+    # without blocking or reading; checked directly because continued_from swallows errors.
+    special = make_special(tmp_path, "special", kind)
+    with pytest.raises(OSError):
+        client._open_regular(special)
+
+
+@pytest.mark.parametrize("kind", ["fifo", "chardev"])
+def test_special_file_as_old_transcript_returns_quickly_and_retires_nothing(tmp_path, kind):
+    # Why: a Stop hook must never hang or exhaust memory on a hostile file planted
+    # where an earlier session's transcript would be (a FIFO blocks open, /dev/zero
+    # never ends); the child process has a deadline so a regression fails, not hangs.
+    make_special(tmp_path, "old", kind)
+    new = write_transcript(tmp_path, "new", copied_from=["old"])
+    assert continued_from_in_child(new, "new") == []
+
+
+@pytest.mark.parametrize("kind", ["fifo", "chardev"])
+def test_special_file_beside_a_real_chain_does_not_block_the_real_one(tmp_path, kind):
+    # Why: one hostile candidate must not stop a genuine continuation from being
+    # found in the same transcript.
+    make_special(tmp_path, "evil", kind)
+    write_transcript(tmp_path, "old", continued_into="new")
+    new = write_transcript(tmp_path, "new", copied_from=["evil", "old"])
+    assert continued_from_in_child(new, "new") == ["old"]
+
+
+@pytest.mark.parametrize("kind", ["fifo", "chardev"])
+def test_special_file_as_the_reporters_own_transcript_returns_quickly(tmp_path, kind):
+    # Why: the bounded head read of the reporter's own transcript uses the same guard.
+    special = make_special(tmp_path, "new", kind)
+    assert continued_from_in_child(str(special), "new") == []
+
+
+def test_symlink_to_a_regular_old_transcript_still_works(client, tmp_path):
+    # Why: the guard rejects by file type, not by symlink, so a transcript that is a
+    # symlink to a real file keeps working.
+    real = tmp_path / "elsewhere"
+    real.mkdir()
+    write_transcript(real, "old", continued_into="new")
+    os.symlink(real / "old.jsonl", tmp_path / "old.jsonl")
+    new = write_transcript(tmp_path, "new", copied_from=["old"])
+    assert client.continued_from(new, "new") == ["old"]
+
+
+def test_old_transcript_tail_read_is_bounded(client, tmp_path):
+    # Why: only the last few kilobytes are read, so a link buried before a huge
+    # final record is not found and memory stays bounded.
+    path = tmp_path / "old.jsonl"
+    link = json.dumps({"type": "continued-in", "continuedInSessionId": "new"})
+    path.write_text(link + "\n" + json.dumps({"type": "assistant", "blob": "x" * (client.CONTINUATION_TAIL_BYTES * 3)}) + "\n")
+    new = write_transcript(tmp_path, "new", copied_from=["old"])
+    assert client.continued_from(new, "new") == []
