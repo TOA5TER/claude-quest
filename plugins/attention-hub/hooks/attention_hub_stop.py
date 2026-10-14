@@ -11,7 +11,7 @@ from pathlib import Path
 try:
     from attention_hub_client import (
         report_state, log_hub, get_session_name, clear_waiting_marker,
-        background_work_entries,
+        background_work_entries, set_inflight_marker, clear_inflight_marker,
         is_subagent_event,
     )
 except ImportError:
@@ -28,6 +28,8 @@ except ImportError:
     get_session_name = attention_hub_client.get_session_name
     clear_waiting_marker = attention_hub_client.clear_waiting_marker
     background_work_entries = attention_hub_client.background_work_entries
+    set_inflight_marker = attention_hub_client.set_inflight_marker
+    clear_inflight_marker = attention_hub_client.clear_inflight_marker
 
 try:
     from attention_hub_transcript import extract_latest_message, has_ask_user_question
@@ -61,6 +63,11 @@ def main():
         clear_waiting_marker(session_id)
         active_work = background_work_entries(
             input_data.get("background_tasks"), input_data.get("session_crons"))
+        # Lets the Notification hook ignore idle_prompt while work is in flight.
+        if active_work:
+            set_inflight_marker(session_id)
+        else:
+            clear_inflight_marker(session_id)
 
         message = extract_latest_message(transcript_path)
 

@@ -162,19 +162,61 @@ def get_session_name(input_data):
         return ""
 
 
-def _waiting_marker_path(session_id):
+def _marker_path(subdir, session_id):
     """Marker file path for a session, or None if the ID is unusable.
 
     The session ID becomes a filename, so reject anything empty, containing
-    path separators, or that is a traversal component. Markers live in a
-    dedicated subdirectory of ~/.claude/attention-hub/ so all of the plugin's
+    path separators, or that is a traversal component. Markers live in
+    dedicated subdirectories of ~/.claude/attention-hub/ so all of the plugin's
     transient state sits under one gitignorable path.
     """
     session_id = str(session_id or "").strip()
     if (not session_id or "/" in session_id or "\\" in session_id
             or "\x00" in session_id or session_id in (".", "..")):
         return None
-    return Path.home() / ".claude" / "attention-hub" / "waiting-markers" / session_id
+    return Path.home() / ".claude" / "attention-hub" / subdir / session_id
+
+
+def _waiting_marker_path(session_id):
+    return _marker_path("waiting-markers", session_id)
+
+
+def _inflight_marker_path(session_id):
+    return _marker_path("inflight-markers", session_id)
+
+
+def set_inflight_marker(session_id):
+    """Record that the session's last Stop listed background work. Never raises."""
+    try:
+        path = _inflight_marker_path(session_id)
+        if path is None:
+            return False
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+        return True
+    except Exception:
+        return False
+
+
+def has_inflight_marker(session_id):
+    """True if the session's last Stop listed background work. Never raises."""
+    try:
+        path = _inflight_marker_path(session_id)
+        return path is not None and path.is_file()
+    except Exception:
+        return False
+
+
+def clear_inflight_marker(session_id):
+    """Remove the in-flight marker; return True if it existed. Never raises."""
+    try:
+        path = _inflight_marker_path(session_id)
+        if path is None or not path.is_file():
+            return False
+        path.unlink()
+        return True
+    except Exception:
+        return False
 
 
 def set_waiting_marker(session_id):

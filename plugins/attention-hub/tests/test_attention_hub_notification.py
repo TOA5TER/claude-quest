@@ -6,6 +6,7 @@ the notifications plugin).
 
 import importlib.util
 import json
+import pytest
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -132,3 +133,47 @@ def test_notification_exits_zero_when_hub_down(base_hook_input, transcript_witho
         except SystemExit as e:
             exit_code = e.code or 0
     assert exit_code == 0
+
+
+def test_idle_prompt_with_work_in_flight_reports_nothing(
+        base_hook_input, transcript_without_ask, marker_home):
+    # Why: live capture on Claude Code 2.1.277 showed idle_prompt firing about a
+    # minute after a Stop that listed a running shell; reporting waiting there
+    # turned a healthy working card red.
+    inflight = marker_home.parent / "inflight-markers"
+    inflight.mkdir(parents=True)
+    (inflight / "test-session-123").touch()
+    requests = run_hook_capture_hub({
+        **base_hook_input, "notification_type": "idle_prompt",
+        "transcript_path": transcript_without_ask,
+    })
+    assert hub_events(requests) == []
+    assert not (marker_home / "test-session-123").exists()
+
+
+def test_idle_prompt_without_work_in_flight_reports_waiting(
+        base_hook_input, transcript_without_ask, marker_home):
+    # Why: with nothing in flight an idle prompt is a real wait and must still show.
+    events = hub_events(run_hook_capture_hub({
+        **base_hook_input, "notification_type": "idle_prompt",
+        "transcript_path": transcript_without_ask,
+    }))
+    assert [e["state"] for e in events] == ["waiting"]
+    assert (marker_home / "test-session-123").is_file()
+
+
+@pytest.mark.parametrize("notification_type", ["permission_prompt", "elicitation_dialog"])
+@pytest.mark.parametrize("in_flight", [True, False])
+def test_blocking_prompts_report_waiting_even_with_work_in_flight(
+        base_hook_input, transcript_without_ask, marker_home, notification_type, in_flight):
+    # Why: a permission or elicitation prompt blocks the user whatever else is
+    # running, so only idle_prompt may be suppressed by the in-flight guard.
+    if in_flight:
+        inflight = marker_home.parent / "inflight-markers"
+        inflight.mkdir(parents=True)
+        (inflight / "test-session-123").touch()
+    events = hub_events(run_hook_capture_hub({
+        **base_hook_input, "notification_type": notification_type,
+        "transcript_path": transcript_without_ask,
+    }))
+    assert [e["state"] for e in events] == ["waiting"]

@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 try:
-    from attention_hub_client import report_state, log_hub, get_session_name, set_waiting_marker
+    from attention_hub_client import report_state, log_hub, get_session_name, set_waiting_marker, has_inflight_marker
 except ImportError:
     import importlib.util
     hub_spec = importlib.util.spec_from_file_location(
@@ -22,6 +22,7 @@ except ImportError:
     log_hub = attention_hub_client.log_hub
     get_session_name = attention_hub_client.get_session_name
     set_waiting_marker = attention_hub_client.set_waiting_marker
+    has_inflight_marker = attention_hub_client.has_inflight_marker
 
 try:
     from attention_hub_transcript import extract_latest_message
@@ -52,6 +53,12 @@ def main():
             sys.exit(0)
 
         if not session_id:
+            sys.exit(0)
+
+        # Claude Code fires idle_prompt while a background shell is still running; the
+        # user is not blocked then, so the card must stay working.
+        if notification_type == "idle_prompt" and has_inflight_marker(session_id):
+            log_hub(f"Notification idle_prompt ignored for {session_id}: background work in flight")
             sys.exit(0)
 
         message = extract_latest_message(transcript_path) or input_data.get("message", "")

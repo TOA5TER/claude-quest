@@ -62,15 +62,15 @@ Responses: `200` with the updated record, `400` for a missing/invalid state or m
 
 This plugin ships Claude Code hooks that report session state to the dashboard automatically once installed — no configuration needed, and no other plugin required:
 
-- **Notification hook**: Reports `waiting` to the hub for actionable notification types (permission prompts, idle prompts, elicitation dialogs) and sets the waiting marker
-- **Stop hook**: Computes and reports `needs_input` (AskUserQuestion was used), `working` (a background task or scheduled wakeup is still in flight), or `done`. The decision reads the Stop input's `background_tasks` and `session_crons` lists (see Active Work Tracking below)
+- **Notification hook**: Reports `waiting` to the hub for actionable notification types (permission prompts, idle prompts, elicitation dialogs) and sets the waiting marker. An `idle_prompt` is ignored entirely while the session's last Stop listed background work (see the in-flight guard below); permission prompts and elicitation dialogs always report
+- **Stop hook**: Computes and reports `needs_input` (AskUserQuestion was used), `working` (a background task or scheduled wakeup is still in flight), or `done`, and keeps the in-flight marker in step with that list. The decision reads the Stop input's `background_tasks` and `session_crons` lists (see Active Work Tracking below)
 - **PostToolUse hook**: Reports `working` to the hub when a tool completes after the session was flagged `waiting` (a tool can only complete once a pending permission/question was answered). Gated by a per-session marker file, so on normal tool calls (no marker) it exits instantly with zero network activity
 - **UserPromptSubmit hook**: Reports `working` to the hub — answering a session automatically clears its needs-attention state
-- **SessionEnd hook**: Removes the session from the hub (and cleans up its waiting marker)
+- **SessionEnd hook**: Removes the session from the hub (and cleans up its waiting and in-flight markers)
 
 The UserPromptSubmit, PostToolUse, Stop and SessionEnd hooks ignore events carrying `agent_id` (fired inside a subagent), so a subagent never overwrites its parent's row or creates one of its own. The Notification hook does not filter: a subagent's permission prompt blocks the parent, so it reports `waiting` on the parent's row. Sessions launched with `--agent` carry only `agent_type` on their main thread and are tracked normally.
 
-Transient hook state (waiting markers) lives under `~/.claude/attention-hub/`.
+Transient hook state (waiting markers and in-flight markers) lives under `~/.claude/attention-hub/`.
 
 Installing this plugin alone gives a Claude Code session the complete waiting/needs_input/done/working lifecycle on the dashboard — no other plugin required. If the [`notifications`](../notifications) plugin is also installed, its own hooks handle macOS/Slack notifications independently, with zero shared code between the two plugins. Any other agent that wants to report state can also POST directly to the [HTTP API](#http-api) documented below.
 
@@ -81,7 +81,7 @@ The Active work list on a card comes from these lists in the Stop hook's input, 
 - `background_tasks` — one entry per in-flight shell, subagent, monitor, workflow, teammate, cloud session or MCP task. Each becomes an Active work entry with its ID, its type as the kind, its description as the label and its status verbatim. Any entry in the list counts as in flight; the hook never filters on status.
 - `session_crons` — one entry per pending scheduled wakeup (`/loop`, `ScheduleWakeup`, `CronCreate`). Each becomes an entry of kind `cron` keyed by the cron's own ID, with the prompt as the label and status `scheduled`.
 
-The state rule at each Stop is: `needs_input` when the transcript shows an `AskUserQuestion`, else `working` when either list has an entry, else `done`. A Stop with no `background_tasks` field is treated as nothing in flight and reports `done`; there is no marker fallback. Builds of Claude Code whose Stop input lacks these fields therefore report `done` with no background tracking. The minimum build that carries the fields has not been pinned yet.
+The state rule at each Stop is: `needs_input` when the transcript shows an `AskUserQuestion`, else `working` when either list has an entry, else `done`. A Stop with no `background_tasks` field is treated as nothing in flight and reports `done`; there is no marker fallback. Builds of Claude Code whose Stop input lacks these fields therefore report `done` with no background tracking. The fields were verified live on Claude Code 2.1.277, the minimum build this plugin has been checked against; earlier builds were not tested, and any build whose Stop input lacks the fields reports `done`. An unreachable task registry omits the fields too, with the same result.
 
 - **Refresh** — the list refreshes only at a Stop. A Stop that finds nothing in flight sends an explicit empty list, which clears the card's previous Active work; `UserPromptSubmit` and `PostToolUse` omit the field, so the hub keeps the list from the last Stop while the session works.
 - **Finished work is not shown** — the lists contain only in-flight work, so a task disappears from the card at the first Stop after it ends.
@@ -92,16 +92,20 @@ The state rule at each Stop is: `needs_input` when the transcript shows an `AskU
 
 Mods are early access and their API can change between releases without notice. They install only from a terminal session on a recent CLI, which would tie a hub built for docker, remote and non-Claude reporters to one install path. Classic hooks already carry the signal in `background_tasks` and `session_crons`.
 
-### Monitor and Workflow completion (not yet verified live)
+### Live verification
 
-A Monitor or Workflow that finishes while the session is idle is only noticed at the next Stop or prompt. These behaviors have not been verified against a live session, so the card may stay `working` after such a task ends until the next Stop or prompt:
+Captured on Claude Code 2.1.277 in a throwaway session: this branch's plugin loaded with `--plugin-dir`, `--setting-sources project,local` so no user-level hooks ran, a throwaway hub on its own port, and a separate hook that logged every raw hook input.
 
-- whether a Monitor or Workflow completion fires `UserPromptSubmit` when it wakes the agent;
-- the race where a task ends between the agent's last action and its Stop (Stop reports `done`, then the completion wakes the agent);
-- the silent finish, where the task ends, no turn starts, and no Stop arrives;
-- whether `idle_prompt` notifications fire while a shell, Monitor, Workflow or cron is in flight. The Notification hook reports `waiting` for every `idle_prompt` and has no in-flight guard. A tester running this must leave the terminal untouched for at least two minutes, because idle prompts only fire when you appear to be away.
+- **Stop input** — carries `background_tasks` and `session_crons`; both were present on every Stop, empty when nothing was in flight.
+- **Entry shapes** — shell, subagent and workflow tasks arrive as `{id, type, status, description, ...}` with `type` `shell`, `subagent` or `workflow`. A Monitor reports as type `shell` (its description is the monitor's), never as `monitor`. A cron is `{id, schedule, recurring, prompt}`. The only `status` seen was `running`.
+- **Finished work** — a finished task never stayed in `background_tasks`; every Stop after completion showed an empty list. A non-recurring cron left `session_crons` once it fired.
+- **Wake** — the completion of a shell, subagent, Monitor and Workflow, and a cron firing, each fired `UserPromptSubmit` (a task-notification or the cron prompt) and then a new Stop with the updated list, so the card settles at `done` without help. While a Monitor was still running, its intermediate wakes produced a Stop that still listed it.
+- **idle_prompt** — about a minute after a Stop that listed a running 400-second shell, an `idle_prompt` Notification fired with the shell still in flight. That is the case the in-flight guard exists for: the Stop hook keeps a per-session in-flight marker (set when either list has an entry, removed when both are empty, and removed at SessionEnd), and the Notification hook ignores `idle_prompt`, with no report and no waiting marker, while it exists. `permission_prompt` and `elicitation_dialog` are never suppressed.
+- **Silent finish** — not reproduced for any task type, so no fallback hook is built. If a card stays `working` after everything ended, use the force-status buttons.
 
-Until those are checked, treat a card that stays `working` or turns red during an idle wait as a known gap, and use the force-status buttons to correct it.
+Not run, so unverified: `idle_prompt` with a Monitor, Workflow or cron in flight (the guard covers them because it keys on the lists, not the type); a clean run of the race where a task ends between the agent's last action and its Stop; any teammate, cloud session or MCP task entry (`monitor`, `teammate`, `cloud session`, `MCP task` and the unknown-type fixture are synthetic); any `status` other than `running`; and Claude Code builds other than 2.1.277.
+
+One observation is unexplained: a tester saw a card stay `working` after a short background shell and the reply that followed it had finished. No Stop or SessionEnd was captured for that prompt, so a stale card from a session that ended without a SessionEnd is a likelier cause than a missing completion event. This was not confirmed.
 
 ## Starting the hub
 

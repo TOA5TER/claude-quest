@@ -10,7 +10,8 @@ from pathlib import Path
 
 try:
     from attention_hub_client import (
-        remove_session, log_hub, clear_waiting_marker, is_subagent_event,
+        remove_session, log_hub, clear_waiting_marker, clear_inflight_marker,
+        is_subagent_event,
     )
 except ImportError:
     import importlib.util
@@ -24,6 +25,7 @@ except ImportError:
     remove_session = attention_hub_client.remove_session
     log_hub = attention_hub_client.log_hub
     clear_waiting_marker = attention_hub_client.clear_waiting_marker
+    clear_inflight_marker = attention_hub_client.clear_inflight_marker
 
 
 def main():
@@ -39,6 +41,7 @@ def main():
 
         # Drop the waiting marker so nothing leaks on disk.
         clear_waiting_marker(session_id)
+        clear_inflight_marker(session_id)
 
         success = remove_session(session_id)
         log_hub(f"SessionEnd -> remove {session_id}: {'ok' if success else 'hub unreachable'}")

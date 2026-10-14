@@ -67,3 +67,24 @@ def test_helpers_tolerate_none_session_id(hub_client, marker_home):
     assert hub_client.set_waiting_marker(None) is False
     assert hub_client.has_waiting_marker(None) is False
     assert hub_client.clear_waiting_marker(None) is False
+
+
+def test_inflight_marker_roundtrip_in_its_own_directory(hub_client, marker_home):
+    # Why: the in-flight marker must not be confused with the waiting marker, since
+    # PostToolUse and Stop treat the waiting marker as "blocked on the user".
+    inflight = marker_home.parent / "inflight-markers"
+    assert hub_client.set_inflight_marker("session-abc") is True
+    assert (inflight / "session-abc").is_file()
+    assert hub_client.has_inflight_marker("session-abc") is True
+    assert hub_client.has_waiting_marker("session-abc") is False
+    assert hub_client.clear_inflight_marker("session-abc") is True
+    assert hub_client.has_inflight_marker("session-abc") is False
+    assert hub_client.clear_inflight_marker("session-abc") is False
+
+
+def test_inflight_helpers_reject_hostile_session_ids(hub_client, marker_home):
+    # Why: same filename-injection risk as the waiting marker.
+    for hostile in ("../escape", "a/b", "a\\b", "/etc/passwd", "..", ".", "", None):
+        assert hub_client.set_inflight_marker(hostile) is False
+        assert hub_client.has_inflight_marker(hostile) is False
+        assert hub_client.clear_inflight_marker(hostile) is False

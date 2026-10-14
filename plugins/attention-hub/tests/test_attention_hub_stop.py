@@ -133,11 +133,13 @@ def test_stop_exits_zero_when_hub_down(base_hook_input, transcript_without_ask, 
     assert exit_code == 0
 
 
-# Fixtures in fixtures/stop_background_work.json are synthetic: built from the
-# Stop input field list in the Claude Code hooks reference, not live captures.
+# Fixtures in fixtures/stop_background_work.json: shell, subagent, monitor as
+# shell, workflow and cron are real Stop entries captured live on Claude Code
+# 2.1.277. monitor, teammate, cloud session, MCP task and unseen were never seen
+# live and are synthetic, built from the hooks reference.
 
 WORK = json.loads((Path(__file__).parent / "fixtures" / "stop_background_work.json").read_text())
-TASK_TYPES = ["shell", "subagent", "monitor", "workflow", "teammate",
+TASK_TYPES = ["shell", "subagent", "monitor as shell", "workflow", "monitor", "teammate",
               "cloud session", "MCP task", "unseen"]
 
 
@@ -151,7 +153,8 @@ def stop_events(base_hook_input, transcript, **fields):
 def test_stop_with_one_task_reports_working_with_matching_entry(
         base_hook_input, transcript_without_ask, task_type):
     # Why: each in-flight task type must make the card working and surface as one
-    # entry carrying its id, type, description and status. Synthetic payload.
+    # entry carrying its id, type, description and status. Shell, subagent, monitor as
+    # shell and workflow are live captures; the other types are synthetic.
     task = WORK[task_type]
     events = stop_events(base_hook_input, transcript_without_ask, background_tasks=[task])
     assert len(events) == 1
@@ -194,7 +197,7 @@ def test_stop_counts_only_valid_entries_among_malformed(base_hook_input, transcr
     events = stop_events(base_hook_input, transcript_without_ask,
                          background_tasks=[None, WORK["shell"], "junk"])
     assert events[0]["state"] == "working"
-    assert [e["id"] for e in events[0]["active_work"]] == ["task-shell-1"]
+    assert [e["id"] for e in events[0]["active_work"]] == ["b3b2ar8fo"]
 
 
 def test_stop_needs_input_wins_over_in_flight_work(base_hook_input, transcript_with_ask):
@@ -203,18 +206,18 @@ def test_stop_needs_input_wins_over_in_flight_work(base_hook_input, transcript_w
     events = stop_events(base_hook_input, transcript_with_ask,
                          background_tasks=[WORK["shell"]])
     assert events[0]["state"] == "needs_input"
-    assert [e["id"] for e in events[0]["active_work"]] == ["task-shell-1"]
+    assert [e["id"] for e in events[0]["active_work"]] == ["b3b2ar8fo"]
 
 
 def test_stop_with_cron_alone_reports_working_with_cron_entry(
         base_hook_input, transcript_without_ask):
     # Why: a pending scheduled wakeup means the session will wake itself, so it
-    # is working; the entry id is the cron's own id. Synthetic payload.
+    # is working; the entry id is the cron's own id. Live capture.
     events = stop_events(base_hook_input, transcript_without_ask,
                          session_crons=[WORK["cron"]])
     assert events[0]["state"] == "working"
     assert events[0]["active_work"] == [{
-        "id": "cron-001", "kind": "cron", "label": "check the build", "status": "scheduled",
+        "id": "63ca06a8", "kind": "cron", "label": "check", "status": "scheduled",
     }]
 
 
@@ -223,7 +226,7 @@ def test_stop_with_cron_and_task_reports_both_entries(base_hook_input, transcrip
     events = stop_events(base_hook_input, transcript_without_ask,
                          background_tasks=[WORK["shell"]], session_crons=[WORK["cron"]])
     assert events[0]["state"] == "working"
-    assert [e["id"] for e in events[0]["active_work"]] == ["task-shell-1", "cron-001"]
+    assert [e["id"] for e in events[0]["active_work"]] == ["b3b2ar8fo", "63ca06a8"]
 
 
 def test_stop_skips_cron_without_id(base_hook_input, transcript_without_ask):
@@ -297,3 +300,52 @@ def test_stop_events_through_the_hub_clear_work_once_the_shell_exits(
     second = stop_events(base_hook_input, transcript_without_ask, background_tasks=[])
     record = store.upsert(second[0])
     assert record["state"] == "done" and record["active_work"] == []
+
+
+@pytest.fixture
+def inflight_home(marker_home):
+    return marker_home.parent / "inflight-markers"
+
+
+def test_stop_with_work_sets_inflight_marker(
+        base_hook_input, transcript_without_ask, inflight_home):
+    # Why: the Notification hook reads this marker to ignore idle_prompt while work
+    # is in flight; Stop is the only place that knows the list.
+    stop_events(base_hook_input, transcript_without_ask, background_tasks=[WORK["shell"]])
+    assert (inflight_home / "test-session-123").is_file()
+
+
+def test_stop_with_only_a_cron_sets_inflight_marker(
+        base_hook_input, transcript_without_ask, inflight_home):
+    # Why: a pending cron also keeps the card working, so it must also guard it.
+    stop_events(base_hook_input, transcript_without_ask, session_crons=[WORK["cron"]])
+    assert (inflight_home / "test-session-123").is_file()
+
+
+def test_stop_with_empty_lists_clears_inflight_marker(
+        base_hook_input, transcript_without_ask, inflight_home):
+    # Why: once the work is gone a later idle_prompt is real and must report waiting.
+    inflight_home.mkdir(parents=True)
+    (inflight_home / "test-session-123").touch()
+    stop_events(base_hook_input, transcript_without_ask,
+                background_tasks=[], session_crons=[])
+    assert not (inflight_home / "test-session-123").exists()
+
+
+def test_stop_with_ask_and_work_still_sets_inflight_marker(
+        base_hook_input, transcript_with_ask, inflight_home):
+    # Why: needs_input wins the card state, but work is still in flight and the
+    # marker tracks the list, not the state.
+    stop_events(base_hook_input, transcript_with_ask, background_tasks=[WORK["shell"]])
+    assert (inflight_home / "test-session-123").is_file()
+
+
+def test_subagent_originated_stop_leaves_inflight_marker_alone(
+        base_hook_input, transcript_without_ask, inflight_home):
+    # Why: subagent Stops are ignored entirely, so they cannot clear the main
+    # session's marker.
+    inflight_home.mkdir(parents=True)
+    (inflight_home / "test-session-123").touch()
+    stop_events(base_hook_input, transcript_without_ask,
+                agent_id="sub-1", background_tasks=[])
+    assert (inflight_home / "test-session-123").is_file()

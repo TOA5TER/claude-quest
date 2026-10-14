@@ -151,6 +151,19 @@ def test_session_end_clears_marker(base_hook_input, marker_home):
     assert not (marker_home / "test-session-123").exists()
 
 
+def test_session_end_clears_inflight_marker(base_hook_input, marker_home):
+    # Why: a recycled session ID must not inherit a stale in-flight marker that
+    # would swallow its first real idle_prompt.
+    inflight = marker_home.parent / "inflight-markers"
+    inflight.mkdir(parents=True)
+    (inflight / "test-session-123").touch()
+    run_hook_capture_hub("attention_hub_session_end.py", {
+        **base_hook_input,
+        "reason": "exit",
+    })
+    assert not (inflight / "test-session-123").exists()
+
+
 def test_post_tool_use_exits_zero_when_hub_down(base_hook_input, marker_home, monkeypatch):
     # Why: graceful degradation — a dead hub must never error the hook, and the
     # marker must be cleared FIRST so the 2s timeout is paid once, not per tool call.
