@@ -28,6 +28,9 @@ LABEL_MAX_CHARS = 256
 IDENT_MAX_CHARS = 64
 IDLE_TRANSCRIPT_QUIET_SECONDS = 30
 CONTINUATION_MAX_IDS = 10
+# The old process appends these bookkeeping records when it exits, after continued-in.
+CONTINUATION_TRAILING_TYPES = {"last-prompt", "cost-state"}
+CONTINUATION_TRAILING_LINES = 6
 CONTINUATION_MAX_HOPS = 5
 CONTINUATION_HEAD_BYTES = 256 * 1024
 CONTINUATION_TAIL_BYTES = 8 * 1024
@@ -451,7 +454,11 @@ def _continued_in(transcript_dir, old_id):
             size = f.tell()
             f.seek(max(0, size - CONTINUATION_TAIL_BYTES))
             lines = f.read(CONTINUATION_TAIL_BYTES).splitlines()
-        record = json.loads(lines[-1]) if lines else None
+        record = None
+        for line in reversed(lines[-CONTINUATION_TRAILING_LINES:]):
+            record = json.loads(line)
+            if not (isinstance(record, dict) and record.get("type") in CONTINUATION_TRAILING_TYPES):
+                break
         if not isinstance(record, dict) or record.get("type") != "continued-in":
             return None
         target = record.get("continuedInSessionId")

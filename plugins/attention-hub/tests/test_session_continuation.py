@@ -83,6 +83,31 @@ def test_link_must_be_the_last_record(client, tmp_path):
     assert client.continued_from(new, "new") == []
 
 
+def test_bookkeeping_records_after_the_link_do_not_hide_it(client, tmp_path):
+    # Why: the old process appends last-prompt and cost-state records when it exits, after
+    # continued-in; the live v1 transcript ended exactly like this, so the link must still count.
+    write_transcript(tmp_path, "old", continued_into="new",
+                     tail=json.dumps({"type": "last-prompt"}) + "\n" + json.dumps({"type": "cost-state"}))
+    new = write_transcript(tmp_path, "new", copied_from=["old"])
+    assert client.continued_from(new, "new") == ["old"]
+
+
+def test_only_bookkeeping_records_are_skipped_after_the_link(client, tmp_path):
+    # Why: tolerance is limited to the known bookkeeping types; real activity after the
+    # link means the old session kept going.
+    write_transcript(tmp_path, "old", continued_into="new",
+                     tail=json.dumps({"type": "cost-state"}) + "\n" + json.dumps({"type": "user"}))
+    new = write_transcript(tmp_path, "new", copied_from=["old"])
+    assert client.continued_from(new, "new") == []
+
+
+def test_bookkeeping_records_without_any_link_are_not_a_continuation(client, tmp_path):
+    # Why: skipping bookkeeping must not turn a transcript with no link into a match.
+    write_transcript(tmp_path, "old", tail=json.dumps({"type": "last-prompt"}))
+    new = write_transcript(tmp_path, "new", copied_from=["old"])
+    assert client.continued_from(new, "new") == []
+
+
 def test_link_cycle_terminates(client, tmp_path):
     # Why: a corrupt pair of transcripts pointing at each other must not loop.
     write_transcript(tmp_path, "a", continued_into="b")
