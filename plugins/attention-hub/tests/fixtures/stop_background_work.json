@@ -1,0 +1,12 @@
+{
+  "shell": {"id": "b3b2ar8fo", "type": "shell", "status": "running", "description": "Sleep for 50 seconds", "command": "sleep 50"},
+  "subagent": {"id": "a85e12df2a25f4738", "type": "subagent", "status": "running", "description": "Sleep then report done", "agent_type": "general-purpose"},
+  "monitor as shell": {"id": "bft40fcyo", "type": "shell", "status": "running", "description": "tick lines every 15s for 45s", "command": "for i in 1 2 3; do sleep 15; echo tick $i; done"},
+  "workflow": {"id": "wgtifu4qw", "type": "workflow", "status": "running", "description": "Wait about 45 seconds via a single agent, then return", "name": "trivial-wait"},
+  "cron": {"id": "63ca06a8", "schedule": "53 6 * * *", "recurring": false, "prompt": "check"},
+  "monitor": {"id": "task-mon-1", "type": "monitor", "status": "running", "description": "watch deploy", "server": "example-server", "tool": "watch"},
+  "teammate": {"id": "task-team-1", "type": "teammate", "status": "running", "description": "review helper"},
+  "cloud session": {"id": "task-cloud-1", "type": "cloud session", "status": "running", "description": "remote build"},
+  "MCP task": {"id": "task-mcp-1", "type": "MCP task", "status": "running", "description": "index docs", "server": "example-server", "tool": "index"},
+  "unseen": {"id": "task-new-1", "type": "hologram", "status": "warming", "description": "a type the code has never seen"}
+}

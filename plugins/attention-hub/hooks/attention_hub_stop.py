@@ -11,7 +11,7 @@ from pathlib import Path
 try:
     from attention_hub_client import (
         report_state, log_hub, get_session_name, clear_waiting_marker,
-        count_active_subagents, list_active_work,
+        background_work_entries, set_inflight_marker, clear_inflight_marker,
         is_subagent_event,
     )
 except ImportError:
@@ -27,8 +27,9 @@ except ImportError:
     log_hub = attention_hub_client.log_hub
     get_session_name = attention_hub_client.get_session_name
     clear_waiting_marker = attention_hub_client.clear_waiting_marker
-    count_active_subagents = attention_hub_client.count_active_subagents
-    list_active_work = attention_hub_client.list_active_work
+    background_work_entries = attention_hub_client.background_work_entries
+    set_inflight_marker = attention_hub_client.set_inflight_marker
+    clear_inflight_marker = attention_hub_client.clear_inflight_marker
 
 try:
     from attention_hub_transcript import extract_latest_message, has_ask_user_question
@@ -45,8 +46,8 @@ except ImportError:
 
 
 def main():
-    # Stop: compute needs_input/working(active-subagents)/done and report
-    # directly to the hub. No macOS/Slack here -- that stays in notifications.
+    # Stop: needs_input, else working while background_tasks or session_crons
+    # hold an entry, else done. No macOS/Slack here -- that stays in notifications.
     try:
         input_data = json.load(sys.stdin)
         if is_subagent_event(input_data):
@@ -60,19 +61,26 @@ def main():
         # End of turn: consume any waiting marker. Covers the denied-permission
         # path (no tool ran) so the next turn cannot report stale "working".
         clear_waiting_marker(session_id)
-        active_work = list_active_work(session_id)
+        active_work = background_work_entries(
+            input_data.get("background_tasks"), input_data.get("session_crons"))
+        # Lets the Notification hook ignore idle_prompt while work is in flight.
+        if active_work:
+            set_inflight_marker(session_id)
+        else:
+            clear_inflight_marker(session_id)
 
         message = extract_latest_message(transcript_path)
 
         if has_ask_user_question(transcript_path):
             hub_state = "needs_input"
-        elif count_active_subagents(session_id) > 0:
+        elif active_work:
             hub_state = "working"
         else:
             hub_state = "done"
 
         success = report_state(session_id, input_data.get("cwd", ""), hub_state, message,
                                session_name=get_session_name(input_data),
+                               transcript_path=input_data.get("transcript_path"),
                                active_work=active_work)
         log_hub(f"Stop -> {hub_state} for {session_id}: {'ok' if success else 'hub unreachable'}")
         sys.exit(0)

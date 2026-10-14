@@ -167,7 +167,7 @@ def test_rename_into_and_out_of_a_group(tmp_path):
     store.upsert(event("o", "sc-1000-orchestrator"))
     snap = store.snapshot()
     assert layout_keys(snap) == ["sc-1000"]
-    assert group(snap, "sc-1000")["session_ids"] == ["d", "o"]
+    assert group(snap, "sc-1000")["session_ids"] == ["o", "d"]
     store.upsert(event("o", "notes"))
     snap = store.snapshot()
     assert layout_keys(snap) == ["o", "sc-1000"]
@@ -191,7 +191,7 @@ def test_rename_regroups_over_http(hub_server):
     post(hub_server, event("o", "sc-1000-orchestrator"))
     data = listing(hub_server)
     assert layout_keys(data) == ["sc-1000"]
-    assert group(data, "sc-1000")["session_ids"] == ["d", "o"]
+    assert group(data, "sc-1000")["session_ids"] == ["o", "d"]
 
 
 # --- Group color ---
@@ -201,14 +201,18 @@ def test_rename_regroups_over_http(hub_server):
     (["needs_input", "needs_input"], "red"),
     (["waiting", "needs_input"], "red"),
     (["waiting", "working"], "green"),
-    (["waiting", "done"], "green"),
-    (["done", "done"], "green"),
+    (["done", "working"], "green"),
+    (["waiting", "done"], "red"),
+    (["done", "done", "needs_input"], "red"),
+    (["done", "done"], "gray"),
+    (["done"], "gray"),
     (["waiting"], "red"),
     (["working"], "green"),
 ])
-def test_group_color_red_only_when_every_member_waits(tmp_path, states, color):
-    # Why: one agent working while others wait means the story is not blocked
-    # on the user; only an all-waiting group is red.
+def test_group_color_follows_working_then_all_done_then_red(tmp_path, states, color):
+    # Why: a working member means the story is progressing (green), an
+    # all-done group is quiet (gray), and anything else leaves someone
+    # waiting on the user (red).
     _, _, store = make_store(tmp_path)
     for i, state in enumerate(states):
         store.upsert(event(f"s{i}", f"sc-1000-role{i}", state=state))
@@ -222,7 +226,8 @@ def test_group_color_red_only_when_every_member_waits(tmp_path, states, color):
 
 def test_ordering_over_http(hub_server):
     # Why: the dashboard renders layout and session_ids verbatim, so the
-    # alphabetical, numeric-aware order must hold in the served listing.
+    # alphabetical, numeric-aware top-level order and the role-ranked row order
+    # must hold in the served listing.
     post(hub_server, event("g1", "sc-1000-orchestrator"))
     post(hub_server, event("g2", "sc-1000-developer"))
     post(hub_server, event("g3", "sc-1000--x"))
@@ -235,10 +240,63 @@ def test_ordering_over_http(hub_server):
     data = listing(hub_server)
     assert layout_keys(data) == ["u-alpha", "sc-999", "sc-1000", "u-mid", "sc-1234", "u-zeta"]
     g = group(data, "sc-1000")
-    assert g["session_ids"] == ["g3", "g2", "g1"]
+    assert g["session_ids"] == ["g1", "g2", "g3"]
     assert g["labels"]["g3"] == "-x"
     assert group(data, "sc-1234")["session_ids"] == ["r2", "r1"]
     assert_consistent(data)
+
+
+def _group_ids(store, names):
+    for sid, name in names.items():
+        store.upsert(event(sid, name))
+    return group(store.snapshot(), "sc-1000")["session_ids"]
+
+
+def test_rows_rank_orchestrator_developer_reviewer_tester(tmp_path):
+    # Why: the orchestrator drives the story, so rows must read in pipeline
+    # order no matter which session reported first.
+    names = {"t": "sc-1000-tester", "r": "sc-1000-reviewer",
+             "d": "sc-1000-developer", "o": "sc-1000-orchestrator"}
+    for arrival in (list(names), list(reversed(list(names)))):
+        _, _, store = make_store(tmp_path)
+        assert _group_ids(store, {k: names[k] for k in arrival}) == ["o", "d", "r", "t"]
+        (tmp_path / "state.json").unlink()
+
+
+def test_same_role_rows_sort_by_repo(tmp_path):
+    # Why: a multi-repo story runs one developer per repo; within a role the
+    # repo decides the order.
+    _, _, store = make_store(tmp_path)
+    ids = _group_ids(store, {"w": "sc-1000-developer-web", "a": "sc-1000-developer-api",
+                             "o": "sc-1000-orchestrator"})
+    assert ids == ["o", "a", "w"]
+
+
+def test_other_roles_follow_the_ranked_roles_alphabetically(tmp_path):
+    # Why: roles outside the ranked set must still be deterministic and come last;
+    # spec-writer parses as role spec, repo writer.
+    _, _, store = make_store(tmp_path)
+    ids = _group_ids(store, {"s": "sc-1000-spec-writer", "n": "sc-1000-analyst",
+                             "a": "sc-1000-architect", "t": "sc-1000-tester",
+                             "o": "sc-1000-orchestrator"})
+    assert ids == ["o", "t", "n", "a", "s"]
+
+
+def test_role_rank_ignores_letter_case(tmp_path):
+    # Why: session names are free text; Developer must rank like developer.
+    _, _, store = make_store(tmp_path)
+    ids = _group_ids(store, {"t": "sc-1000-Tester", "o": "sc-1000-ORCHESTRATOR",
+                             "d": "sc-1000-Developer", "x": "sc-1000-architect"})
+    assert ids == ["o", "d", "t", "x"]
+
+
+def test_empty_role_sorts_first_among_other_roles(tmp_path):
+    # Why: a row with no role is not a ranked role, so it follows
+    # the tester and leads the remaining roles.
+    _, _, store = make_store(tmp_path)
+    ids = _group_ids(store, {"a": "sc-1000-architect", "e": "sc-1000--x",
+                             "t": "sc-1000-tester"})
+    assert ids == ["t", "e", "a"]
 
 
 def test_forcing_every_status_never_moves_anything(hub_server):

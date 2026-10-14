@@ -10,7 +10,9 @@ A zero-dependency (stdlib only) HTTP server that receives per-session state
 events from any reporting client and serves a web dashboard. Sessions whose
 names start with a story id (e.g. sc-1000-developer) are grouped under that
 story, one color-coded row per session; every other session is its own card.
-Groups, rows and cards are ordered alphabetically, never by status.
+Groups and cards are ordered alphabetically, never by status. Rows inside a
+group run orchestrator, developer, reviewer, tester, then other roles
+alphabetically.
 
 Manual start (typically inside tmux/screen):
 
@@ -36,7 +38,7 @@ DEFAULT_BIND = "0.0.0.0"
 DEFAULT_PRUNE_HOURS = 24.0
 DEFAULT_STATE_FILE = str(Path.home() / ".claude" / "attention_hub_state.json")
 
-# Lower value sorts first in the API's flat sessions list: red, yellow, green.
+# Lower value sorts first in the API's flat sessions list: waiting, done, working.
 STATE_PRIORITY = {"waiting": 0, "needs_input": 0, "done": 1, "working": 2}
 VALID_STATES = set(STATE_PRIORITY)
 
@@ -48,6 +50,7 @@ CWD_MAX_CHARS = 4096
 
 # Bounded per-session status-transition history (oldest entries drop first).
 HISTORY_MAX = 20
+SUPERSEDES_MAX = 10
 HISTORY_SOURCES = {"hook", "manual"}
 ACTIVE_WORK_MAX = 10
 
@@ -59,6 +62,7 @@ def _clamp(value, limit):
 # Mirrored in hooks/attention_hub_client.py; keep both in step.
 STORY_NAME_RE = re.compile(r"([A-Za-z]+-[0-9]+)-(.+)")
 WAITING_STATES = {"waiting", "needs_input"}
+ROLE_RANK = {"orchestrator": 0, "developer": 1, "reviewer": 2, "tester": 3}
 _DIGIT_RUN_RE = re.compile(r"([0-9]+)")
 
 
@@ -108,18 +112,25 @@ def build_groups(rows):
 
     groups = []
     for story_id, entries in members.items():
-        entries.sort(key=lambda e: (e[0]["role"] != "", _natural_key(e[0]["role"]),
+        entries.sort(key=lambda e: (ROLE_RANK.get(e[0]["role"].lower(), len(ROLE_RANK)),
+                                    _natural_key(e[0]["role"]),
                                     _natural_key(e[0]["repo"]), e[0]["label"],
                                     e[1]["session_id"]))
         rows_in_group = [row for _, row in entries]
         waiting = sum(row["state"] in WAITING_STATES for row in rows_in_group)
+        if any(row["state"] == "working" for row in rows_in_group):
+            color = "green"
+        elif all(row["state"] == "done" for row in rows_in_group):
+            color = "gray"
+        else:
+            color = "red"
         titled = [row for row in rows_in_group if row.get("story_title")]
         titled.sort(key=lambda row: (-row["last_update"], row["session_id"]))
         title = titled[0]["story_title"] if titled else ""
         groups.append({
             "story_id": story_id,
             "title": f"{story_id}: {title}" if title else story_id,
-            "color": "red" if waiting == len(rows_in_group) else "green",
+            "color": color,
             "session_ids": [row["session_id"] for row in rows_in_group],
             "labels": {row["session_id"]: parsed["label"] for parsed, row in entries},
             "waiting": waiting,
@@ -169,7 +180,9 @@ class AttentionStore:
                 is_container = bool(event.get("is_container"))
             else:
                 is_container = bool((existing or {}).get("is_container", False))
-            active_work = (self._sanitize_active_work(event.get("active_work"))
+            active_work = (self._sanitize_active_work(
+                               event.get("active_work"),
+                               (existing or {}).get("active_work"), now)
                            if "active_work" in event
                            else list((existing or {}).get("active_work") or []))
             session_name = _clamp(event.get("session_name")
@@ -179,6 +192,7 @@ class AttentionStore:
             host = _clamp(event.get("host") or (existing or {}).get("host")
                           or "unknown", FIELD_MAX_CHARS)
             self._drop_superseded_locked(session_id, session_name, host)
+            self._drop_continued_locked(session_id, event.get("supersedes"), host)
             record = {
                 "session_id": session_id,
                 "session_name": session_name,
@@ -220,6 +234,23 @@ class AttentionStore:
                  and record.get("host") == host]
         for sid in stale:
             del self._sessions[sid]
+
+    def _drop_continued_locked(self, session_id, supersedes, host):
+        """Remove the rows this session says it continues, named or not.
+
+        The reporting hook proves each ID from the transcripts (the old one ends
+        with a link to the new one), so the hub trusts the list but still bounds
+        it: only strings, a capped number of them, never the reporter's own row,
+        and only rows from the same host.
+        """
+        if not isinstance(supersedes, list):
+            return
+        for old_id in supersedes[:SUPERSEDES_MAX]:
+            if not isinstance(old_id, str) or old_id == session_id:
+                continue
+            record = self._sessions.get(old_id)
+            if record is not None and record.get("host") == host:
+                del self._sessions[old_id]
 
     @staticmethod
     def _next_story_title(existing, session_name, event):
@@ -269,7 +300,7 @@ class AttentionStore:
 
     def list_sessions(self):
         """Prune stale sessions, then list all sessions with computed durations,
-        sorted needs-attention first (red, yellow, green). This flat list is the
+        sorted needs-attention first (waiting, done, working). This flat list is the
         API's; the dashboard renders the grouped layout from snapshot()."""
         now = self._now()
         with self._lock:
@@ -301,7 +332,7 @@ class AttentionStore:
     @staticmethod
     def _with_duration(entry, now):
         """entry plus a computed duration_seconds: frozen (completed_at -
-        started_at) once completed, live (now - started_at) while active."""
+        started_at) once completed, live (now - started_at) otherwise."""
         item = dict(entry)
         if entry.get("status") == "completed" and "completed_at" in entry:
             item["duration_seconds"] = max(0.0, entry["completed_at"] - entry["started_at"])
@@ -361,7 +392,8 @@ class AttentionStore:
                     record["stage"] = _clamp(record.get("stage") or "",
                                              FIELD_MAX_CHARS)
                     record["history"] = self._sanitize_history(record)
-                    record["active_work"] = self._sanitize_active_work(record.get("active_work"))
+                    record["active_work"] = self._sanitize_active_work(record.get("active_work"),
+                                                                       None, self._now())
                     record["is_container"] = bool(record.get("is_container", False))
                     self._sessions[sid] = record
         except FileNotFoundError:
@@ -394,24 +426,32 @@ class AttentionStore:
         return clean[-HISTORY_MAX:]
 
     @staticmethod
-    def _sanitize_active_work(raw):
-        """Well-formed active_work entries, capped at ACTIVE_WORK_MAX. Each
-        entry's id/kind/label is clamped and status/started_at validated the
-        same defensive way other record fields are; malformed entries drop."""
+    def _sanitize_active_work(raw, previous, now):
+        """Well-formed active_work entries, capped at ACTIVE_WORK_MAX. Fields are
+        clamped; an entry without started_at reuses the same id's start time from
+        the previous list, else takes the event time. Malformed entries drop."""
+        known = {}
+        for old in previous or []:
+            if (isinstance(old, dict) and old.get("id")
+                    and isinstance(old.get("started_at"), (int, float))):
+                known.setdefault(old.get("id"), float(old["started_at"]))
         clean = []
         if isinstance(raw, list):
             for entry in raw:
                 if not isinstance(entry, dict):
                     continue
                 status = entry.get("status")
-                started_at = entry.get("started_at")
-                if status not in ("active", "completed") or not isinstance(started_at, (int, float)):
+                if not isinstance(status, str) or not status:
                     continue
+                item_id = _clamp(entry.get("id") or "", FIELD_MAX_CHARS)
+                started_at = entry.get("started_at")
+                if not isinstance(started_at, (int, float)) or isinstance(started_at, bool):
+                    started_at = known.get(item_id, now)
                 item = {
-                    "id": _clamp(entry.get("id") or "", FIELD_MAX_CHARS),
+                    "id": item_id,
                     "kind": _clamp(entry.get("kind") or "", FIELD_MAX_CHARS),
                     "label": _clamp(entry.get("label") or "", FIELD_MAX_CHARS),
-                    "status": status,
+                    "status": _clamp(status, FIELD_MAX_CHARS),
                     "started_at": float(started_at),
                 }
                 if status == "completed" and isinstance(entry.get("completed_at"), (int, float)):
@@ -552,7 +592,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   #sessions { display: flex; flex-direction: column; gap: .5rem; margin-top: 1rem; }
   .card { background: #1d2128; border-radius: 8px; border-left: 6px solid #555; }
   .card.red { border-left-color: #e5534b; }
-  .card.yellow { border-left-color: #d4a72c; }
+  .card.gray { border-left-color: #9aa3ad; }
   .card.green { border-left-color: #46954a; }
   .row { display: flex; align-items: center; gap: .9rem; padding: .7rem .9rem;
          cursor: pointer; }
@@ -563,7 +603,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
            -webkit-box-orient: vertical; }
   .state { min-width: 10rem; font-size: .9rem; }
   .red .state { color: #e5534b; }
-  .yellow .state { color: #d4a72c; }
+  .gray .state { color: #9aa3ad; }
   .green .state { color: #46954a; }
   .snippet { flex: 1; color: #b4bac2; font-size: .85rem; overflow: hidden;
              text-overflow: ellipsis; white-space: nowrap; }
@@ -596,11 +636,13 @@ DASHBOARD_HTML = """<!DOCTYPE html>
            padding: .3rem .4rem .45rem; }
   .group.red { border-left-color: #e5534b; }
   .group.green { border-left-color: #46954a; }
+  .group.gray { border-left-color: #9aa3ad; }
   .group-head { display: flex; align-items: baseline; gap: .9rem; padding: .35rem .5rem .5rem; }
   .group-title { flex: 1; min-width: 0; font-weight: 700; overflow: hidden;
                  text-overflow: ellipsis; white-space: nowrap; }
   .group-summary { color: #8b939e; font-size: .85rem; white-space: nowrap; }
   .group.red .group-summary { color: #e5534b; }
+  .group.gray .group-summary { color: #9aa3ad; }
   .members { display: flex; flex-direction: column; gap: .35rem; }
   @media (max-width: 40rem) {
     .row { flex-wrap: wrap; }
@@ -621,7 +663,7 @@ const STATE_LABEL = {
   done: "done, awaiting review",
   working: "working",
 };
-const STATE_COLOR = { waiting: "red", needs_input: "red", done: "yellow", working: "green" };
+const STATE_COLOR = { waiting: "red", needs_input: "red", done: "gray", working: "green" };
 const FORCE_STATES = ["working", "done", "needs_input", "waiting"];
 
 // Expanded card IDs live OUTSIDE render(): the 3s poll re-render replaces all

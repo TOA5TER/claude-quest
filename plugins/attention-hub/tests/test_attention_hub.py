@@ -287,13 +287,13 @@ def test_list_reports_last_update_age(tmp_path):
 
 def test_list_sorts_needs_attention_first(tmp_path):
     # Why: the dashboard answers "which instance is waiting on me" at a glance —
-    # red (waiting/needs_input) must sort before yellow (done) before green (working).
+    # waiting/needs_input must sort before done before working.
     hub = load_hub()
     store = hub.AttentionStore(str(tmp_path / "state.json"))
-    store.upsert(make_event(session_id="green", state="working"))
-    store.upsert(make_event(session_id="yellow", state="done"))
-    store.upsert(make_event(session_id="red1", state="waiting"))
-    store.upsert(make_event(session_id="red2", state="needs_input"))
+    store.upsert(make_event(session_id="working", state="working"))
+    store.upsert(make_event(session_id="done", state="done"))
+    store.upsert(make_event(session_id="waiting", state="waiting"))
+    store.upsert(make_event(session_id="needs-input", state="needs_input"))
     states = [s["state"] for s in store.list_sessions()]
     assert states[:2] in ([["waiting", "needs_input"], ["needs_input", "waiting"]])
     assert states[2] == "done"
@@ -1053,6 +1053,8 @@ def test_dashboard_data_one_row_per_session(hub_server):
 # --- Active work: storage, sanitizing, capping, persistence ---
 
 def test_upsert_stores_sanitized_active_work(tmp_path):
+    # Why: the sanitizer keeps entries with any non-empty status string and drops
+    # only entries that cannot be shown (empty status, non-dict).
     hub = load_hub()
     store = hub.AttentionStore(str(tmp_path / "state.json"))
     record = store.upsert({
@@ -1060,13 +1062,106 @@ def test_upsert_stores_sanitized_active_work(tmp_path):
         "active_work": [
             {"id": "a", "kind": "task", "label": "x", "status": "active", "started_at": 1.0},
             {"id": "b", "kind": "bash", "status": "active", "started_at": 2.0},  # missing label, must survive
-            {"id": "c", "status": "bogus", "started_at": 3.0},  # invalid status, must be dropped
-            {"id": "d", "kind": "task", "status": "active"},  # missing started_at, must be dropped
+            {"id": "c", "status": "", "started_at": 3.0},  # empty status, must be dropped
+            {"id": "d", "kind": "task", "status": "running"},  # free-text status and no started_at survive
+            "junk",
         ],
     })
-    assert len(record["active_work"]) == 2
+    assert [e["id"] for e in record["active_work"]] == ["a", "b", "d"]
     assert record["active_work"][0]["label"] == "x"
     assert record["active_work"][1]["label"] == ""
+    assert record["active_work"][2]["status"] == "running"
+
+
+def test_active_work_free_text_status_is_stored_and_clipped(tmp_path):
+    # Why: the status values reported by Claude Code are undocumented, so any
+    # string must be stored verbatim up to the field limit.
+    hub = load_hub()
+    store = hub.AttentionStore(str(tmp_path / "state.json"))
+    record = store.upsert({"session_id": "s1", "state": "working",
+                           "active_work": [{"id": "a", "status": "s" * 1000}]})
+    assert record["active_work"][0]["status"] == "s" * hub.FIELD_MAX_CHARS
+
+
+def test_active_work_missing_started_at_gets_event_time_then_keeps_it(tmp_path):
+    # Why: Stop reports carry no start time, yet the card shows a running
+    # duration, so the hub must fill it in and keep it stable across events.
+    hub = load_hub()
+    clock = {"now": 1000.0}
+    store = hub.AttentionStore(str(tmp_path / "state.json"), now=lambda: clock["now"])
+    entry = {"id": "a", "kind": "shell", "label": "x", "status": "running"}
+    record = store.upsert({"session_id": "s1", "state": "working", "active_work": [entry]})
+    assert record["active_work"][0]["started_at"] == 1000.0
+    clock["now"] = 1060.0
+    record = store.upsert({"session_id": "s1", "state": "working",
+                           "active_work": [entry, {"id": "b", "status": "running"}]})
+    assert record["active_work"][0]["started_at"] == 1000.0
+    assert record["active_work"][1]["started_at"] == 1060.0
+
+
+def test_cron_entry_keeps_one_start_time_across_stops(tmp_path):
+    # Why: a pending wakeup stays on the card across many Stops; keyed by the
+    # cron's own id, its duration must keep counting instead of resetting.
+    hub = load_hub()
+    clock = {"now": 1000.0}
+    store = hub.AttentionStore(str(tmp_path / "state.json"), now=lambda: clock["now"])
+    cron = {"id": "cron-1", "kind": "cron", "label": "check", "status": "scheduled"}
+    store.upsert({"session_id": "s1", "state": "working", "active_work": [cron]})
+    clock["now"] = 1500.0
+    record = store.upsert({"session_id": "s1", "state": "working", "active_work": [cron]})
+    assert record["active_work"][0]["started_at"] == 1000.0
+
+
+def test_idless_entries_do_not_inherit_each_others_start_time(tmp_path):
+    # Why: third-party reporters may omit ids; entries with an empty id must not
+    # share one remembered start time.
+    hub = load_hub()
+    clock = {"now": 1000.0}
+    store = hub.AttentionStore(str(tmp_path / "state.json"), now=lambda: clock["now"])
+    store.upsert({"session_id": "s1", "state": "working",
+                  "active_work": [{"status": "running"}]})
+    clock["now"] = 2000.0
+    record = store.upsert({"session_id": "s1", "state": "working",
+                           "active_work": [{"status": "running"}]})
+    assert record["active_work"][0]["started_at"] == 2000.0
+
+
+def test_active_work_supplied_started_at_wins_over_previous(tmp_path):
+    # Why: existing API clients that send started_at must be unaffected by the
+    # hub's start-time reuse.
+    hub = load_hub()
+    clock = {"now": 1000.0}
+    store = hub.AttentionStore(str(tmp_path / "state.json"), now=lambda: clock["now"])
+    store.upsert({"session_id": "s1", "state": "working",
+                  "active_work": [{"id": "a", "status": "active", "started_at": 5.0}]})
+    record = store.upsert({"session_id": "s1", "state": "working",
+                           "active_work": [{"id": "a", "status": "active", "started_at": 9.0}]})
+    assert record["active_work"][0]["started_at"] == 9.0
+
+
+def test_active_work_same_id_on_another_session_does_not_share_start(tmp_path):
+    # Why: start-time reuse is per session; a cron id seen elsewhere must not
+    # leak its start time.
+    hub = load_hub()
+    clock = {"now": 1000.0}
+    store = hub.AttentionStore(str(tmp_path / "state.json"), now=lambda: clock["now"])
+    store.upsert({"session_id": "s1", "state": "working",
+                  "active_work": [{"id": "a", "status": "scheduled"}]})
+    clock["now"] = 2000.0
+    record = store.upsert({"session_id": "s2", "state": "working",
+                           "active_work": [{"id": "a", "status": "scheduled"}]})
+    assert record["active_work"][0]["started_at"] == 2000.0
+
+
+def test_active_work_empty_list_clears_previous(tmp_path):
+    # Why: a Stop that finds nothing in flight sends an empty list, and the
+    # last Stop's work must not linger on the card.
+    hub = load_hub()
+    store = hub.AttentionStore(str(tmp_path / "state.json"))
+    store.upsert({"session_id": "s1", "state": "working",
+                  "active_work": [{"id": "a", "status": "running"}]})
+    record = store.upsert({"session_id": "s1", "state": "done", "active_work": []})
+    assert record["active_work"] == []
 
 
 def test_upsert_active_work_defaults_empty(tmp_path):
@@ -1136,8 +1231,8 @@ def test_list_sessions_computes_frozen_duration_for_completed_entry(tmp_path):
 
 
 def test_dashboard_renders_active_work_entry():
-    # Why: AC-2 -- the expanded card view must list individual active/recent
-    # subagents with label and status, not just the existing history list.
+    # Why: the expanded card view must list each in-flight task with label and
+    # status, not just the existing history list.
     hub = load_hub()
     assert "buildActiveWorkList" in hub.DASHBOARD_HTML
 
@@ -1304,6 +1399,23 @@ def test_parse_story_name_tolerates_non_string():
     assert hub.parse_story_name(1000) is None
 
 
+# --- Dashboard: card and group colors ---
+
+def test_dashboard_color_scheme_is_red_gray_green():
+    # Why: red means waiting on you, gray means done, green means working; the
+    # old yellow done state must be gone from card and group styles.
+    hub = load_hub()
+    html = hub.DASHBOARD_HTML
+    assert 'done: "gray"' in html
+    assert ".card.gray {" in html
+    assert ".group.gray {" in html
+    assert ".group.gray .group-summary {" in html
+    assert ".card.yellow" not in html
+    assert ".yellow .state" not in html
+    assert ".group.yellow" not in html
+    assert '"yellow"' not in html
+
+
 # --- Dashboard: grouped layout ---
 
 def test_dashboard_consumes_groups_and_layout():
@@ -1330,3 +1442,86 @@ def test_dashboard_empty_state_and_count_use_flat_list():
     hub = load_hub()
     assert 'getElementById("empty").hidden = sessions.length > 0' in hub.DASHBOARD_HTML
     assert "sessions.length + \" session\"" in hub.DASHBOARD_HTML
+
+
+def supersedes_event(session_id, supersedes, **kwargs):
+    return {**named_event(session_id, name="", **kwargs), "supersedes": supersedes}
+
+
+def test_unnamed_continuation_drops_the_old_working_row(tmp_path):
+    # Why: an unnamed session moved to a new ID mid-turn left the old ID's row at
+    # working forever, because name-based supersede never applies to unnamed rows.
+    hub = load_hub()
+    store = hub.AttentionStore(str(tmp_path / "state.json"))
+    store.upsert(named_event("old", name="", state="working"))
+    store.upsert(supersedes_event("new", ["old"], state="done"))
+    assert [(s["session_id"], s["state"]) for s in store.list_sessions()] == [("new", "done")]
+    reloaded = hub.AttentionStore(str(tmp_path / "state.json"))
+    assert [s["session_id"] for s in reloaded.list_sessions()] == ["new"]
+
+
+def test_continuation_chain_drops_every_listed_row(tmp_path):
+    # Why: A continued into B and B into C; the newest session lists both ancestors
+    # and both stale rows must go.
+    hub = load_hub()
+    store = hub.AttentionStore(str(tmp_path / "state.json"))
+    for sid in ("a", "b"):
+        store.upsert(named_event(sid, name="", state="working"))
+    store.upsert(supersedes_event("c", ["a", "b"]))
+    assert [s["session_id"] for s in store.list_sessions()] == ["c"]
+
+
+def test_continuation_leaves_unlisted_and_finished_rows_alone(tmp_path):
+    # Why: only the IDs the reporter proved are removed; an unrelated session, even
+    # one that legitimately finished, must keep its row.
+    hub = load_hub()
+    store = hub.AttentionStore(str(tmp_path / "state.json"))
+    store.upsert(named_event("finished", name="", state="done"))
+    store.upsert(named_event("busy", name="", state="working"))
+    store.upsert(named_event("old", name="", state="working"))
+    store.upsert(supersedes_event("new", ["old"]))
+    assert sorted(s["session_id"] for s in store.list_sessions()) == ["busy", "finished", "new"]
+
+
+def test_continuation_ignores_rows_from_another_host(tmp_path):
+    # Why: session IDs are only unique per machine's reporter, so a list from one
+    # host must not delete another host's row.
+    hub = load_hub()
+    store = hub.AttentionStore(str(tmp_path / "state.json"))
+    store.upsert(named_event("old", name="", host="other-mac", state="working"))
+    store.upsert(supersedes_event("new", ["old"], host="mac"))
+    assert sorted(s["session_id"] for s in store.list_sessions()) == ["new", "old"]
+
+
+def test_continuation_never_removes_the_reporters_own_row(tmp_path):
+    # Why: a list naming the reporter itself must not delete the row being written.
+    hub = load_hub()
+    store = hub.AttentionStore(str(tmp_path / "state.json"))
+    store.upsert(supersedes_event("same", ["same"]))
+    assert [s["session_id"] for s in store.list_sessions()] == ["same"]
+
+
+@pytest.mark.parametrize("bad", [
+    "old", {"old": 1}, 7, None, [None], [7], [["old"]], [{"id": "old"}], [True], [""],
+    ["../old"], ["o" * 5000],
+])
+def test_malformed_continuation_lists_remove_nothing_and_do_not_crash(tmp_path, bad):
+    # Why: the event body is untrusted JSON; a wrong-typed or hostile list must
+    # neither crash the handler nor delete a row that merely looks similar.
+    hub = load_hub()
+    store = hub.AttentionStore(str(tmp_path / "state.json"))
+    store.upsert(named_event("old", name="", state="working"))
+    store.upsert(supersedes_event("new", bad))
+    assert sorted(s["session_id"] for s in store.list_sessions()) == ["new", "old"]
+
+
+def test_continuation_list_is_capped(tmp_path):
+    # Why: a body can carry an enormous list; only the first entries are honored so
+    # one event cannot sweep the whole table.
+    hub = load_hub()
+    store = hub.AttentionStore(str(tmp_path / "state.json"))
+    ids = [f"s{i}" for i in range(hub.SUPERSEDES_MAX + 3)]
+    for sid in ids:
+        store.upsert(named_event(sid, name="", state="working"))
+    store.upsert(supersedes_event("new", ids))
+    assert sorted(s["session_id"] for s in store.list_sessions()) == sorted(ids[hub.SUPERSEDES_MAX:] + ["new"])

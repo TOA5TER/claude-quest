@@ -10,14 +10,13 @@ an unreachable hub must never block or error an agent session.
 import json
 import os
 import re
-import shutil
 import socket
+import stat
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -25,10 +24,19 @@ DEFAULT_HUB_URL = "http://localhost:8765"
 HUB_TIMEOUT_SECONDS = 2
 MESSAGE_SNIPPET_MAX = 200
 SESSION_NAME_MAX = 256
-ACTIVE_SUBAGENT_TTL_SECONDS = 2 * 60 * 60
-BACKGROUND_SUBAGENT_TTL_SECONDS = 15 * 60
-COMPLETED_RETENTION_SECONDS = 5 * 60
 LABEL_MAX_CHARS = 256
+IDENT_MAX_CHARS = 64
+IDLE_TRANSCRIPT_QUIET_SECONDS = 30
+CONTINUATION_MAX_IDS = 10
+# The old process appends these bookkeeping records when it exits, after continued-in.
+CONTINUATION_TRAILING_TYPES = {"last-prompt", "cost-state"}
+CONTINUATION_TRAILING_LINES = 6
+CONTINUATION_MAX_HOPS = 5
+CONTINUATION_HEAD_BYTES = 256 * 1024
+CONTINUATION_TAIL_BYTES = 8 * 1024
+SESSION_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}")
+# Mirrors ACTIVE_WORK_MAX in hub/attention_hub.py; keep both in step.
+ACTIVE_WORK_SEND_MAX = 10
 STAGE_TERMINAL_STAGES = frozenset({"done", "finished"})
 STAGE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60  # checkpoints idle across nights/weekends/review waits are still active
 # creating-stories' pre-story ".pending-*.json" placeholder has no story ID to key a real
@@ -164,19 +172,61 @@ def get_session_name(input_data):
         return ""
 
 
-def _waiting_marker_path(session_id):
+def _marker_path(subdir, session_id):
     """Marker file path for a session, or None if the ID is unusable.
 
     The session ID becomes a filename, so reject anything empty, containing
-    path separators, or that is a traversal component. Markers live in a
-    dedicated subdirectory of ~/.claude/attention-hub/ so all of the plugin's
+    path separators, or that is a traversal component. Markers live in
+    dedicated subdirectories of ~/.claude/attention-hub/ so all of the plugin's
     transient state sits under one gitignorable path.
     """
     session_id = str(session_id or "").strip()
     if (not session_id or "/" in session_id or "\\" in session_id
             or "\x00" in session_id or session_id in (".", "..")):
         return None
-    return Path.home() / ".claude" / "attention-hub" / "waiting-markers" / session_id
+    return Path.home() / ".claude" / "attention-hub" / subdir / session_id
+
+
+def _waiting_marker_path(session_id):
+    return _marker_path("waiting-markers", session_id)
+
+
+def _inflight_marker_path(session_id):
+    return _marker_path("inflight-markers", session_id)
+
+
+def set_inflight_marker(session_id):
+    """Record that the session's last Stop listed background work. Never raises."""
+    try:
+        path = _inflight_marker_path(session_id)
+        if path is None:
+            return False
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+        return True
+    except Exception:
+        return False
+
+
+def has_inflight_marker(session_id):
+    """True if the session's last Stop listed background work. Never raises."""
+    try:
+        path = _inflight_marker_path(session_id)
+        return path is not None and path.is_file()
+    except Exception:
+        return False
+
+
+def clear_inflight_marker(session_id):
+    """Remove the in-flight marker; return True if it existed. Never raises."""
+    try:
+        path = _inflight_marker_path(session_id)
+        if path is None or not path.is_file():
+            return False
+        path.unlink()
+        return True
+    except Exception:
+        return False
 
 
 def set_waiting_marker(session_id):
@@ -220,234 +270,44 @@ def clear_waiting_marker(session_id):
         return False
 
 
-def _active_subagent_dir_path(session_id):
-    """Per-session directory holding one marker file per active subagent.
+def _usable_id(entry):
+    value = entry.get("id")
+    return value if isinstance(value, (str, int)) and not isinstance(value, bool) and str(value) else None
 
-    Reuses the same sanitization as _waiting_marker_path: the session ID
-    becomes a directory name, so reject anything empty, containing path
-    separators, null bytes, or a traversal component.
+
+def _clipped(value):
+    return value[:LABEL_MAX_CHARS] if isinstance(value, str) else ""
+
+
+def background_work_entries(background_tasks, session_crons):
+    """Convert Stop's background_tasks and session_crons into active-work entries.
+
+    Entries without a usable id are skipped; absent, non-list or malformed
+    input yields no entries. Never raises.
     """
-    session_id = str(session_id or "").strip()
-    if (not session_id or "/" in session_id or "\\" in session_id
-            or "\x00" in session_id or session_id in (".", "..")):
-        return None
-    return Path.home() / ".claude" / "attention-hub" / "active-subagents" / session_id
-
-
-def _read_marker(path):
-    """Parse a marker file's JSON body, with legacy-empty-file fallback.
-
-    Returns a dict with id/kind/label/status/started_at (and completed_at
-    when present). Any unparsable or empty file is treated as a valid
-    legacy record: kind="task", empty label, status="active", and the
-    file's own mtime as started_at. Never raises.
-    """
+    entries = []
     try:
-        text = path.read_text(encoding="utf-8").strip()
-        if text:
-            record = json.loads(text)
-            if isinstance(record, dict) and record.get("kind") and record.get("status"):
-                return record
+        for task in background_tasks if isinstance(background_tasks, list) else []:
+            if not isinstance(task, dict) or _usable_id(task) is None:
+                continue
+            entries.append({
+                "id": str(_usable_id(task))[:IDENT_MAX_CHARS],
+                "kind": str(task.get("type") or "task")[:IDENT_MAX_CHARS],
+                "label": _clipped(task.get("description")),
+                "status": str(task.get("status") or "running")[:IDENT_MAX_CHARS],
+            })
+        for cron in session_crons if isinstance(session_crons, list) else []:
+            if not isinstance(cron, dict) or _usable_id(cron) is None:
+                continue
+            entries.append({
+                "id": str(_usable_id(cron))[:IDENT_MAX_CHARS],
+                "kind": "cron",
+                "label": _clipped(cron.get("prompt")),
+                "status": "scheduled",
+            })
     except Exception:
         pass
-    try:
-        mtime = path.stat().st_mtime
-    except Exception:
-        mtime = time.time()
-    return {
-        "id": path.name,
-        "kind": "task",
-        "label": "",
-        "status": "active",
-        "started_at": mtime,
-    }
-
-
-def _write_marker(path, record):
-    """Write a marker record as JSON. Never raises."""
-    try:
-        path.write_text(json.dumps(record), encoding="utf-8")
-        return True
-    except Exception:
-        return False
-
-
-def _create_marker(session_id, kind, label=None):
-    """Create one active-status marker of the given kind for this session.
-
-    Shared by mark_subagent_active (kind="task") and mark_background_active
-    (any other kind). Creates the per-session directory if needed, creates
-    a uuid4-named marker file via exclusive create so concurrent dispatches
-    can never collide on a filename, and writes the JSON record via
-    _write_marker -- propagating its actual success/failure rather than
-    assuming success. Returns True only if the marker was both created and
-    its JSON body written successfully. Never raises.
-    """
-    try:
-        dir_path = _active_subagent_dir_path(session_id)
-        if dir_path is None:
-            return False
-        dir_path.mkdir(parents=True, exist_ok=True)
-        marker_id = uuid.uuid4().hex
-        marker_path = dir_path / marker_id
-        marker_path.touch(exist_ok=False)
-        return _write_marker(marker_path, {
-            "id": marker_id,
-            "kind": kind,
-            "label": str(label or "")[:LABEL_MAX_CHARS],
-            "status": "active",
-            "started_at": time.time(),
-        })
-    except Exception:
-        return False
-
-
-def mark_subagent_active(session_id, label=None):
-    """Record one active subagent dispatch for this session.
-
-    Creates a "task"-kind marker via _create_marker -- see its docstring
-    for the full mechanism. "task" here is just this marker kind's internal
-    label; it is unrelated to the real PreToolUse tool_name, which is
-    "Agent" ("Task" is a legacy/former name for the same tool -- see
-    attention_hub_pre_tool_use.py). Returns True on success, False if the
-    session_id is invalid or the filesystem operation fails. Never raises.
-    """
-    return _create_marker(session_id, "task", label)
-
-
-def mark_background_active(session_id, kind, label=None):
-    """Record one active background-tool dispatch for this session.
-
-    Same mechanism as mark_subagent_active via _create_marker, but for
-    non-Agent tools that run in the background. Only "bash" (backgrounded
-    Bash) is currently detected by attention_hub_pre_tool_use.py -- Workflow
-    and Monitor detection was removed there since neither tool fires a
-    PreToolUse hook in Claude Code's documented hook system, so tracking
-    them via this function is not currently achievable (tracked as a
-    follow-up gap, not implemented here). These kinds have no completion
-    hook (see spec's Warning callout), so they are pruned only by
-    BACKGROUND_SUBAGENT_TTL_SECONDS in list_active_work and never flip to
-    status="completed". Returns True on success, False if session_id is
-    invalid or the filesystem operation fails. Never raises.
-    """
-    return _create_marker(session_id, kind, label)
-
-
-def list_active_work(session_id):
-    """List surviving active-work records for this session, pruning stale ones.
-
-    Active-status markers (any kind) prune by file mtime against the TTL for
-    their kind (ACTIVE_SUBAGENT_TTL_SECONDS for "task",
-    BACKGROUND_SUBAGENT_TTL_SECONDS for every other kind) -- unchanged from
-    today's mtime-based mechanism, never the JSON started_at field, so
-    existing mtime-manipulation tests keep passing. Completed-status markers
-    (task kind only) prune by COMPLETED_RETENTION_SECONDS against their own
-    completed_at field. Returns a list of surviving marker records. Never
-    raises.
-    """
-    try:
-        dir_path = _active_subagent_dir_path(session_id)
-        if dir_path is None or not dir_path.is_dir():
-            return []
-        now = time.time()
-        surviving = []
-        for marker in dir_path.iterdir():
-            try:
-                if not marker.is_file():
-                    continue
-                record = _read_marker(marker)
-                if record.get("status") == "completed":
-                    completed_at = record.get("completed_at", now)
-                    if now - completed_at > COMPLETED_RETENTION_SECONDS:
-                        marker.unlink()
-                        continue
-                else:
-                    ttl = (ACTIVE_SUBAGENT_TTL_SECONDS if record.get("kind") == "task"
-                           else BACKGROUND_SUBAGENT_TTL_SECONDS)
-                    age = now - marker.stat().st_mtime
-                    if age > ttl:
-                        marker.unlink()
-                        continue
-                surviving.append(record)
-            except Exception:
-                continue
-        return surviving
-    except Exception:
-        return []
-
-
-def count_active_subagents(session_id):
-    """Count active-status markers for this session, across every kind,
-    pruning stale ones via list_active_work. Returns 0 if none exist. Never
-    raises. This is the mechanism that closes the false-done bug for
-    Bash-background dispatches (the only background kind actually marked --
-    Workflow/Monitor detection was confirmed unreachable via PreToolUse and
-    removed, see attention_hub_pre_tool_use.py): it counts every marked
-    kind, not just task, so notifications_stop.py's existing, unmodified
-    `count_active_subagents(session_id) > 0` check naturally trips for them.
-    """
-    try:
-        return sum(1 for record in list_active_work(session_id)
-                    if record.get("status") == "active")
-    except Exception:
-        return 0
-
-
-def clear_active_subagent(session_id):
-    """Flip the oldest still-active task-kind marker to status="completed".
-
-    Selects by file mtime ascending (FIFO) among markers whose kind is
-    "task" and whose status is "active" -- today's harness gives
-    SubagentStop no identifier for which subagent finished, so FIFO is the
-    best available approximation (see spec's marker-attribution decision:
-    correct whenever subagents complete in dispatch order, the common
-    case). Sets completed_at to now instead of deleting the file, so a
-    just-finished subagent still shows briefly as "completed" on the
-    dashboard. Returns True if a marker was flipped, False if none existed.
-    Never raises.
-    """
-    try:
-        dir_path = _active_subagent_dir_path(session_id)
-        if dir_path is None or not dir_path.is_dir():
-            return False
-        candidates = []
-        for marker in dir_path.iterdir():
-            if not marker.is_file():
-                continue
-            record = _read_marker(marker)
-            if record.get("kind") == "task" and record.get("status") == "active":
-                try:
-                    mtime = marker.stat().st_mtime
-                except Exception:
-                    continue
-                candidates.append((mtime, marker, record))
-        if not candidates:
-            return False
-        candidates.sort(key=lambda c: c[0])
-        _, marker, record = candidates[0]
-        record["status"] = "completed"
-        record["completed_at"] = time.time()
-        _write_marker(marker, record)
-        return True
-    except Exception:
-        return False
-
-
-def clear_all_active_subagents(session_id):
-    """Remove the entire active-subagent directory for this session at once.
-
-    Used at session end so no marker files outlive their session. Returns
-    True if the directory existed and was removed, False otherwise. Never
-    raises.
-    """
-    try:
-        dir_path = _active_subagent_dir_path(session_id)
-        if dir_path is None or not dir_path.is_dir():
-            return False
-        shutil.rmtree(dir_path)
-        return True
-    except Exception:
-        return False
+    return entries
 
 
 def get_dev_workflow_stage(cwd):
@@ -545,7 +405,113 @@ def get_story_title(story_id):
         return ""
 
 
-def build_event_payload(session_id, cwd, state, message=None, session_name=None, active_work=None):
+def _open_regular(path):
+    """Open a regular file for reading without ever blocking, or raise.
+
+    A FIFO would block a plain open() until a writer appears and a character
+    device such as /dev/zero would read forever, either of which would hang or
+    exhaust a hook. O_NONBLOCK makes the open return at once and fstat on the
+    opened descriptor (after any symlink is followed) rejects anything that is
+    not a regular file.
+    """
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError("not a regular file")
+        return os.fdopen(fd, "rb")
+    except Exception:
+        os.close(fd)
+        raise
+
+
+def transcript_recently_modified(transcript_path, within_seconds=IDLE_TRANSCRIPT_QUIET_SECONDS):
+    """True if the transcript regular file was written to within the last few seconds.
+
+    A turn that is actively running keeps appending to its transcript, so a recent
+    write means the session is not idle. A missing, unreadable or special file counts
+    as not recent. Never raises, never blocks, reads no content.
+    """
+    try:
+        if not transcript_path:
+            return False
+        with _open_regular(transcript_path) as f:
+            return time.time() - os.fstat(f.fileno()).st_mtime < within_seconds
+    except Exception:
+        return False
+
+
+def _continued_in(transcript_dir, old_id):
+    """The session ID a transcript says it continued into, or None.
+
+    Claude Code ends the old transcript with a continued-in record when it moves
+    a running conversation to a new session ID. Best-effort: any read or parse
+    problem means "no continuation".
+    """
+    try:
+        path = transcript_dir / f"{old_id}.jsonl"
+        with _open_regular(path) as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            f.seek(max(0, size - CONTINUATION_TAIL_BYTES))
+            lines = f.read(CONTINUATION_TAIL_BYTES).splitlines()
+        record = None
+        for line in reversed(lines[-CONTINUATION_TRAILING_LINES:]):
+            record = json.loads(line)
+            if not (isinstance(record, dict) and record.get("type") in CONTINUATION_TRAILING_TYPES):
+                break
+        if not isinstance(record, dict) or record.get("type") != "continued-in":
+            return None
+        target = record.get("continuedInSessionId")
+        if isinstance(target, str) and SESSION_ID_RE.fullmatch(target):
+            return target
+    except Exception:
+        pass
+    return None
+
+
+def continued_from(transcript_path, session_id):
+    """IDs of earlier sessions this session continues, oldest first. Never raises.
+
+    A continued conversation copies the old records into the new transcript with
+    their original `session_id` kept, but the copy alone is not proof: a fork
+    copies them too while the original keeps running. So each candidate ID counts
+    only if its own transcript's last record is a continued-in link that leads,
+    within a few hops, to this session.
+    """
+    try:
+        if not transcript_path or not session_id:
+            return []
+        transcript = Path(transcript_path)
+        with _open_regular(transcript) as f:
+            head = f.read(CONTINUATION_HEAD_BYTES)
+        candidates = []
+        for line in head.splitlines():
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            old_id = record.get("session_id") if isinstance(record, dict) else None
+            if (isinstance(old_id, str) and old_id != session_id
+                    and SESSION_ID_RE.fullmatch(old_id) and old_id not in candidates):
+                candidates.append(old_id)
+        found = []
+        for start in candidates:
+            chain, current = [], start
+            for _ in range(CONTINUATION_MAX_HOPS):
+                chain.append(current)
+                current = _continued_in(transcript.parent, current)
+                if current is None or current in chain:
+                    break
+                if current == session_id:
+                    found.extend(i for i in chain if i not in found)
+                    break
+        return found[:CONTINUATION_MAX_IDS]
+    except Exception:
+        return []
+
+
+def build_event_payload(session_id, cwd, state, message=None, session_name=None, active_work=None,
+                        supersedes=None):
     """Build the state-event payload identifying this session to the hub."""
     snippet = (message or "").strip()
     if len(snippet) > MESSAGE_SNIPPET_MAX:
@@ -566,8 +532,10 @@ def build_event_payload(session_id, cwd, state, message=None, session_name=None,
     story_title = get_story_title(story_id) if story_id else ""
     if story_title:
         payload["story_title"] = story_title
-    if active_work:
-        payload["active_work"] = active_work
+    if active_work is not None:
+        payload["active_work"] = active_work[:ACTIVE_WORK_SEND_MAX]
+    if supersedes:
+        payload["supersedes"] = list(supersedes)[:CONTINUATION_MAX_IDS]
     return payload
 
 
@@ -621,11 +589,13 @@ def _request(url, method, body=None):
     return result["ok"]
 
 
-def report_state(session_id, cwd, state, message=None, session_name=None, active_work=None):
+def report_state(session_id, cwd, state, message=None, session_name=None, active_work=None,
+                 transcript_path=None):
     """POST a state event to the hub. Swallows every failure; returns success bool."""
     if not session_id:
         return False
-    payload = build_event_payload(session_id, cwd, state, message, session_name, active_work)
+    payload = build_event_payload(session_id, cwd, state, message, session_name, active_work,
+                                  supersedes=continued_from(transcript_path, session_id))
     return _request(f"{get_hub_url()}/api/events", "POST", payload)
 
 

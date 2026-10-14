@@ -6,6 +6,8 @@ import time
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+import pytest
+
 
 def load_client():
     spec = importlib.util.spec_from_file_location(
@@ -404,35 +406,6 @@ def test_remove_session_sends_delete(monkeypatch):
     assert captured["method"] == "DELETE"
 
 
-# --- Marker JSON record format + legacy fallback ---
-
-def test_read_marker_parses_json_record(hub_client, active_subagent_home):
-    # Why: _read_marker is the single source of truth every other marker
-    # function relies on -- it must round-trip a well-formed JSON record.
-    active_subagent_home.mkdir(parents=True, exist_ok=True)
-    marker = active_subagent_home / "m1"
-    marker.write_text('{"id": "m1", "kind": "bash", "label": "x", '
-                       '"status": "active", "started_at": 123.0}')
-    record = hub_client._read_marker(marker)
-    assert record == {"id": "m1", "kind": "bash", "label": "x",
-                       "status": "active", "started_at": 123.0}
-
-
-def test_read_marker_legacy_empty_file_falls_back(hub_client, active_subagent_home):
-    # Why: markers created before this story (empty touch files) must still
-    # be treated as valid task-kind, active-status records, not crash or
-    # silently vanish, so rollout never loses in-flight tracking.
-    active_subagent_home.mkdir(parents=True, exist_ok=True)
-    marker = active_subagent_home / "legacy-marker"
-    marker.touch()
-    record = hub_client._read_marker(marker)
-    assert record["id"] == "legacy-marker"
-    assert record["kind"] == "task"
-    assert record["label"] == ""
-    assert record["status"] == "active"
-    assert isinstance(record["started_at"], float)
-
-
 # --- Active work tracking ---
 
 def test_build_event_payload_includes_active_work_when_present():
@@ -443,12 +416,144 @@ def test_build_event_payload_includes_active_work_when_present():
     assert payload["active_work"] == [{"kind": "task", "status": "active"}]
 
 
-def test_build_event_payload_omits_active_work_when_empty():
-    # Why: keep normal-state payloads unchanged in shape when nothing is
-    # tracked, matching every other optional field's omit-when-empty style.
+def test_build_event_payload_omits_active_work_when_unsupplied():
+    # Why: UserPromptSubmit and PostToolUse supply no list, and the hub keeps the
+    # previous one only when the field is absent from the event.
     client = load_client()
     payload = client.build_event_payload("s1", "/tmp/proj", "done")
     assert "active_work" not in payload
+
+
+def test_build_event_payload_sends_explicit_empty_active_work():
+    # Why: a Stop that finds nothing in flight must clear the hub's stored list;
+    # dropping the empty list would leave the last non-empty one on the card.
+    client = load_client()
+    payload = client.build_event_payload("s1", "/tmp/proj", "done", active_work=[])
+    assert payload["active_work"] == []
+
+
+# --- Converter: Stop input lists -> active-work entries ---
+# Fixtures are synthetic, built from the Stop input field list in the Claude Code
+# hooks reference (background_tasks: id/type/status/description; session_crons:
+# id/schedule/recurring/prompt).
+
+def test_converter_maps_task_fields_verbatim():
+    # Why: the card shows kind/label/status/id straight from the task entry;
+    # synthetic payload from the hooks reference field list.
+    client = load_client()
+    entries = client.background_work_entries(
+        [{"id": "task-001", "type": "shell", "status": "running",
+          "description": "tail logs", "command": "tail -f x"}], [])
+    assert entries == [{"id": "task-001", "kind": "shell", "label": "tail logs",
+                        "status": "running"}]
+
+
+def test_converter_clips_label_to_limit():
+    # Why: descriptions can run to 1000 characters; the hub field limit is smaller.
+    client = load_client()
+    entries = client.background_work_entries(
+        [{"id": "t", "type": "shell", "status": "running", "description": "x" * 2000}], [])
+    assert len(entries[0]["label"]) == client.LABEL_MAX_CHARS
+
+
+def test_converter_maps_cron_to_scheduled_entry_with_own_id():
+    # Why: the cron's own id lets the hub keep its start time across Stops;
+    # synthetic payload from the hooks reference field list.
+    client = load_client()
+    entries = client.background_work_entries(
+        [], [{"id": "cron-001", "schedule": "0 9 * * 1-5", "recurring": True,
+              "prompt": "check the build"}])
+    assert entries == [{"id": "cron-001", "kind": "cron", "label": "check the build",
+                        "status": "scheduled"}]
+
+
+def test_converter_skips_entries_without_usable_id():
+    # Why: an entry with no id cannot keep a stable start time on the hub, so it
+    # is dropped rather than shown with a made-up identity.
+    client = load_client()
+    entries = client.background_work_entries(
+        [{"type": "shell", "status": "running"}, {"id": "", "type": "shell"},
+         {"id": None, "type": "shell"}],
+        [{"prompt": "no id"}])
+    assert entries == []
+
+
+def test_converter_rejects_bool_ids_and_survives_non_dict_beside_idless_cron():
+    # Why: True is an int in Python and must not become the id "True"; a non-dict
+    # cron sitting beside an id-less one must not abort the rest of the list.
+    client = load_client()
+    entries = client.background_work_entries(
+        [{"id": True, "type": "shell"}],
+        [None, {"prompt": "no id"}, {"id": "c1", "prompt": "ok"}])
+    assert [e["id"] for e in entries] == ["c1"]
+
+
+def test_converter_clips_every_field():
+    # Why: oversized ids, kinds and statuses must not travel at full length; the
+    # label keeps its larger limit.
+    client = load_client()
+    big = "x" * 5000
+    entries = client.background_work_entries(
+        [{"id": big, "type": big, "description": big, "status": big}], [])
+    assert len(entries[0]["label"]) == client.LABEL_MAX_CHARS
+    assert all(len(entries[0][k]) == client.IDENT_MAX_CHARS for k in ("id", "kind", "status"))
+
+
+def test_converter_keeps_every_entry_so_state_is_decided_from_the_full_list():
+    # Why: the send cap applies to the payload only; the working/done decision
+    # must still see work beyond the cap.
+    client = load_client()
+    tasks = [{"id": f"t{i}", "type": "shell", "status": "running"}
+             for i in range(client.ACTIVE_WORK_SEND_MAX + 5)]
+    assert len(client.background_work_entries(tasks, [])) == client.ACTIVE_WORK_SEND_MAX + 5
+
+
+def test_payload_caps_active_work_and_stays_under_the_hub_body_limit():
+    # Why: an oversized Stop event gets a 413 and is lost, leaving the card at its
+    # previous state; worst case is many entries with wide-character fields.
+    client = load_client()
+    wide = "\U0001F600" * client.LABEL_MAX_CHARS
+    tasks = [{"id": wide, "type": wide, "description": wide, "status": wide}
+             for _ in range(100)]
+    entries = client.background_work_entries(tasks, [])
+    payload = client.build_event_payload("s1", "/tmp/x", "working", wide, wide, entries)
+    assert len(payload["active_work"]) == client.ACTIVE_WORK_SEND_MAX
+    assert len(json.dumps(payload).encode("utf-8")) < 64 * 1024
+
+
+@pytest.mark.parametrize("tasks,crons", [
+    (None, None),
+    ("not a list", {"id": "c"}),
+    (42, "x"),
+    ([None, "str", 7, ["list"]], [None, 3]),
+    ({"id": "t"}, [[]]),
+])
+def test_converter_tolerates_absent_non_list_and_malformed(tasks, crons):
+    # Why: hook input is untrusted JSON; the converter must never raise and must
+    # count only well-formed entries.
+    client = load_client()
+    assert client.background_work_entries(tasks, crons) == []
+
+
+def test_converter_keeps_valid_entries_next_to_malformed_ones():
+    # Why: one bad entry must not discard the valid work around it.
+    client = load_client()
+    entries = client.background_work_entries(
+        [None, {"id": "t1", "type": "monitor", "status": "running", "description": "d"}, "x"],
+        [7, {"id": "c1", "prompt": "p"}])
+    assert [e["id"] for e in entries] == ["t1", "c1"]
+
+
+def test_converter_handles_missing_optional_fields():
+    # Why: type, status and description are not guaranteed; an id alone is enough
+    # to count as in flight.
+    client = load_client()
+    entries = client.background_work_entries([{"id": "t1"}], [])
+    assert len(entries) == 1
+    assert entries[0]["id"] == "t1"
+    assert entries[0]["kind"] == "task"
+    assert entries[0]["label"] == ""
+    assert entries[0]["status"] == "running"
 
 
 # --- Dev-workflow stage ---
