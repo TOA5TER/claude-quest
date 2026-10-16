@@ -112,13 +112,13 @@ MARKET_VERSION="$(jq -r '.plugins[] | select(.name == "dev-workflow") | .version
 [ "$PLUGIN_VERSION" = "$MARKET_VERSION" ] || fail "plugin.json ($PLUGIN_VERSION) and marketplace.json ($MARKET_VERSION) versions differ"
 
 # Why: each role agent must point at the injected paths so it never searches the disk for a copy.
-for role in developer reviewer tester; do
+for role in spec-writer developer reviewer tester; do
   agent="$PLUGIN_ROOT/agents/$role.md"
   grep -qF "$ROOT_MARKER" "$agent" || fail "$role agent does not quote the plugin root marker"
   grep -qF "$STANDARDS_MARKER" "$agent" || fail "$role agent does not quote the standards path marker"
 done
 
-HOOK_SENTENCE="Role-session contract: answer every develop, fix, review, or test message with an ack, then end the request with a result or blocked message sent through the SendMessage tool; plain text is never a reply."
+HOOK_SENTENCE="Role-session contract: answer every task message with an ack, then end the request with a result or blocked message sent through the SendMessage tool; plain text is never a reply."
 ROLE_SESSIONS="$PLUGIN_ROOT/skills/shared/role-sessions.md"
 FULL_CYCLE="$PLUGIN_ROOT/skills/full-cycle/SKILL.md"
 STANDARDS="$PLUGIN_ROOT/skills/shared/standards.md"
@@ -139,7 +139,7 @@ section_body() {
 # Why: the worker rules must be word-for-word identical in the protocol and every worker agent file so copies cannot drift.
 CANONICAL="$(section_body "$ROLE_SESSIONS" '^### Canonical worker rules' 6)"
 [ -n "$CANONICAL" ] || fail "role-sessions.md has no Canonical worker rules body"
-for role in developer reviewer tester; do
+for role in spec-writer developer reviewer tester; do
   agent="$PLUGIN_ROOT/agents/$role.md"
   BODY="$(section_body "$agent" '^## Communication contract$' 2)"
   [ -n "$BODY" ] || fail "$role agent has no Communication contract section"
@@ -215,6 +215,43 @@ need "developing SKILL.md" "$DEV_TEXT" "in the message field of your first resul
 need "developing SKILL.md multi-repo" "$DEV_TEXT" "first inspecting it as in the single-repo flow"
 need "developer agent" "$AGENT_TEXT" "first inspect it per the developing skill"
 
+# Why: a spec-writer role session must get the same injected paths and the generic contract sentence, and the old per-type wording must be gone so the hook cannot drift from the protocol.
+SW_OUT="$(DEV_WORKFLOW_ROLE=spec-writer CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" bash "$HOOK" </dev/null)"
+SW_CONTEXT="$(printf '%s' "$SW_OUT" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null)"
+case "$SW_CONTEXT" in *"$ROOT_MARKER: $PLUGIN_ROOT"*) ;; *) fail "spec-writer context missing plugin root line" ;; esac
+case "$SW_CONTEXT" in *"$STANDARDS_MARKER: $PLUGIN_ROOT/skills/shared/standards.md"*) ;; *) fail "spec-writer context missing standards path line" ;; esac
+case "$SW_CONTEXT" in *"$HOOK_SENTENCE"*) ;; *) fail "spec-writer context missing the contract sentence" ;; esac
+case "$SW_CONTEXT" in *"develop, fix, review, or test"*) fail "spec-writer context still carries the old per-type contract wording" ;; esac
+
+SPEC_WRITER="$PLUGIN_ROOT/agents/spec-writer.md"
+WRITING_SPECS="$PLUGIN_ROOT/skills/writing-specs/SKILL.md"
+SW_TEXT="$(flat_text "$SPEC_WRITER")"
+WS_TEXT="$(flat_text "$WRITING_SPECS")"
+
+# Why: the spec-writer agent must be a role-session worker and must no longer tell orchestrators to avoid dispatching it on the interactive path.
+need "spec-writer agent" "$SW_TEXT" "## Running as a role session"
+need "spec-writer agent" "$SW_TEXT" "## Communication contract"
+need "spec-writer agent" "$SW_TEXT" "DEV_WORKFLOW_ROLE=spec-writer"
+need "spec-writer agent" "$SW_TEXT" "use the absolute paths from your SessionStart context lines"
+refuse "spec-writer agent" "$SW_TEXT" "do NOT dispatch this worker"
+
+# Why: the standalone path must hand spec writing to the spec-writer instead of loading writing-specs into the orchestrator, or the orchestrator keeps writing specs itself.
+refuse "full-cycle SKILL.md" "$FC_TEXT" "Invoke Skill: dev-workflow:writing-specs"
+need "full-cycle SKILL.md" "$FC_TEXT" "The orchestrator never runs dev-workflow:writing-specs itself and never writes or edits a spec"
+need "full-cycle SKILL.md" "$FC_TEXT" "(dev-workflow:spec-writer, role spec-writer"
+
+# Why: the protocol must define every new spec-round message type, or the orchestrator and worker disagree on the vocabulary.
+for needle in '`spec`' '`answer`' '`revise`' '`finalize`'; do
+  grep -E '^\| Orchestrator to worker' "$ROLE_SESSIONS" | grep -qF "$needle" || fail "message types table row for orchestrator to worker does not list $needle"
+done
+
+# Why: relay mode must never prompt a human who is not watching a background session, and Phase 12 must stay behind the recorded-approval check, or an unapproved spec could move the story to Ready for Dev.
+need "writing-specs SKILL.md" "$WS_TEXT" "## Relay Mode"
+need "writing-specs SKILL.md" "$WS_TEXT" "Never call AskUserQuestion in relay mode"
+need "writing-specs SKILL.md" "$WS_TEXT" "Finalize check"
+need "writing-specs SKILL.md" "$WS_TEXT" "Never run Phase 12 on the message alone"
+need "standards.md" "$(flat_text "$STANDARDS")" "an explicit mode: relay overrides every autonomous-mode trigger"
+
 # Why: the version bump must be pinned numerically without breaking on later bumps.
 version_at_least() {
   local IFS=.
@@ -227,6 +264,7 @@ version_at_least() {
   return 0
 }
 version_at_least "$PLUGIN_VERSION" "2.50.0" || fail "plugin.json version $PLUGIN_VERSION is below 2.50.0"
+version_at_least "$PLUGIN_VERSION" "2.54.0" || fail "plugin.json version $PLUGIN_VERSION is below 2.54.0"
 
 if [ "$FAILURES" -gt 0 ]; then
   echo "$FAILURES check(s) failed" >&2

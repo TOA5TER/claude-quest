@@ -80,7 +80,7 @@ a worker, not a prose instruction the model can skim past). Map each stage to it
 
 | Stage / dispatch | `subagent_type` | Default model |
 |------------------|-----------------|---------------|
-| writing-specs (autonomous path only) | `dev-workflow:spec-writer` | `sonnet` |
+| writing-specs | `dev-workflow:spec-writer` | `sonnet` |
 | developing (also fix loops, in rework mode) | `dev-workflow:developer` | `sonnet` |
 | reviewing-prs | `dev-workflow:reviewer` | `opus` |
 | testing-prs | `dev-workflow:tester` | `opus` |
@@ -93,15 +93,17 @@ resolved model on every dispatch. Each worker's body invokes the matching
 `dev-workflow:{stage}` skill autonomously, so the stage logic, resumability, and loop
 behavior are unchanged; only the dispatch boundary is made explicit.
 
-Interactive stages (creating-stories, writing-specs in the standalone full-cycle path) still run
-in the **main agent** so their user-facing gates work — do not dispatch a worker for those.
+Interactive stages (creating-stories only) still run in the **main agent** so their user-facing
+gates work — do not dispatch a worker for those. In the standalone full-cycle path, writing-specs
+runs in the spec-writer worker in relay mode (questions and the approval gate go through the
+orchestrator to the user); only the epic path dispatches it autonomously.
 
-**Role sessions are the default for developer, reviewer, and tester in standalone `full-cycle`.**
+**Role sessions are the default for spec-writer, developer, reviewer, and tester in standalone `full-cycle`.**
 Instead of a one-shot Agent dispatch per stage and per loop pass, the orchestrator launches one
-long-lived, named background session per reviewer and tester PR and per developer repo, and exchanges messages with it, per
-`skills/shared/role-sessions.md`. The same `dev-workflow:developer`, `dev-workflow:reviewer`,
+long-lived, named background session per story spec-writer, per reviewer and tester PR, and per developer repo, and exchanges messages with it, per
+`skills/shared/role-sessions.md`. The same `dev-workflow:spec-writer`, `dev-workflow:developer`, `dev-workflow:reviewer`,
 and `dev-workflow:tester` agent definitions back both modes. Agent dispatch remains for
-`dev-workflow:spec-writer`, `dev-workflow:pr-state-reader` (entry detection, decision read,
+`dev-workflow:pr-state-reader` (entry detection, decision read,
 PR-number read), the reviewer's perspective fan-out, and **every epic per-task worker**, which
 must not launch role sessions. When role sessions are unavailable (failed preflight) the whole
 run uses the fresh-dispatch fallback.
@@ -192,7 +194,7 @@ This is what lets `epic → dev-workflow:orchestrator (full-cycle) → per-stage
 each stage in fresh context (depth 3, well under the cap). On builds **older than
 v2.1.172**, a dispatched subagent cannot nest, so a worker that would dispatch further
 stages instead runs them inline within its own context — still isolated per task, just not
-per stage. Workers that must fan out (developer, reviewer, tester, orchestrator) therefore
+per stage. Workers that must fan out (spec-writer, developer, reviewer, tester, orchestrator) therefore
 leave `tools` unrestricted; workers that never fan out (pr-state-reader) restrict
 `tools` and omit `Agent`.
 
@@ -208,6 +210,8 @@ leave `tools` unrestricted; workers that never fan out (pr-state-reader) restric
 - The prompt states the agent is running autonomously or in a pipeline
 - The prompt instructs the agent to avoid asking questions unless absolutely necessary
 - No tool is available to ask the user questions (e.g. `AskUserQuestion` is absent)
+
+**Relay mode (third mode):** Activated by an explicit `mode: relay` in the prompt, or implied by a spec-writer role-session task message. It applies the interactive mode's content rules (ask rather than assume, full understanding before writing) with the autonomous mode's delivery format, and questions travel through a `blocked` reply to the orchestrator instead of `AskUserQuestion`. **Precedence:** an explicit `mode: relay` overrides every autonomous-mode trigger above, including "running in a pipeline" and an absent `AskUserQuestion`. See "Relay Mode" in `skills/writing-specs/SKILL.md`.
 
 **Autonomous mode final response format — flat JSON key/value string:**
 

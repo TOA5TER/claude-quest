@@ -72,7 +72,7 @@ check_launch_value() {
 }
 FULL_CYCLE="$PLUGIN_ROOT/skills/full-cycle/SKILL.md"
 ROLE_SESSIONS="$PLUGIN_ROOT/skills/shared/role-sessions.md"
-for role in developer reviewer tester; do
+for role in spec-writer developer reviewer tester; do
   found=0
   while IFS= read -r value; do
     found=1
@@ -101,7 +101,7 @@ done
 PLUGIN_VERSION="$(jq -r '.version' "$PLUGIN_ROOT/.claude-plugin/plugin.json")"
 MARKET_VERSION="$(jq -r --arg n "$PLUGIN_NAME" '.plugins[] | select(.name == $n) | .version' "$REPO_ROOT/.claude-plugin/marketplace.json")"
 [ "$PLUGIN_VERSION" = "$MARKET_VERSION" ] || fail "plugin.json version $PLUGIN_VERSION differs from marketplace $MARKET_VERSION"
-[ "$PLUGIN_VERSION" = "2.53.0" ] || fail "plugin version $PLUGIN_VERSION is not 2.53.0"
+[ "$PLUGIN_VERSION" = "2.54.0" ] || fail "plugin version $PLUGIN_VERSION is not 2.54.0"
 
 if [ "$FAILURES" -gt 0 ]; then
   echo "$FAILURES check(s) failed" >&2
