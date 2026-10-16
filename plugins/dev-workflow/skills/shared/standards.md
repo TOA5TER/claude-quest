@@ -206,12 +206,12 @@ leave `tools` unrestricted; workers that never fan out (pr-state-reader) restric
 
 **Interactive mode (default):** The agent can ask the user questions and receive answers. Final response should be human-readable prose, structured naturally for a developer audience.
 
-**Autonomous mode:** Requires a positive epic signal: the `tasklist` PM-adapter override or an explicit `mode: autonomous` in the prompt. When that signal is present, any of the following also applies:
+**Autonomous mode:** Activated when any of the following are true:
 - The prompt states the agent is running autonomously or in a pipeline
 - The prompt instructs the agent to avoid asking questions unless absolutely necessary
 - No tool is available to ask the user questions (e.g. `AskUserQuestion` is absent)
 
-**Relay mode:** Activated by an explicit `mode: relay` in the prompt, or implied by `DEV_WORKFLOW_ROLE=spec-writer` or a spec-writer role-session task message. Relay mode fails closed: where mode is ambiguous and neither relay nor a positive epic signal is present, writing-specs never runs Phase 12 and replies `blocked` with `kind: stop`. It applies the interactive mode's content rules (ask rather than assume, full understanding before writing) with the autonomous mode's delivery format, and questions travel through a `blocked` reply to the orchestrator instead of `AskUserQuestion`. **Precedence:** an explicit `mode: relay` overrides every autonomous-mode trigger above, including "running in a pipeline" and an absent `AskUserQuestion`. See "Relay Mode" in `skills/writing-specs/SKILL.md`.
+**Relay mode:** Activated by an explicit `mode: relay` in the prompt, or implied by `DEV_WORKFLOW_ROLE=spec-writer` or a spec-writer role-session task message. For writing-specs and the spec-writer only, mode detection fails closed: autonomous mode there additionally requires a positive epic signal (the `tasklist` PM-adapter override or an explicit `mode: autonomous` in the prompt), and where neither relay nor that signal is present, writing-specs never runs Phase 12 and replies `blocked` with `kind: stop`. Every other skill and worker keeps the autonomous triggers above unchanged. It applies the interactive mode's content rules (ask rather than assume, full understanding before writing) with the autonomous mode's delivery format, and questions travel through a `blocked` reply to the orchestrator instead of `AskUserQuestion`. **Precedence:** an explicit `mode: relay` overrides every autonomous-mode trigger above, including "running in a pipeline" and an absent `AskUserQuestion`. See "Relay Mode" in `skills/writing-specs/SKILL.md`.
 
 **Autonomous mode final response format — flat JSON key/value string:**
 
