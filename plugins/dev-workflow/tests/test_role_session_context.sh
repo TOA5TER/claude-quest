@@ -252,6 +252,28 @@ need "writing-specs SKILL.md" "$WS_TEXT" "Finalize check"
 need "writing-specs SKILL.md" "$WS_TEXT" "Never run Phase 12 on the message alone"
 need "standards.md" "$(flat_text "$STANDARDS")" "an explicit mode: relay overrides every autonomous-mode trigger"
 
+need "writing-specs SKILL.md" "$WS_TEXT" "Mode detection fails closed"
+need "writing-specs SKILL.md" "$WS_TEXT" "Approval fields are never yours"
+need "writing-specs SKILL.md" "$WS_TEXT" "returns a kept, pre-existing spec"
+need "writing-specs SKILL.md" "$WS_TEXT" "kind: questions"
+need "writing-specs SKILL.md" "$WS_TEXT" "kind: stop"
+need "spec-writer.md" "$SW_TEXT" "Mode fails closed"
+need "spec-writer.md" "$SW_TEXT" "written solely by the orchestrator"
+need "role-sessions.md" "$RS_TEXT" "kind: questions"
+need "role-sessions.md" "$RS_TEXT" "kind: stop"
+need "role-sessions.md" "$RS_TEXT" "spec-paths"
+need "role-sessions.md" "$RS_TEXT" "transitioned"
+need "role-sessions.md" "$RS_TEXT" "a spec-writer blocked with kind: questions is a normal round of the relay loop"
+need "role-sessions.md" "$RS_TEXT" "read the role's recovery source per that row, then re-send once"
+refuse "role-sessions.md" "$RS_TEXT" "read GitHub, check for commits newer than the request, then re-send once"
+need "full-cycle SKILL.md" "$FC_TEXT" "never send it back as an answer"
+need "full-cycle SKILL.md" "$FC_TEXT" "mode: autonomous"
+need "context-compaction.md" "$(flat_text "$PLUGIN_ROOT/skills/shared/context-compaction.md")" "written solely by the orchestrator, never by the spec-writer"
+need "standards.md" "$(flat_text "$STANDARDS")" "Requires a positive epic signal"
+need "standards.md" "$(flat_text "$STANDARDS")" "are exempt from this cap"
+refuse "standards.md" "$(flat_text "$STANDARDS")" "Relay mode (third mode)"
+need "README.md" "$(flat_text "$PLUGIN_ROOT/README.md")" "one spec-writer, one developer per repo, plus a reviewer and a tester per PR"
+
 # Why: the version bump must be pinned numerically without breaking on later bumps.
 version_at_least() {
   local IFS=.

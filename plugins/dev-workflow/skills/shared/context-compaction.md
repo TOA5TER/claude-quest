@@ -114,8 +114,8 @@ map, except where noted as a top-level field:
   and `approval_timestamp` (UTC ISO-8601 time the approval was given, with a `Z` suffix). The
   spec-writer reads these two fields, comparing `approval_timestamp` against `spec_written_at`,
   before it runs Phase 12. The spec-writer itself records the top-level `spec_written_at` (UTC
-  ISO-8601 with a `Z` suffix) each time it writes or rewrites a spec in relay mode, under the same
-  lock-and-atomic-write rules as checkpoint seeding. These fields are
+  ISO-8601 with a `Z` suffix) each time it writes or rewrites a spec in relay mode, and when a specs `result` returns a kept, pre-existing spec, under the same
+  lock-and-atomic-write rules as checkpoint seeding. It writes only `spec_written_at`: `approval_text` and `approval_timestamp` are written solely by the orchestrator, never by the spec-writer. These fields are
   the mechanical evidence that the spec-approval gate actually fired; full-cycle refuses
   to dispatch developing without them (see full-cycle's "Hard gate — recorded
   approval"). The repo entry itself is untouched by this write — writing-specs' own Phase 3

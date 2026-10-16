@@ -206,12 +206,12 @@ leave `tools` unrestricted; workers that never fan out (pr-state-reader) restric
 
 **Interactive mode (default):** The agent can ask the user questions and receive answers. Final response should be human-readable prose, structured naturally for a developer audience.
 
-**Autonomous mode:** Activated when any of the following are true:
+**Autonomous mode:** Requires a positive epic signal: the `tasklist` PM-adapter override or an explicit `mode: autonomous` in the prompt. When that signal is present, any of the following also applies:
 - The prompt states the agent is running autonomously or in a pipeline
 - The prompt instructs the agent to avoid asking questions unless absolutely necessary
 - No tool is available to ask the user questions (e.g. `AskUserQuestion` is absent)
 
-**Relay mode (third mode):** Activated by an explicit `mode: relay` in the prompt, or implied by a spec-writer role-session task message. It applies the interactive mode's content rules (ask rather than assume, full understanding before writing) with the autonomous mode's delivery format, and questions travel through a `blocked` reply to the orchestrator instead of `AskUserQuestion`. **Precedence:** an explicit `mode: relay` overrides every autonomous-mode trigger above, including "running in a pipeline" and an absent `AskUserQuestion`. See "Relay Mode" in `skills/writing-specs/SKILL.md`.
+**Relay mode:** Activated by an explicit `mode: relay` in the prompt, or implied by `DEV_WORKFLOW_ROLE=spec-writer` or a spec-writer role-session task message. Relay mode fails closed: where mode is ambiguous and neither relay nor a positive epic signal is present, writing-specs never runs Phase 12 and replies `blocked` with `kind: stop`. It applies the interactive mode's content rules (ask rather than assume, full understanding before writing) with the autonomous mode's delivery format, and questions travel through a `blocked` reply to the orchestrator instead of `AskUserQuestion`. **Precedence:** an explicit `mode: relay` overrides every autonomous-mode trigger above, including "running in a pipeline" and an absent `AskUserQuestion`. See "Relay Mode" in `skills/writing-specs/SKILL.md`.
 
 **Autonomous mode final response format — flat JSON key/value string:**
 
@@ -224,7 +224,7 @@ Required keys (omit only if genuinely empty/unknown):
 - `status` — `success` or `error`
 - `message` — one-sentence summary of what happened or what went wrong
 
-Then add **up to 3** additional keys for the most valuable inferred context (e.g. `branch`, `test-result`, `spec-path`, `reviewer-decision`). Choose only the highest-signal keys — do not pad.
+Then add **up to 3** additional keys for the most valuable inferred context (e.g. `branch`, `test-result`, `spec-path`, `reviewer-decision`). Choose only the highest-signal keys — do not pad. The relay-mode spec-writer `result` keys defined in `skills/shared/role-sessions.md` (`spec-paths`, `viability`, `linked`, `transitioned`) are exempt from this cap.
 
 Example:
 ```json
@@ -334,7 +334,7 @@ This rule governs developing, reviewing-prs, addressing-pr-comments, and testing
   - It would need its own design/spec/brainstorming pass before it could be implemented
   - It touches an unrelated subsystem with no shared code path to the current change
   - It would roughly double the size or complexity of the current PR
-- **Autonomous/dispatched contexts include anyway** — A run with no ability to ask a user (autonomous mode, a subagent dispatched by full-cycle or epic) has no one to ask, so it defaults to including the necessary work even when a huge-scope-increase signal is present — a deliberate exception to the ask-first branch above, chosen over leaving necessary work undone. The autonomous-mode summary (the flat key/value format in Output Mode Detection above) must name what was included and why (as one of its additional keys, e.g. `extra-work`, or in `message`), so a human reviewing the PR sees it was pulled in without a live approval. Following this documented fallback is applying the rule, not deviating from it — Process Fidelity's "autonomous contexts never deviate" governs departures from documented steps, and this fallback is the documented step.
+- **Autonomous/dispatched contexts include anyway** — A run with no ability to ask a user (autonomous mode, a subagent dispatched by full-cycle or epic, not relay mode) has no one to ask, so it defaults to including the necessary work even when a huge-scope-increase signal is present — a deliberate exception to the ask-first branch above, chosen over leaving necessary work undone. The autonomous-mode summary (the flat key/value format in Output Mode Detection above) must name what was included and why (as one of its additional keys, e.g. `extra-work`, or in `message`), so a human reviewing the PR sees it was pulled in without a live approval. Following this documented fallback is applying the rule, not deviating from it — Process Fidelity's "autonomous contexts never deviate" governs departures from documented steps, and this fallback is the documented step.
 - **Never a ticket** — This rule never authorizes creating a story, ticket, issue, or subtask; the Story Creation Gate below still governs creation. Applying this rule ends either with the work included in the current branch/PR or with the user asked first — a story is never created as a byproduct.
 
 The Story Creation Gate's "Carve-out: fixes that unblock the current PR's own gate" bullet is the CI/gate-specific instance of this rule.
