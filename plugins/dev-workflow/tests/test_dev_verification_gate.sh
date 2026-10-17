@@ -159,10 +159,12 @@ forbid "$RM" "README" "The two gates are independent."
 
 # Why: inside the mandated .worktrees/<slug> layout --show-toplevel is the worktree slug, so exemption and spec lookups must derive the repo name from the common git dir.
 REPO_NAME_CMD='basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"'
-for f in shared/dev-deploy.md reviewing-prs/SKILL.md testing-prs/SKILL.md addressing-pr-comments/SKILL.md; do
+for f in shared/dev-deploy.md reviewing-prs/SKILL.md testing-prs/SKILL.md addressing-pr-comments/SKILL.md notes-adapter/interface.md notes-adapter/obsidian.md; do
   need "$S/$f" "$f" "$REPO_NAME_CMD"
   forbid "$S/$f" "$f" "git rev-parse --show-toplevel | xargs basename"
 done
+need "$S/writing-specs/SKILL.md" "writing-specs" "git -C {repo_root} rev-parse --path-format=absolute --git-common-dir"
+forbid "$S/writing-specs/SKILL.md" "writing-specs" "rev-parse --show-toplevel | xargs basename"
 need "$PLUGIN_ROOT/README.md" "README" "$REPO_NAME_CMD"
 forbid "$PLUGIN_ROOT/README.md" "README" "git rev-parse --show-toplevel | xargs basename"
 

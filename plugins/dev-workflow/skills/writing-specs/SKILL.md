@@ -210,7 +210,7 @@ Before the ULTRATHINK deep-dive, invoke brainstorming to surface unclear require
 ## Phase 5: ULTRATHINK — Story Analysis and Codebase Investigation
 
 **SCOPE BOUNDARY: You are writing a spec for the repo currently being specced.**
-- Detect the active repo: `git -C {repo_root} rev-parse --show-toplevel | xargs basename`
+- Detect the active repo: `basename "$(dirname "$(git -C {repo_root} rev-parse --path-format=absolute --git-common-dir)")"`
 - All codebase research MUST target files in the repo currently being specced
 - Other repos or services listed in "Repos to modify" will each get their own spec in their own loop iteration — do not write implementation steps for them in this iteration
 - Services or systems NOT in the "Repos to modify" list are **reference context only** — do not write implementation steps, file changes, or instructions for them
@@ -510,7 +510,7 @@ generic guidance unchanged.
 Before writing, re-run the notes adapter's "Resolve spec folder" procedure now — re-derive the spec path fresh at this point in the flow rather than relying on adapter state loaded back in Phase 1. This matters most when `specs_path` is configured (especially templated), since a stale reference to the default `docs/specs` layout can otherwise persist across many intervening phases.
 
 Then use the notes adapter to write this spec:
-- Service name is the basename of the repo currently being specced (`git -C {repo_root} rev-parse --show-toplevel | xargs basename`)
+- Service name is the basename of the repo currently being specced (`basename "$(dirname "$(git -C {repo_root} rev-parse --path-format=absolute --git-common-dir)")"`)
 - The notes adapter resolves `repo_root` to the repo currently being specced
 - Compute the adapter's complete final file path — run that same notes adapter's own path-resolution logic (folder plus filename) through to its actual write target, the identical computation the adapter's own Write spec step is about to perform — and state it to the user in one line (e.g. `Writing spec to {resolved-path}`) before invoking the adapter's Write spec operation. The announced value must always be the **absolute** file path including filename — never a bare folder, and never a relative or templated value (e.g. an unresolved `specs_path` token); if the adapter's own resolution logic yields a relative path, resolve it to absolute (relative to `repo_root`) before announcing it. This fires for every notes adapter, and once per repo when the per-repo loop (Phases 5–10) runs for a multi-repo story.
 - Follow notes adapter instructions to write the spec to the correct location within that repo

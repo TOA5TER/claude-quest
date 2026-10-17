@@ -12,7 +12,7 @@ The procedure is written so it can run on its own against an existing draft PR: 
 
 ## Exemption Check
 
-Read both lists from `~/.claude/dev-workflow/config.json`. Detect the repo name with `basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` (worktree-safe: inside a `.worktrees/<slug>` worktree `git rev-parse --show-toplevel` returns the slug, not the repo), unless the caller names a repo explicitly (as the orchestrator's hand-off check does): a named repo is the repo name for the exemption lookup, and every `gh` call then passes `-R <owner>/<repo>` instead of relying on the working directory:
+Read both lists from `~/.claude/dev-workflow/config.json`. Detect the repo name with `basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` (worktree-safe: inside a `.worktrees/<slug>` worktree `git rev-parse --show-toplevel` returns the slug, not the repo; requires git 2.31 or newer and a regular, non-bare, non-submodule checkout), unless the caller names a repo explicitly (as the orchestrator's hand-off check does): a named repo is the repo name for the exemption lookup, and every `gh` call then passes `-R <owner>/<repo>` instead of relying on the working directory:
 
 ```bash
 jq '.ci_gate_exempt_repos, .deploy_gate_exempt_repos' ~/.claude/dev-workflow/config.json
