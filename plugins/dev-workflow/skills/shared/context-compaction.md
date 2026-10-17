@@ -32,6 +32,7 @@ Schema:
   },
   "approval_text": "Approved — proceed with the spec as written.",
   "approval_timestamp": "2026-06-10T16:05:00Z",
+  "spec_written_at": "2026-06-10T16:00:00Z",
   "updated_at": "2026-06-10T17:30:00Z"
 }
 ```
@@ -108,9 +109,13 @@ map, except where noted as a top-level field:
   prior entry (loop counts are not recoverable from GitHub, so a cold resume restarts them
   at 0). Both steps fill gaps only — neither overwrites an entry the checkpoint already has
   counts for.
-- **After the user approves the spec in writing-specs** (before developing begins) —
-  record the top-level `approval_text` (the user's literal approval message, verbatim)
-  and `approval_timestamp` (ISO-8601 time the approval was given). These two fields are
+- **After the user approves the specs relayed from the spec-writer** (before developing begins) —
+  the orchestrator records the top-level `approval_text` (the user's literal approval message, verbatim)
+  and `approval_timestamp` (UTC ISO-8601 time the approval was given, with a `Z` suffix). The
+  spec-writer reads these two fields, comparing `approval_timestamp` against `spec_written_at`,
+  before it runs Phase 12. The spec-writer itself records the top-level `spec_written_at` (UTC
+  ISO-8601 with a `Z` suffix) each time it writes or rewrites a spec in relay mode, and when a specs `result` returns a kept, pre-existing spec, under the same
+  lock-and-atomic-write rules as checkpoint seeding. It writes only `spec_written_at`: `approval_text` and `approval_timestamp` are written solely by the orchestrator, never by the spec-writer. These fields are
   the mechanical evidence that the spec-approval gate actually fired; full-cycle refuses
   to dispatch developing without them (see full-cycle's "Hard gate — recorded
   approval"). The repo entry itself is untouched by this write — writing-specs' own Phase 3

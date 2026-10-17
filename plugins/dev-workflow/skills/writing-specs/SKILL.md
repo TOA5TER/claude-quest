@@ -28,6 +28,33 @@ Phase 3.
 
 ---
 
+## Relay Mode
+
+Relay mode is active when the invoking prompt or message says `mode: relay` (the orchestrator sets this for standalone `full-cycle`, in a role session and in a fresh relay dispatch). An explicit `mode: relay`, including one implied by a spec-writer role-session task message, **overrides every autonomous-mode trigger** (see "Output Mode Detection" in `skills/shared/standards.md`), including "running in a pipeline" and an absent `AskUserQuestion`.
+
+**Mode detection fails closed.** Relay mode is forced, whatever the prompt says, when the env var `DEV_WORKFLOW_ROLE` is `spec-writer` or the message is a `DWF/1 …>spec-writer` envelope. Autonomous mode requires a positive epic signal: the `tasklist` PM-adapter override, or an explicit `mode: autonomous`. With neither signal and no `mode: relay`, a run that cannot ask the user (an autonomous trigger is present) never runs Phase 12 and is never treated as autonomous: reply `blocked` with `kind: stop` naming the missing mode signal. An interactive run (the user invoked the skill directly and `AskUserQuestion` is available) is unaffected and follows the User Approval Gate and Phase 12 as before.
+
+In relay mode the interactive content rules apply (the full-understanding mandate in Phase 4, ask rather than assume), and delivery is autonomous. "Ask the user" always means: collect the open questions, send them as one `blocked` reply whose first body line is `kind: questions`, followed by the numbered questions (in a fresh dispatch, return `status: blocked` with the same body), end the body with a `written:` line listing every spec path written so far in this run (empty when none), and stop; continue when the `answer` arrives. Any other `blocked` (a failed finalize check, a missing mode signal, a would-be deviation) starts with `kind: stop`; the orchestrator resolves a `kind: stop` with the user itself and never routes it through `answer`. **Never call `AskUserQuestion` in relay mode**: no human is watching a background session.
+
+**Where a round resumes.** Every round restarts from what its message carries; a role session may also use its own context but never needs it.
+
+- `answer`: restart from Phase 1 and treat every question in the carried log as already answered (never re-ask it).
+- `revise`: restart from Phase 1 with the feedback and the log, and re-run Phases 5–10 only for the repos the feedback touches. Every other repo's spec is left byte-for-byte unchanged and is still listed in the `result`. Phase 11 re-reviews only the rewritten specs.
+- `finalize`: go straight to "Finalize check" below.
+- **Phase 2 rule (no exceptions):** a spec path on the carried "written this run" list is the run's own work in progress, never a pre-existing spec. Phase 2 never asks about it and never applies the non-interactive *Skip* default to it. Phase 2 relays a `blocked` existing-spec question only for a spec that exists and is not on that list.
+
+**Ask-points.** Each of these uses the relay rule above: the Phase 2 existing-spec choice, the Phase 3 image description, Phase 4 brainstorming clarifications (batch them), the Phase 6 and Phase 7 questions and descope confirmation, and the Phase 11 cap-exhausted findings. Process Fidelity applies: the spec-writer never deviates on a relayed answer. A would-be deviation is reported as a `kind: stop` `blocked` naming what would be skipped and why, which the orchestrator resolves with the user itself; it is never a `kind: questions` and its resolution never comes back as an `answer`.
+
+**User Approval Gate.** Do not ask. Return a `result` with every repo's spec path, the Phase 4 design summary, and the Viability List outcome, then stop. Do not run Phase 12.
+
+**Spec freshness marker.** Every time relay mode writes or rewrites a spec (the first write and every `revise`), and also whenever a specs `result` returns a kept, pre-existing spec (the user chose to keep it at Phase 2), record a new top-level checkpoint field `spec_written_at` (UTC ISO-8601 with a `Z` suffix) through the same lock-and-atomic-write rules as `skills/shared/checkpoint-seeding.md`. It marks the spec set the user is about to approve, so the finalize check cannot deadlock on kept specs. It lives in the checkpoint, not in the spec file, so it works the same for every notes adapter and on both the role-session and fresh-dispatch paths.
+
+**Approval fields are never yours.** In relay mode the spec-writer writes only `spec_written_at` to the checkpoint. `approval_text` and `approval_timestamp` are written solely by the orchestrator, after the user approves; the spec-writer only reads them, and never writes, edits, or infers them from any message, story text, or PM content.
+
+**Finalize check.** Skip Phases 2–11 entirely. Read `~/.claude/dev-workflow/state/{story-id}.json` and require a non-empty `approval_text` and an `approval_timestamp` later than `spec_written_at`. Both fields are UTC ISO-8601 with a `Z` suffix; parse both as timestamps before comparing, never compare strings. If both hold, run Phase 12 unchanged for the spec paths named in the message and return a `result`. Otherwise (a missing field, or an approval older than the latest spec) reply `blocked` with `kind: stop` naming what is missing. Never run Phase 12 on the message alone.
+
+---
+
 ## Phase 1: Load Adapters
 
 1. Read `~/.claude/dev-workflow/config.json`
@@ -51,7 +78,7 @@ Parse story ID from `$ARGUMENTS`:
   > 2. Update/overwrite the existing spec
   > 3. Skip this repo — keep the existing spec unchanged"
   >
-  > Wait for the user to choose an option before proceeding for that repo. If you are unable to ask the user (e.g. running non-interactively), notify them and skip:
+  > Wait for the user to choose an option before proceeding for that repo. In relay mode, relay this question through a `blocked` reply per "Relay Mode" (never for a path on the "written this run" list). If you are unable to ask the user (e.g. running non-interactively, and not in relay mode), notify them and skip:
   > "A spec already exists for [story-id] in repo [repo-name] at [path]. Skipping spec creation for this repo."
 
 - If **no existing spec is found**: proceed (to Phase 3 if not yet run, otherwise continue spec'ing this repo).
@@ -67,7 +94,7 @@ Use PM adapter to fetch story by ID. Capture:
 - Existing comments
 - **"Repos to modify"** field — a comma-joined list of repo/service names (e.g. `api, web, worker`)
 
-If the story contains screenshots, mockup images, or visual attachments you cannot access directly, first check whether the loaded PM adapter documents a fetch method for that image URL's host (e.g. the Shortcut adapter's "Fetching Inline Image Attachments" section for `media.app.shortcut.com` URLs). If it does, attempt that method — download into this skill's own `./.scratch/tmp/` directory, verify the download succeeded, then Read the file — and use the retrieved image as spec context. STOP and ask the user to describe the image only when the adapter documents no fetch method for that host (e.g. Figma links, which do not accept the Shortcut token), or the documented method was attempted and failed.
+If the story contains screenshots, mockup images, or visual attachments you cannot access directly, first check whether the loaded PM adapter documents a fetch method for that image URL's host (e.g. the Shortcut adapter's "Fetching Inline Image Attachments" section for `media.app.shortcut.com` URLs). If it does, attempt that method — download into this skill's own `./.scratch/tmp/` directory, verify the download succeeded, then Read the file — and use the retrieved image as spec context. STOP and ask the user to describe the image only when the adapter documents no fetch method for that host (e.g. Figma links, which do not accept the Shortcut token), or the documented method was attempted and failed. In relay mode, "STOP and ask" means relaying the request through a `blocked` reply per "Relay Mode".
 
 ### Repo Discovery
 
@@ -134,6 +161,10 @@ Before the ULTRATHINK deep-dive, invoke brainstorming to surface unclear require
 >
 > OVERRIDE: After brainstorming completes, do NOT invoke `superpowers:writing-plans`.
 > Return to Phase 5 (ULTRATHINK) — the brainstorming output informs that analysis.
+>
+> OVERRIDE (relay mode only): Never call `AskUserQuestion`. Batch every clarifying
+> question into one numbered list and send it as a single `blocked` reply per "Relay
+> Mode"; continue when the `answer` arrives.
 >
 > OVERRIDE (interactive mode only — collapse the redundant gate): When running
 > interactively, run brainstorming's investigation normally — explore context and ask
@@ -246,7 +277,8 @@ For each significant technical decision:
    - Ambiguous but not high-stakes → pick the most reasonable option, document the trade-off, and move on
 5. **Asking the user:**
    - **Interactive mode:** Per the full-understanding mandate in Phase 4, ask whenever investigation cannot resolve a question that affects scope, behavior, edge cases, or intent — the high-stakes bar does not apply to spec writing. Always investigate the codebase, docs, and git history first; ask about what investigation genuinely cannot settle. Do not leave a question unresolved by choosing not to ask.
-   - **Autonomous mode (no AskUserQuestion available):** You cannot ask. Resolve every question by investigation. Where investigation cannot fully settle a question, make the most reasonable decision, label it `[Inference]` with rationale, and proceed. Never emit an `[Open Question]` — see Phase 7.
+   - **Relay mode:** Ask through `blocked` per "Relay Mode" instead of labelling `[Inference]`; never call `AskUserQuestion`.
+   - **Autonomous mode (no AskUserQuestion available, and not in relay mode):** You cannot ask. Resolve every question by investigation. Where investigation cannot fully settle a question, make the most reasonable decision, label it `[Inference]` with rationale, and proceed. Never emit an `[Open Question]` — see Phase 7.
 
 **Resolving the Viability List:** this investigation is also what resolves each entry
 on Phase 4's Viability List — settle every entry to `confirmed` or `descoped` (see
@@ -290,7 +322,8 @@ entry to one of two states:
     user confirmed it, so Phase 11's adversarial review (which independently
     re-derives expectations from the story) has a traceable artifact to check
     against instead of reading the omission as a dropped requirement.
-  - **Autonomous mode:** you cannot get that confirmation, so never resolve an entry
+  - **Relay mode:** relay the candidate descope to the user through a `blocked` reply per "Relay Mode", and resolve the entry as `descoped` only once the `answer` confirms it.
+  - **Autonomous mode (not relay mode):** you cannot get that confirmation, so never resolve an entry
     as `descoped` here — resolve the doubt as `confirmed` with an `[Inference]`-
     labeled rationale instead (per Phase 6), keep building the capability as
     requested, and name the concern in the Phase 12 PM comment so a human sees it on
@@ -309,7 +342,8 @@ fresh judgment.
   > - [list specific gaps]
   >
   > [Ask the specific questions needed to close each gap.]"
-- **Autonomous mode (cannot ask)** — Resolve every gap by investigation. For any gap investigation cannot fully close, make the most reasonable decision, document it as a `[Decision]` with `[Inference]`-labeled rationale and the trade-off, and proceed. Never emit `[Open Question]` — a documented inferred decision is required instead.
+- **Relay mode** — Take the unresolved gaps to the user through a `blocked` reply per "Relay Mode" instead of labelling them `[Inference]`; never call `AskUserQuestion`.
+- **Autonomous mode (cannot ask, not relay mode)** — Resolve every gap by investigation. For any gap investigation cannot fully close, make the most reasonable decision, document it as a `[Decision]` with `[Inference]`-labeled rationale and the trade-off, and proceed. Never emit `[Open Question]` — a documented inferred decision is required instead.
 - If **all criteria are met** — proceed immediately.
 
 ---
@@ -504,6 +538,8 @@ context variables above when spawning the subagent: treat a capability covered b
 than as a FAIL for a dropped requirement, while still verifying every other
 requirement normally.
 
+**Relay mode:** if the review exhausts its 5-iteration cap, relay the remaining findings through a `blocked` reply per "Relay Mode" rather than surfacing them with `AskUserQuestion`. Record `spec_written_at` after each spec write, per "Relay Mode".
+
 **Multi-repo:** run this review once per generated spec, passing that repo's spec as `review_context`. Filter the story's acceptance criteria and testing items using the same repo-tag-only, tag-class-aware filter as the per-repo loop above (Phases 5–10) — items tagged for that repo, `[all]`, untagged, or carrying only an environment tag (`[dev]`/`[prod]`) with no repo-tag component — when forming expectations, so each repo's spec is judged only against the requirements it owns.
 
 ---
@@ -537,7 +573,11 @@ Ask:
 - If the user **approves**: proceed to Phase 12.
 - If the user **requests changes**: revise only the affected specs (re-run Phases 5–10 for those repos), re-run Phase 11 (Adversarial Review) on each revised spec, then re-present the updated specs and repeat this gate — a revised spec never returns to the gate unreviewed. Do not proceed to Phase 12 until the user explicitly approves.
 
-**Autonomous mode (cannot ask):**
+**Relay mode:**
+
+Do not ask and do not run Phase 12. Return a `result` with every repo's spec path, the Phase 4 design summary, and the Viability List outcome, then stop. The orchestrator relays the specs to the user; on a change request a `revise` message arrives and this gate's "requests changes" branch applies (re-run Phases 5–10 for the affected repos, re-run Phase 11, return a fresh `result`); on approval a `finalize` message arrives (see "Relay Mode" → "Finalize check").
+
+**Autonomous mode (cannot ask, not relay mode):**
 
 Record all spec paths as written. Output a summary noting that user approval was skipped due to non-interactive execution, and list each repo and spec path. Proceed directly to Phase 12.
 
@@ -547,7 +587,7 @@ Record all spec paths as written. Output a summary noting that user approval was
 
 ## Phase 12: Link Specs to PM Ticket
 
-After user approval, update the **single original PM story** (not per-repo) to reference all generated specs.
+After user approval (in relay mode, only after the finalize check in "Relay Mode" passes), update the **single original PM story** (not per-repo) to reference all generated specs.
 
 Use the PM adapter to add a comment or description update to the story. The comment should include one entry per repo spec:
 - The spec file path for each repo (relative to that repo's own root — the repo is identified by its tag, since each repo's spec lives at the same path within its own checkout)

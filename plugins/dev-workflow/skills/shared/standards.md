@@ -80,7 +80,7 @@ a worker, not a prose instruction the model can skim past). Map each stage to it
 
 | Stage / dispatch | `subagent_type` | Default model |
 |------------------|-----------------|---------------|
-| writing-specs (autonomous path only) | `dev-workflow:spec-writer` | `sonnet` |
+| writing-specs | `dev-workflow:spec-writer` | `opus` |
 | developing (also fix loops, in rework mode) | `dev-workflow:developer` | `sonnet` |
 | reviewing-prs | `dev-workflow:reviewer` | `opus` |
 | testing-prs | `dev-workflow:tester` | `opus` |
@@ -93,15 +93,17 @@ resolved model on every dispatch. Each worker's body invokes the matching
 `dev-workflow:{stage}` skill autonomously, so the stage logic, resumability, and loop
 behavior are unchanged; only the dispatch boundary is made explicit.
 
-Interactive stages (creating-stories, writing-specs in the standalone full-cycle path) still run
-in the **main agent** so their user-facing gates work — do not dispatch a worker for those.
+Interactive stages (creating-stories only) still run in the **main agent** so their user-facing
+gates work — do not dispatch a worker for those. In the standalone full-cycle path, writing-specs
+runs in the spec-writer worker in relay mode (questions and the approval gate go through the
+orchestrator to the user); only the epic path dispatches it autonomously.
 
-**Role sessions are the default for developer, reviewer, and tester in standalone `full-cycle`.**
+**Role sessions are the default for spec-writer, developer, reviewer, and tester in standalone `full-cycle`.**
 Instead of a one-shot Agent dispatch per stage and per loop pass, the orchestrator launches one
-long-lived, named background session per reviewer and tester PR and per developer repo, and exchanges messages with it, per
-`skills/shared/role-sessions.md`. The same `dev-workflow:developer`, `dev-workflow:reviewer`,
+long-lived, named background session per story spec-writer, per reviewer and tester PR, and per developer repo, and exchanges messages with it, per
+`skills/shared/role-sessions.md`. The same `dev-workflow:spec-writer`, `dev-workflow:developer`, `dev-workflow:reviewer`,
 and `dev-workflow:tester` agent definitions back both modes. Agent dispatch remains for
-`dev-workflow:spec-writer`, `dev-workflow:pr-state-reader` (entry detection, decision read,
+`dev-workflow:pr-state-reader` (entry detection, decision read,
 PR-number read), the reviewer's perspective fan-out, and **every epic per-task worker**, which
 must not launch role sessions. When role sessions are unavailable (failed preflight) the whole
 run uses the fresh-dispatch fallback.
@@ -192,7 +194,7 @@ This is what lets `epic → dev-workflow:orchestrator (full-cycle) → per-stage
 each stage in fresh context (depth 3, well under the cap). On builds **older than
 v2.1.172**, a dispatched subagent cannot nest, so a worker that would dispatch further
 stages instead runs them inline within its own context — still isolated per task, just not
-per stage. Workers that must fan out (developer, reviewer, tester, orchestrator) therefore
+per stage. Workers that must fan out (spec-writer, developer, reviewer, tester, orchestrator) therefore
 leave `tools` unrestricted; workers that never fan out (pr-state-reader) restrict
 `tools` and omit `Agent`.
 
@@ -209,6 +211,8 @@ leave `tools` unrestricted; workers that never fan out (pr-state-reader) restric
 - The prompt instructs the agent to avoid asking questions unless absolutely necessary
 - No tool is available to ask the user questions (e.g. `AskUserQuestion` is absent)
 
+**Relay mode:** Activated by an explicit `mode: relay` in the prompt, or implied by `DEV_WORKFLOW_ROLE=spec-writer` or a spec-writer role-session task message. For writing-specs and the spec-writer only, mode detection fails closed: autonomous mode there additionally requires a positive epic signal (the `tasklist` PM-adapter override or an explicit `mode: autonomous` in the prompt), and where neither relay nor that signal is present, a run that cannot ask the user (an autonomous trigger is present) never runs Phase 12 and replies `blocked` with `kind: stop`. An interactive run (the user invoked the skill directly and `AskUserQuestion` is available) is unaffected and follows the User Approval Gate and Phase 12 as before. Every other skill and worker keeps the autonomous triggers above unchanged. It applies the interactive mode's content rules (ask rather than assume, full understanding before writing) with the autonomous mode's delivery format, and questions travel through a `blocked` reply to the orchestrator instead of `AskUserQuestion`. **Precedence:** an explicit `mode: relay` overrides every autonomous-mode trigger above, including "running in a pipeline" and an absent `AskUserQuestion`. See "Relay Mode" in `skills/writing-specs/SKILL.md`.
+
 **Autonomous mode final response format — flat JSON key/value string:**
 
 (In a role session this record travels as the body of the `result` message to the orchestrator, per `skills/shared/role-sessions.md`; the format is unchanged.)
@@ -220,7 +224,7 @@ Required keys (omit only if genuinely empty/unknown):
 - `status` — `success` or `error`
 - `message` — one-sentence summary of what happened or what went wrong
 
-Then add **up to 3** additional keys for the most valuable inferred context (e.g. `branch`, `test-result`, `spec-path`, `reviewer-decision`). Choose only the highest-signal keys — do not pad.
+Then add **up to 3** additional keys for the most valuable inferred context (e.g. `branch`, `test-result`, `spec-path`, `reviewer-decision`). Choose only the highest-signal keys — do not pad. The relay-mode spec-writer `result` keys defined in `skills/shared/role-sessions.md` (`spec-paths`, `viability`, `linked`, `transitioned`) are exempt from this cap.
 
 Example:
 ```json
@@ -330,7 +334,7 @@ This rule governs developing, reviewing-prs, addressing-pr-comments, and testing
   - It would need its own design/spec/brainstorming pass before it could be implemented
   - It touches an unrelated subsystem with no shared code path to the current change
   - It would roughly double the size or complexity of the current PR
-- **Autonomous/dispatched contexts include anyway** — A run with no ability to ask a user (autonomous mode, a subagent dispatched by full-cycle or epic) has no one to ask, so it defaults to including the necessary work even when a huge-scope-increase signal is present — a deliberate exception to the ask-first branch above, chosen over leaving necessary work undone. The autonomous-mode summary (the flat key/value format in Output Mode Detection above) must name what was included and why (as one of its additional keys, e.g. `extra-work`, or in `message`), so a human reviewing the PR sees it was pulled in without a live approval. Following this documented fallback is applying the rule, not deviating from it — Process Fidelity's "autonomous contexts never deviate" governs departures from documented steps, and this fallback is the documented step.
+- **Autonomous/dispatched contexts include anyway** — A run with no ability to ask a user (autonomous mode, a subagent dispatched by full-cycle or epic, not relay mode) has no one to ask, so it defaults to including the necessary work even when a huge-scope-increase signal is present — a deliberate exception to the ask-first branch above, chosen over leaving necessary work undone. The autonomous-mode summary (the flat key/value format in Output Mode Detection above) must name what was included and why (as one of its additional keys, e.g. `extra-work`, or in `message`), so a human reviewing the PR sees it was pulled in without a live approval. Following this documented fallback is applying the rule, not deviating from it — Process Fidelity's "autonomous contexts never deviate" governs departures from documented steps, and this fallback is the documented step.
 - **Never a ticket** — This rule never authorizes creating a story, ticket, issue, or subtask; the Story Creation Gate below still governs creation. Applying this rule ends either with the work included in the current branch/PR or with the user asked first — a story is never created as a byproduct.
 
 The Story Creation Gate's "Carve-out: fixes that unblock the current PR's own gate" bullet is the CI/gate-specific instance of this rule.
