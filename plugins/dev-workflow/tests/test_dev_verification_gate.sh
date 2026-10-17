@@ -157,5 +157,28 @@ RM="$PLUGIN_ROOT/README.md"
 need "$RM" "README" "handoff-check" "models.stages.verify" "either"
 forbid "$RM" "README" "The two gates are independent."
 
+# Why: inside the mandated .worktrees/<slug> layout --show-toplevel is the worktree slug, so exemption and spec lookups must derive the repo name from the common git dir.
+REPO_NAME_CMD='basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"'
+for f in shared/dev-deploy.md reviewing-prs/SKILL.md testing-prs/SKILL.md addressing-pr-comments/SKILL.md; do
+  need "$S/$f" "$f" "$REPO_NAME_CMD"
+  forbid "$S/$f" "$f" "git rev-parse --show-toplevel | xargs basename"
+done
+need "$PLUGIN_ROOT/README.md" "README" "$REPO_NAME_CMD"
+forbid "$PLUGIN_ROOT/README.md" "README" "git rev-parse --show-toplevel | xargs basename"
+
+# Why: pin the behavior, not just the text: the command must return the repo name from a linked worktree.
+SCRATCH="$PLUGIN_ROOT/../../.scratch/tmp"
+mkdir -p "$SCRATCH"
+WT_DIR="$(mktemp -d -p "$SCRATCH" worktree-name.XXXXXX)"
+if [ -n "$WT_DIR" ] && git init -q "$WT_DIR/my-repo" \
+  && git -C "$WT_DIR/my-repo" -c user.email=t@example.com -c user.name=t commit -q --allow-empty -m init \
+  && git -C "$WT_DIR/my-repo" worktree add -q "$WT_DIR/my-repo/.worktrees/sc-0000" -b scratch-branch; then
+  GOT="$(cd "$WT_DIR/my-repo/.worktrees/sc-0000" && sh -c "$REPO_NAME_CMD")"
+  [ "$GOT" = "my-repo" ] || fail "worktree-safe repo name returned '$GOT', expected 'my-repo'"
+else
+  fail "could not create the scratch repo and worktree"
+fi
+python3 -I -c 'import shutil,sys; shutil.rmtree(sys.argv[1], ignore_errors=True)' "$WT_DIR"
+
 [ "$FAILURES" -eq 0 ] || { echo "$FAILURES failure(s)" >&2; exit 1; }
 echo "all dev verification gate checks passed"

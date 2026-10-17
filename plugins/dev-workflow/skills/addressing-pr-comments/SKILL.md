@@ -39,7 +39,7 @@ Once the PR is resolved:
    When a custom adapter lacks the capability, apply the generic delimited branch-token match
    using `adapters.<name>.story_id_prefix` from `~/.claude/dev-workflow/config.json`; with no such
    key, treat the story as not found.
-4. Detect service name: `git rev-parse --show-toplevel | xargs basename`
+4. Detect service name: `basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"`
 5. **If a story ID is found:** call `skills/shared/checkpoint-seeding.md`'s "Seed or Refresh
    Stage" with that story ID, the detected service name, stage `"reviewing-prs"`, and this
    PR's number — its fix work always happens inside an already-open review or test loop

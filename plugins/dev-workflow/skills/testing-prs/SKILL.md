@@ -102,7 +102,7 @@ Resolve the story with the PM adapter's **Resolve story from PR** capability (`s
 **If story ID found:**
 1. Read `~/.claude/dev-workflow/config.json` for `pm_adapter` and `notes_adapter`
 2. Load PM adapter per procedure in `skills/shared/adapter-loading.md` → fetch story by ID
-3. Detect service name: `git rev-parse --show-toplevel | xargs basename`
+3. Detect service name: `basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"`
 4. Call `skills/shared/checkpoint-seeding.md`'s "Seed or Refresh Stage" with the resolved
    story ID, the detected service name, stage `"reviewing-prs"`, this PR's number, and the
    story title fetched in step 2 (attention-hub shows it in the story group header) — this
@@ -166,7 +166,7 @@ Read `skills/shared/dev-deploy.md` — it owns the evidence format, the validati
 
 Some repos legitimately have no dev deploy CI (e.g. documentation-only or plugin repos). The gate is skipped **only** when the current repo is explicitly listed in the dev-deploy-CI exemption.
 
-- Read the exemption list from `~/.claude/dev-workflow/config.json` → `deploy_gate_exempt_repos` (an array of repo names). Detect the current repo name with `git rev-parse --show-toplevel | xargs basename`. The gate is skipped for the current repo **only if its name appears in this array**.
+- Read the exemption list from `~/.claude/dev-workflow/config.json` → `deploy_gate_exempt_repos` (an array of repo names). Detect the current repo name with `basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"`. The gate is skipped for the current repo **only if its name appears in this array**.
 - **Default is gated.** A repo absent from `deploy_gate_exempt_repos` is gated. The `deploy_command` `fallback` entry is NOT an exemption — falling back to the fallback deploy instruction still requires a successful dev deploy CI run.
 - **Absence of a deploy CI is not an exemption.** For a non-exempt repo with no runnable dev deploy CI, the verdict is **REQUEST_CHANGES + `tests-failing`**, never a skip.
 - **Announce every skip.** When the gate is skipped by exemption, the test report MUST state that functional dev testing was skipped by explicit exemption (naming the repo and `deploy_gate_exempt_repos`) and describe how the change was otherwise validated. Silent skipping is forbidden.

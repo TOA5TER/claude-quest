@@ -109,7 +109,7 @@ Resolve the story with the PM adapter's **Resolve story from PR** capability (`s
 
 1. Read `~/.claude/dev-workflow/config.json` to get `pm_adapter` and `notes_adapter`
 2. Load PM adapter per procedure in `skills/shared/adapter-loading.md` → fetch story by ID
-3. Detect service name: `git rev-parse --show-toplevel | xargs basename`
+3. Detect service name: `basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"`
 4. Call `skills/shared/checkpoint-seeding.md`'s "Seed or Refresh Stage" with the resolved
    story ID, the detected service name, stage `"reviewing-prs"`, this PR's number, and the
    story title fetched in step 2 (attention-hub shows it in the story group header) — this
@@ -176,7 +176,7 @@ Read `~/.claude/dev-workflow/config.json` for `review_ci_command`.
 Detect the current repository name:
 
 ```bash
-git rev-parse --show-toplevel | xargs basename
+basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
 ```
 
 Look up the repo name in `review_ci_command`. If not found, use the `fallback` entry. If `review_ci_command` is not configured at all, fall through to the default behavior below.

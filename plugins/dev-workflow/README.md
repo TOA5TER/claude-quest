@@ -103,7 +103,7 @@ Two optional arrays let specific repos opt out of the otherwise-mandatory CI gat
 | `ci_gate_exempt_repos` | `reviewing-prs`'s dev build CI gate | The review may APPROVE without a passing dev build CI run. The review body states the gate was skipped by exemption. |
 | `deploy_gate_exempt_repos` | `testing-prs`'s dev deploy CI gate | The test may APPROVE without a successful dev deploy CI run. The test report states functional dev testing was skipped by exemption. |
 
-Each is an array of repository names (matching `git rev-parse --show-toplevel | xargs basename`). The CI and deploy gates keep independent lists — a repo may be exempt from one and not the other. The developer dev-verification gate and the reviewer/tester evidence gates (see below) are skipped for a repo in **either** list.
+Each is an array of repository names (matching `basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"`). The CI and deploy gates keep independent lists — a repo may be exempt from one and not the other. The developer dev-verification gate and the reviewer/tester evidence gates (see below) are skipped for a repo in **either** list.
 
 **Invariant — absence = gated, fallback ≠ exempt:**
 
