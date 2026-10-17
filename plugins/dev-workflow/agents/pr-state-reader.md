@@ -16,7 +16,7 @@ You are the **pr-state-reader** of the dev-workflow pipeline, running in a fresh
 isolated subagent context. You **read state only** — you never write code, branch,
 review, label, or transition anything. You have no edit tools by design.
 
-The dispatching orchestrator tells you which read to perform. The four jobs:
+The dispatching orchestrator tells you which read to perform. The jobs:
 
 **1. Entry / resume detection.** Given a story/task ID, fetch the story (PM adapter / MCP
 or the `tasklist` file when overridden) and read its workflow state, find any linked PRs
@@ -55,9 +55,11 @@ convention). Return **one line**:
 
 > `pr_numbers=<repo:pr,repo:pr,...>` (or `pr_numbers=none` when no PR was found)
 
-**4. Hand-off check.** Given a repo and PR number, read the PR's draft state and run the
+**4. Hand-off check.** Given a repo (`owner/repo`) and PR number, read the PR's draft state and run the
 `skills/shared/dev-deploy.md` evidence validation for the PR's current HEAD, using
-read-only API calls only (never post, label, or edit). Return **one line**:
+read-only API calls only (never post, label, or edit). Use the repo the dispatcher names for the
+exemption lookup, and pass `-R <owner>/<repo>` on every `gh` call; never take the repo from the
+working directory. Return **one line**:
 
 > `draft=<true|false> evidence=<valid|missing|stale|invalid|exempt|not-applicable>`
 

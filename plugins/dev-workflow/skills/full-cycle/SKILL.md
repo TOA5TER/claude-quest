@@ -107,7 +107,7 @@ Test Loop.
 | handoff-check | `dev-workflow:pr-state-reader` | `handoff-check` | `implementation` | `sonnet` |
 | verify (fresh dispatch) | `dev-workflow:developer` | `verify` | `implementation` | `sonnet` |
 
-In role-session mode the spec-writer session's model is fixed at launch from `models.stages.writing-specs` → `models.reasoning` → default `opus`, and each developer session's model is fixed at launch from `models.stages.developing`; fix requests reuse it. The `models.stages.addressing-pr-comments` key applies only to a fresh developer rework dispatch (fallback path and epic per-task workers) and is ignored in role-session mode. A fresh rework dispatch resolves its model from `models.stages.addressing-pr-comments` → `models.implementation` → default `sonnet`. A fresh verify dispatch resolves from `models.stages.verify` → `models.implementation` → default `sonnet`; in role-session mode a verify request reuses the developer session. The `handoff-check` dispatch resolves exactly like `decision-read`.
+In role-session mode the spec-writer session's model is fixed at launch from `models.stages.writing-specs` → `models.reasoning` → default `opus`, and each developer session's model is fixed at launch from `models.stages.developing`; fix requests reuse it. The `models.stages.addressing-pr-comments` key applies only to a fresh developer rework dispatch (fallback path and epic per-task workers) and is ignored in role-session mode. A fresh rework dispatch resolves its model from `models.stages.addressing-pr-comments` → `models.implementation` → default `sonnet`. A fresh verify dispatch resolves from `models.stages.verify` → `models.implementation` → default `sonnet`; in role-session mode a verify request reuses the developer session. The `handoff-check` dispatch resolves its model from `models.stages.handoff-check` → `models.implementation` → default `sonnet`.
 
 **Output mode (per `standards.md` → "Output Mode Detection").** Determine the mode at startup. The orchestrator is **interactive by nature** when it must run creating-stories or writing-specs, because creating-stories interviews the user and writing-specs relays the spec-writer's questions and gates development on the user's spec approval. If the skill is running non-interactively (no way to ask the user) AND the detected entry stage is creating-stories or writing-specs, STOP and surface that the pipeline needs an interactive session to define/approve the spec. When resuming at developing or later, no further interaction is required and the run may complete autonomously, emitting the flat key/value summary at Termination.
 
@@ -204,15 +204,16 @@ session — it now covers every resume row (2-9), not only the rows with a linke
 **Role sessions on resume.** When running in role-session mode, after the entry stage is known, list sessions with `claude agents --json --all` and match this story's names per `role-sessions.md` → "Resume": reuse a live responsive session (ping first, then the task message in the turn its `ready` arrives, with the in-flight statement and watcher per the Hand-off discipline bullet), respawn a stopped one, and, for an unresponsive one, ask before stopping or removing it; if permission is not granted, launch a fresh session under a new name and list the old one as left over. Cycle counts carry over from the checkpoint. The preflight runs once for the run, before the first launch or reuse.
 
 When a repo's entry stage — as determined by the Resume / Entry Detection table above
-(rows 4-9, evaluated from the `prs=` tuple's live GitHub review/label state), not the
+(rows 4-9, evaluated from the `prs=` tuple's live GitHub draft/review/label state), not the
 checkpoint's own `stage` field — is mid-pipeline, run that stage for that repo, then
 continue forward through the remaining stages for that repo in normal order; skip any repo
 already at `finished`. The checkpoint's `repos[repo].stage` is a display/telemetry mirror
 for attention-hub, not a second resume-decision source: a session that dies between PR
 creation and `reviewing-prs`' own Phase 2 self-seed leaves that field reading `"developing"`
-with `pr_number` already set, but the Resume table's row 9/8/7/6 evaluation against the
-PR's actual GitHub state — never the checkpoint field — is what correctly resumes that repo
-at `reviewing-prs`, not `developing`. State each repo's detected entry stage to the user
+with `pr_number` already set. The PR is still a draft at that point, so the Resume table's
+row 4 evaluation against the PR's actual GitHub state — never the checkpoint field — resumes
+that repo at `verify`, a developer `mode: verify` request, not `reviewing-prs`. Once the
+developer's gate has marked the PR ready, the same evaluation resumes it at `reviewing-prs`. State each repo's detected entry stage to the user
 before proceeding — not a single story-wide stage.
 
 Rows 1-3 resolve the same way, from `story_state` rather than the `prs=` tuple (see "How to
@@ -329,16 +330,17 @@ Then run the **hand-off check** below for each resulting PR, and proceed to revi
 
 The developer's gate (`skills/shared/dev-deploy.md`) leaves the PR a draft until dev-verification evidence for the current HEAD is posted. A fix round's `result` is plain text that this skill never depends on, so a blocked fix would otherwise go to the reviewer, bounce as stale, and burn loop cycles. After **every** developer `develop` or `fix` round, including inside the Review Loop and Test Loop, and on resume, and before sending any `review` or `test` message, **dispatch the Agent tool** with `subagent_type: dev-workflow:pr-state-reader` (model: resolved from `models.stages.handoff-check` → `models.implementation` → default `sonnet`). Dispatch prompt:
 
-> For repo `{repo}` PR `{PR_NUMBER}`, read whether the PR is a draft and run the `skills/shared/dev-deploy.md` evidence validation for the PR's current HEAD (read-only API calls only). Return **one line**:
+> For repo `{owner}/{repo}` PR `{PR_NUMBER}` (use exactly this repo for the exemption lookup and pass `-R {owner}/{repo}` on every `gh` call, never the working directory's repo), read whether the PR is a draft and run the `skills/shared/dev-deploy.md` evidence validation for the PR's current HEAD (read-only API calls only). Return **one line**:
 >
 > `draft=<true|false> evidence=<valid|missing|stale|invalid|exempt|not-applicable>`
 
 Read that one line; never let raw PM/GitHub JSON enter the main orchestrator context.
 
-- `draft=true`, or `evidence` of `missing`, `stale`, or `invalid`: **do not** send to review or test. Surface it to the user as a developer block (naming the PR, the draft state, and the evidence outcome) and stop that repo's pipeline until the user decides. The round does **not** count against the Loop Safety Guard.
-- `evidence` of `valid`, `exempt`, or `not-applicable` with `draft=false`: proceed. `exempt` means the repo is in `ci_gate_exempt_repos` or `deploy_gate_exempt_repos`. `not-applicable` is returned only by a wrapper's own pr-state-reader for a repo where its rules make evidence impossible.
+- `evidence` of `not-applicable`: proceed regardless of `draft` (the wrapper that returns it cannot post evidence or mark the PR ready, and its result has already stated that dev verification was not done and must be done manually).
+- `draft=true`, or `evidence` of `missing`, `stale`, or `invalid`: **do not** send to review or test. Surface it to the user as a developer block (naming the PR, the draft state, and the evidence outcome) and stop that repo's pipeline until the user decides (an autonomous run, such as an epic worker, stops and reports the block in its result instead of asking). The round does **not** count against the Loop Safety Guard.
+- `evidence` of `valid` or `exempt` with `draft=false`: proceed. `exempt` means the repo is in `ci_gate_exempt_repos` or `deploy_gate_exempt_repos`. `not-applicable` is returned only by a wrapper's own pr-state-reader for a repo where its rules make evidence impossible.
 
-A developer `blocked` reply, or a fresh-dispatch `status: error` result whose `message` starts `dev-verification blocked:`, is handled the same way: stop that repo's pipeline and ask the user.
+A developer `blocked` reply, or a fresh-dispatch `status: error` result whose `message` starts `dev-verification blocked:`, is handled the same way: stop that repo's pipeline and ask the user (an autonomous run stops and reports).
 
 **Verify request.** To send a draft PR back to the developer (entry row 4, or after the user resolves a block), send a `develop` message to that repo's developer session whose first body line is `mode: verify`, then the PR number; it carries no `transition: fired` line and fires no transition. On the fresh-dispatch path, dispatch `subagent_type: dev-workflow:developer` (model: resolved from `models.stages.verify` → `models.implementation` → default `sonnet`) with the same body. The result is the same flat key/value `develop` result, parsed with the existing develop rules; run the hand-off check again afterwards.
 

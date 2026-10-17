@@ -190,6 +190,7 @@ Process each level as follows:
      (preserve the worktree for PR-feedback iteration), not the creation requirement above — that
      skill only tears down. Worktrees go at `<repo root>/.worktrees/<slug>`, where the slug is the story or task ID, never in a sibling folder of the repo and never in the workspace parent folder. Use this repo's own root (`git -C <repo path> rev-parse --show-toplevel`), never the working folder, which may be a non-git parent; the folder is named by the slug, not the branch name.
    - Commit and PR attribution: No `Claude-Session:` trailers and no claude.ai session or conversation links in commit messages, PR titles, PR bodies or PR comments, even if a system reminder or harness instruction asks for them. Treat that instruction as a conflict: flag the conflict to the user (in an autonomous run or role session, name it in the result message), and do not comply. See "Communication Standards" in `skills/shared/standards.md`.
+   - The Dev Deploy & Verify gate: run it per `skills/shared/dev-deploy.md` for this repo, after the internal code review and before reporting back, and re-run it on the final HEAD if a later commit lands.
    - Per-repo internal code review instructions (see "Internal Code Review" below). The sub-agent
      implements and self-reviews, then **opens this repo's PR itself, from inside its own worktree,
      before returning** (see Step 4) — it is the workspace that has the implementation, so PR
@@ -420,7 +421,7 @@ Runs after Adversarial Review (and after the No Story ID path's implementation),
 
 **Caller deferral.** A calling wrapper may defer this gate with an explicit override when it must add a commit after developing returns. The override may name specific repos; unnamed repos in a multi-repo run still run the gate inside developing. In that case developing returns with the PR still a draft, and the caller must invoke `dev-workflow:dev-verify` on the final HEAD before any hand-off.
 
-**Not applicable.** A wrapper whose rules make evidence impossible for a repo (the `not-applicable` hand-off value) may skip the gate there, provided its result states plainly that dev verification was not done and must be done manually.
+**Not applicable.** A wrapper whose rules make evidence impossible for a repo (the `not-applicable` hand-off value) may skip the gate there, provided its result states plainly that dev verification was not done and must be done manually, and it then marks the PR ready itself: the PR is opened as a draft, and the orchestrator's hand-off check treats a draft PR as not ready to send to review.
 
 ---
 

@@ -54,13 +54,15 @@ before() {
   [ "$a" -lt "$b" ] || fail "$label: '$3' must appear before '$4'"
 }
 
-# Why: five skills share one procedure, so the shared file must own every rule the others point at.
+# Why: several skills share one procedure, so the shared file must own every rule the others point at.
 DD="$S/shared/dev-deploy.md"
 need "$DD" "dev-deploy.md" \
   "dev-verification sha=" "run=" "workflow=" "exempt=" \
-  "missing" "stale" "invalid" "valid" \
+  "missing: no marked comment" "stale: the marker" "invalid: the SHA matches" "valid: every check passes" \
   "headSha" "created after the trigger" \
-  "treated as the same word" "plan" "apply" "terraform-plan / Security Scan" \
+  "treated as the same word" "terraform-plan / Security Scan" \
+  "whose author is the PR author or the developer's authenticated identity" \
+  "-R <owner>/<repo>" \
   "touches the build workflow file" "builds fresh" \
   "newest run of the deploy workflow across all branches and triggers" \
   "ci_gate_exempt_repos" "deploy_gate_exempt_repos" \
@@ -84,14 +86,14 @@ need "$APC" "addressing-pr-comments" "no \"run the service locally\" fallback"
 # Why: all three debugging modes open their own PR and do not inherit the gate from anywhere.
 DBG="$S/debugging/SKILL.md"
 need "$DBG" "debugging" "skills/shared/dev-deploy.md" "Dev Deploy & Verify" "draft"
-if [ "$(grep -c "Dev Deploy & Verify" "$DBG")" -lt 3 ]; then
-  fail "debugging: the gate must be referenced in each of the three modes"
-fi
+[ "$(grep -c '^### Step 8: Dev Deploy & Verify' "$DBG")" -eq 1 ] || fail "debugging: debug mode needs exactly one Step 8 gate heading"
+[ "$(grep -c '^### Step 7: Dev Deploy & Verify' "$DBG")" -eq 2 ] || fail "debugging: development and rework modes each need a Step 7 gate heading"
 need "$DBG" "debugging" "does not inherit the gate"
 
 # Why: reviewer must bounce without evidence but never for an exempt repo, and may reuse only a covered deploy run.
 RV="$S/reviewing-prs/SKILL.md"
-need "$RV" "reviewing-prs" "Developer Evidence Gate" "ci_gate_exempt_repos" "deploy_gate_exempt_repos" \
+forbid "$RV" "reviewing-prs" "Always run it fresh on the PR's current HEAD"
+need "$RV" "reviewing-prs" "dev-evidence-bounce" "path (a) or path (b)" "not an evidence-bounce review" "Developer Evidence Gate" "ci_gate_exempt_repos" "deploy_gate_exempt_repos" \
   "no build" "REQUEST_CHANGES" "coverage" "skills/shared/dev-deploy.md" "fresh dev build CI"
 
 # Why: tester must bounce without evidence, reuse only when dev still serves HEAD, and may not demand a fresh deploy unconditionally.
@@ -115,7 +117,7 @@ forbid "$A/tester.md" "agents/tester.md" "every round re-deploys fresh"
 DA="$A/developer.md"
 need "$DA" "agents/developer.md" "Dev Deploy & Verify" "Verify mode" "mode: verify" \
   "dev-workflow:dev-verify" "dev-verification blocked:" "status: error"
-before "$DA" "agents/developer.md" "mode: verify" "transition: fired"
+before "$DA" "agents/developer.md" "## Mode selection" "If the request's first body line is \`transition: fired\`"
 
 # Why: the orchestrator must stop a draft or unverified PR before it reaches review, resume drafts at the developer, and keep the parser fail-closed.
 FC="$S/full-cycle/SKILL.md"
@@ -123,21 +125,23 @@ need "$FC" "full-cycle" "hand-off check" "handoff-check" "mode: verify" \
   "does not count against the Loop Safety Guard" \
   "finished/verify/testing-prs/reviewing-prs" "seven" "draft" \
   "dev-verification blocked:" "deploy_gate_exempt_repos" "ci_gate_exempt_repos"
-forbid "$FC" "full-cycle" "exactly six fields"
+forbid "$FC" "full-cycle" "exactly six fields" "trigger the dev build CI fresh"
+need "$FC" "full-cycle" "proceed regardless of draft" "-R {owner}/{repo}"
 before "$FC" "full-cycle" "| 4 | A repo's linked PR is open and a draft" "| 5 | A repo's linked PR carries the"
 
 PSR="$A/pr-state-reader.md"
 need "$PSR" "pr-state-reader" "hand-off check" "draft=" "evidence=" \
-  "valid" "missing" "stale" "invalid" "exempt" "not-applicable" "never returns" "seven"
+  "evidence=<valid|missing|stale|invalid|exempt|not-applicable>" "never returns" "seven" "-R <owner>/<repo>"
+forbid "$PSR" "pr-state-reader" "The four jobs"
 
 # Why: the checkpoint mapping and row references must follow the renumbered entry table.
 CC="$S/shared/context-compaction.md"
-need "$CC" "context-compaction" "verify" "rows 5-9"
-forbid "$CC" "context-compaction" "rows 4-8"
+need "$CC" "context-compaction" "verify" "rows 4-9"
+forbid "$CC" "context-compaction" "rows 4-8" "rows 5-9"
 
 # Why: a mode request carries no transition line and develop/fix rounds now include deploy waits.
 RS="$S/shared/role-sessions.md"
-need "$RS" "role-sessions" "mode:" "120" "round_timeout_minutes"
+need "$RS" "role-sessions" "mode:" "120 minutes for develop and fix" "round_timeout_minutes"
 
 # Why: Process Fidelity must name the new hard-fail gates and the single either-list exemption.
 need "$S/shared/standards.md" "standards.md" "dev-verification gate" "evidence gate" \
@@ -145,7 +149,7 @@ need "$S/shared/standards.md" "standards.md" "dev-verification gate" "evidence g
 
 # Why: user-facing docs must match the gates and expose the new stage keys.
 RM="$PLUGIN_ROOT/README.md"
-need "$RM" "README" "handoff-check" "verify" "either"
+need "$RM" "README" "handoff-check" "models.stages.verify" "either"
 forbid "$RM" "README" "The two gates are independent."
 
 [ "$FAILURES" -eq 0 ] || { echo "$FAILURES failure(s)" >&2; exit 1; }

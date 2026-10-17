@@ -150,9 +150,10 @@ a repo's checkpoint `stage` field is a display/telemetry mirror for attention-hu
 second resume-decision source. For example, a session that dies between PR creation and
 `reviewing-prs`' own Phase 2 self-seed leaves that repo's checkpoint `stage` reading
 `"developing"` with `pr_number` already set (see the Stage vocabulary note above) —
-`full-cycle`'s Resume / Entry Detection table (rows 5-9, evaluated from the PR's actual
-GitHub review/label state), not this checkpoint field, is what correctly resumes that repo
-at `reviewing-prs`, not `developing`.
+`full-cycle`'s Resume / Entry Detection table (rows 4-9, evaluated from the PR's actual
+GitHub draft/review/label state), not this checkpoint field, is what correctly resumes that
+repo: at `verify` while the PR is still a draft (row 4), at `reviewing-prs` once the
+developer's gate has marked it ready, not `developing`.
 
 **Self-seeding.** Every stage skill also writes/refreshes this same checkpoint at its own
 stage boundary, independent of whether `full-cycle`/`epic` is driving the pipeline — see

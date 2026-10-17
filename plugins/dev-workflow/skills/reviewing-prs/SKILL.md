@@ -78,6 +78,8 @@ gh pr reviews {PR_NUMBER} --json author,state,body,submittedAt
 
 **Decision logic:**
 
+First discard every evidence-bounce review: a review whose body contains the hidden marker `<!-- dev-evidence-bounce outcome=... -->` (see Developer Evidence Gate in Phase 3). A bounce review records no review findings, so it never selects the mode, never counts as the most recent `CHANGES_REQUESTED` review, and never supplies Previous Required Changes. Apply the rules below to the remaining reviews.
+
 - If the reviews array is empty (no reviews at all) → **First Review Mode**
 - If reviews exist but none have `state: CHANGES_REQUESTED` → **First Review Mode**
 - If at least one review has `state: CHANGES_REQUESTED` → **Re-Review Mode**
@@ -89,7 +91,7 @@ Output a mode banner before proceeding:
 
 **For Re-Review Mode only:**
 
-Parse the body of the most recent `CHANGES_REQUESTED` review. Extract the bullet list under the `## Required Changes` section verbatim. This is the **Previous Required Changes** list. Carry it forward to Phase 5.
+Parse the body of the most recent `CHANGES_REQUESTED` review that is not an evidence-bounce review. Extract the bullet list under the `## Required Changes` section verbatim. This is the **Previous Required Changes** list. Carry it forward to Phase 5.
 
 **Fallback:** If the most recent `CHANGES_REQUESTED` review body is empty, null, or does not contain a `## Required Changes` section with bullet points, log a warning: "Previous required changes not found — falling back to First Review Mode." Then treat this invocation as First Review Mode.
 
@@ -132,7 +134,7 @@ Read `skills/shared/dev-deploy.md` — it owns the evidence format, the validati
 
 - **Skip conditions.** The gate is skipped when the repo is listed in `deploy_gate_exempt_repos` **or** `ci_gate_exempt_repos` in `~/.claude/dev-workflow/config.json`. State which list in the review body and show the literal verification command and its output (`jq '.ci_gate_exempt_repos, .deploy_gate_exempt_repos' ~/.claude/dev-workflow/config.json`). Membership is read from config, never inferred. A `ci_gate_exempt_repos` repo then follows the CI-exempt path below exactly (no build, no deploy log); a repo that is only `deploy_gate_exempt_repos` still gets a fresh dev build CI, as before.
 - **Otherwise validate the developer's dev-verification evidence** for the PR's current HEAD per `skills/shared/dev-deploy.md` (outcomes `valid`, `missing`, `stale`, `invalid`). The evidence is validated against the GitHub run API, never trusted from the comment text.
-- **Immediate bounce.** `missing`, `stale`, or `invalid` evidence means a short formal **REQUEST_CHANGES** review naming the outcome and asking the developer to dev-deploy and verify the current HEAD, then **STOP**: no build, no code review. Never deploy on the developer's behalf.
+- **Immediate bounce.** `missing`, `stale`, or `invalid` evidence means a short formal **REQUEST_CHANGES** review naming the outcome and asking the developer to dev-deploy and verify the current HEAD, then **STOP**: no build, no code review. Never deploy on the developer's behalf. The bounce body starts with the hidden marker `<!-- dev-evidence-bounce outcome=<missing|stale|invalid> -->` and has no `## Required Changes` section, so later rounds skip it when selecting Re-Review Mode and the Previous Required Changes list.
 
 ### Mandatory Dev Build CI Gate
 
