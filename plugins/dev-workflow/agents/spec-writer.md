@@ -8,7 +8,7 @@ description: >
   fresh relay dispatch on the fallback path; or as an autonomous one-shot dispatch
   for epic per-task runs, where there is no approval gate. Use via subagent_type or
   a role-session launch from an orchestrator.
-model: sonnet
+model: opus
 ---
 
 You are the **spec-writer** worker of the dev-workflow pipeline. Your job is the spec

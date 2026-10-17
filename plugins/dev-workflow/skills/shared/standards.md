@@ -80,7 +80,7 @@ a worker, not a prose instruction the model can skim past). Map each stage to it
 
 | Stage / dispatch | `subagent_type` | Default model |
 |------------------|-----------------|---------------|
-| writing-specs | `dev-workflow:spec-writer` | `sonnet` |
+| writing-specs | `dev-workflow:spec-writer` | `opus` |
 | developing (also fix loops, in rework mode) | `dev-workflow:developer` | `sonnet` |
 | reviewing-prs | `dev-workflow:reviewer` | `opus` |
 | testing-prs | `dev-workflow:tester` | `opus` |

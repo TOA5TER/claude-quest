@@ -282,6 +282,19 @@ need "standards.md" "$(flat_text "$STANDARDS")" "are exempt from this cap"
 refuse "standards.md" "$(flat_text "$STANDARDS")" "Relay mode (third mode)"
 need "README.md" "$(flat_text "$PLUGIN_ROOT/README.md")" "one spec-writer, one developer per repo, plus a reviewer and a tester per PR"
 
+# Why: spec writing is reasoning work, so the spec-writer must resolve models.stages.writing-specs then models.reasoning then opus, not the implementation chain that a user's models.implementation override would downgrade.
+NEW_CHAIN='models.stages.writing-specs → models.reasoning → default opus'
+OLD_CHAIN='models.stages.writing-specs → models.implementation'
+need "spec-writer agent" "$SW_TEXT" "model: opus"
+refuse "spec-writer agent" "$SW_TEXT" "model: sonnet"
+need "full-cycle SKILL.md" "$FC_TEXT" "$NEW_CHAIN"
+refuse "full-cycle SKILL.md" "$FC_TEXT" "$OLD_CHAIN"
+need "full-cycle SKILL.md" "$FC_TEXT" '| writing-specs (both paths) | dev-workflow:spec-writer | writing-specs | reasoning | opus |'
+need "standards.md" "$(flat_text "$STANDARDS")" '| writing-specs | dev-workflow:spec-writer | opus |'
+need "role-sessions.md" "$RS_TEXT" 'its model resolves from models.stages.writing-specs, then models.reasoning, then opus'
+refuse "role-sessions.md" "$RS_TEXT" 'models.stages.writing-specs, then models.implementation'
+need "README.md" "$(flat_text "$PLUGIN_ROOT/README.md")" '| models.stages.writing-specs | opus |'
+
 # Why: the version bump must be pinned numerically without breaking on later bumps.
 version_at_least() {
   local IFS=.
