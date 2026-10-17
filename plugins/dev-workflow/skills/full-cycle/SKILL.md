@@ -336,9 +336,8 @@ The developer's gate (`skills/shared/dev-deploy.md`) leaves the PR a draft until
 
 Read that one line; never let raw PM/GitHub JSON enter the main orchestrator context.
 
-- `evidence` of `not-applicable`: proceed regardless of `draft` (the wrapper that returns it cannot post evidence or mark the PR ready, and its result has already stated that dev verification was not done and must be done manually).
 - `draft=true`, or `evidence` of `missing`, `stale`, or `invalid`: **do not** send to review or test. Surface it to the user as a developer block (naming the PR, the draft state, and the evidence outcome) and stop that repo's pipeline until the user decides (an autonomous run, such as an epic worker, stops and reports the block in its result instead of asking). The round does **not** count against the Loop Safety Guard.
-- `evidence` of `valid` or `exempt` with `draft=false`: proceed. `exempt` means the repo is in `ci_gate_exempt_repos` or `deploy_gate_exempt_repos`. `not-applicable` is returned only by a wrapper's own pr-state-reader for a repo where its rules make evidence impossible.
+- `evidence` of `valid`, `exempt`, or `not-applicable` with `draft=false`: proceed. `exempt` means the repo is in `ci_gate_exempt_repos` or `deploy_gate_exempt_repos`. `not-applicable` is returned only by a wrapper's own pr-state-reader for a repo where its rules make evidence impossible; such a PR is opened or owned by the user, who leaves it ready (not a draft), because no evidence can ever mark it ready. A draft PR still blocks and is surfaced to the user.
 
 A developer `blocked` reply, or a fresh-dispatch `status: error` result whose `message` starts `dev-verification blocked:`, is handled the same way: stop that repo's pipeline and ask the user (an autonomous run stops and reports).
 

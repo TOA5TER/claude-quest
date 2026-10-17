@@ -111,6 +111,17 @@ Each is an array of repository names (matching `git rev-parse --show-toplevel | 
 - The `review_ci_command` / `deploy_command` `fallback` entry is **not** an exemption — falling back to the fallback instruction still requires the gate to run and pass.
 - Absence of a CI/deploy workflow on a non-exempt repo is **not** auto-exempt — it is a `REQUEST_CHANGES` (review) or `REQUEST_CHANGES` + `tests-failing` (test).
 
+A non-passing CI/deploy result on a non-exempt repo always yields `REQUEST_CHANGES`, never `APPROVE`. A local/Makefile/script deploy never satisfies the dev deploy gate — only a successful dev deploy CI run does.
+
+**Exemption claims must show their work.** A skip sentence alone is not enough — the review/test report must also include the literal verification command and its output immediately after the skip sentence, e.g.:
+
+```bash
+$ jq '.ci_gate_exempt_repos' ~/.claude/dev-workflow/config.json
+["my-app", "claude-quest", ...]
+```
+
+A missing verification line invalidates the exemption claim and is treated as a gate failure (`REQUEST_CHANGES`), not a pass.
+
 ### Developer dev verification
 
 Before hand-off the developer deploys its branch to dev through the dev deploy CI and verifies the change against live data. The ordering for non-exempt repos:
@@ -124,17 +135,6 @@ Before hand-off the developer deploys its branch to dev through the dev deploy C
 7. Reviewer, then tester.
 
 The reviewer and tester validate that evidence against the GitHub run API, never trusting the comment text. Missing, stale, or invalid evidence is bounced immediately (REQUEST_CHANGES; the tester also applies `tests-failing`) with no build, no review, and no deploy. With valid evidence the reviewer reads the developer's deploy run output instead of triggering its own dev build CI when every build job has a counterpart in the deploy run, and the tester reuses the deploy only when it is still the newest run of the deploy workflow with nothing in flight. A repo in **either** `ci_gate_exempt_repos` or `deploy_gate_exempt_repos` gets no developer deploy and no bounce; the developer posts an exempt-form note with the `jq` proof line. The reviewer also skips its evidence gate for `ci_gate_exempt_repos`. The procedure lives in `skills/shared/dev-deploy.md`, and `dev-workflow:dev-verify` runs it on an existing PR.
-
-A non-passing CI/deploy result on a non-exempt repo always yields `REQUEST_CHANGES`, never `APPROVE`. A local/Makefile/script deploy never satisfies the dev deploy gate — only a successful dev deploy CI run does.
-
-**Exemption claims must show their work.** A skip sentence alone is not enough — the review/test report must also include the literal verification command and its output immediately after the skip sentence, e.g.:
-
-```bash
-$ jq '.ci_gate_exempt_repos' ~/.claude/dev-workflow/config.json
-["my-app", "claude-quest", ...]
-```
-
-A missing verification line invalidates the exemption claim and is treated as a gate failure (`REQUEST_CHANGES`), not a pass.
 
 ## Role Sessions (standalone full-cycle)
 

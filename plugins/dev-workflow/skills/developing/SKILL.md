@@ -421,7 +421,7 @@ Runs after Adversarial Review (and after the No Story ID path's implementation),
 
 **Caller deferral.** A calling wrapper may defer this gate with an explicit override when it must add a commit after developing returns. The override may name specific repos; unnamed repos in a multi-repo run still run the gate inside developing. In that case developing returns with the PR still a draft, and the caller must invoke `dev-workflow:dev-verify` on the final HEAD before any hand-off.
 
-**Not applicable.** A wrapper whose rules make evidence impossible for a repo (the `not-applicable` hand-off value) may skip the gate there, provided its result states plainly that dev verification was not done and must be done manually, and it then marks the PR ready itself: the PR is opened as a draft, and the orchestrator's hand-off check treats a draft PR as not ready to send to review.
+**Not applicable.** A wrapper whose rules make evidence impossible for a repo (the `not-applicable` hand-off value) may skip the gate there, provided its result states plainly that dev verification was not done and must be done manually, and it leaves the PR ready for review (not a draft) or states that the user must mark it ready, because the hand-off check always treats a draft PR as not ready to send to review, and no evidence can ever mark it ready.
 
 ---
 

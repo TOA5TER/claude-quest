@@ -129,7 +129,9 @@ need "$FC" "full-cycle" "hand-off check" "handoff-check" "mode: verify" \
   "finished/verify/testing-prs/reviewing-prs" "exactly seven" "draft=<true|false>" \
   "dev-verification blocked:" "deploy_gate_exempt_repos" "ci_gate_exempt_repos"
 forbid "$FC" "full-cycle" "exactly six fields" "trigger the dev build CI fresh"
-need "$FC" "full-cycle" "proceed regardless of draft" "-R {owner}/{repo}"
+need "$FC" "full-cycle" "A draft PR still blocks" "-R {owner}/{repo}"
+forbid "$FC" "full-cycle" "proceed regardless of draft"
+need "$DEV" "developing" "always treats a draft PR as not ready to send to review"
 before "$FC" "full-cycle" "| 4 | A repo's linked PR is open and a draft" "| 5 | A repo's linked PR carries the"
 
 PSR="$A/pr-state-reader.md"
