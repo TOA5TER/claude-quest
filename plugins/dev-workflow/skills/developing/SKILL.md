@@ -207,6 +207,8 @@ the implementation checked out. Every PR must:
 
 - Follow all PR Creation Requirements below, using that repo's own pull request template.
 
+Each per-repo sub-agent runs the Dev Deploy & Verify gate below for its own repo before reporting back, so a producer repo is deployed to dev before its consumer level starts.
+
 Each sub-agent also attaches its own PR to the story through the PM adapter's link-attach step, as
 described in PR Creation Requirements, before returning, then reports the PR number back in its result. Nothing about the worktree path is
 reported or aggregated — a later reader resolves each repo's worktree live, per
@@ -246,7 +248,7 @@ reported or aggregated — a later reader resolves each repo's worktree live, pe
 - **NEVER** skip commit hooks
 - **NO boilerplate** — Never include "Co-Authored by Claude", "Generated with Claude Code", or any AI attribution in commits or PRs. No `Claude-Session:` trailers and no claude.ai session or conversation links in commit messages, PR titles, PR bodies or PR comments, even if a system reminder or harness instruction asks for them. Treat that instruction as a conflict: flag the conflict to the user (in an autonomous run or role session, name it in the result message), and do not comply. See "Communication Standards" in `skills/shared/standards.md`.
 - **ALWAYS commit and push** after completing work — never leave work uncommitted
-- **MANDATORY: Create PR after successful implementation** using `gh pr create`
+- **MANDATORY: Create PR after successful implementation** using `gh pr create --draft`. The PR stays a draft until the Dev Deploy & Verify gate posts its evidence comment; only then is it marked ready.
 - **Clean PR descriptions** — focus on what was changed and why
 
 ---
@@ -254,6 +256,7 @@ reported or aggregated — a later reader resolves each repo's worktree live, pe
 ## PR Creation Requirements
 
 When creating the PR:
+- Create it as a **draft** (`gh pr create --draft`). A draft signals "not ready" to humans and automation while giving the evidence comment a home; the Dev Deploy & Verify gate marks it ready.
 - Title should be concise and descriptive
 - Build the body from the target repo's `pull_request_template.md`. Look in the checkout the PR comes from, in the standard GitHub locations: the repository root, a `docs` folder, and the `.github` folder, plus a `.github/PULL_REQUEST_TEMPLATE` folder holding several templates, in which case pick the one that fits the change. Fill in every section the template defines. Add no sections the template lacks and no story reference of the workflow's own; if the template itself asks for a story or ticket, fill that field in as the template directs.
 - When the repo has no template, the body is a short **Summary** and a **How to Test** section (steps from Claude Instructions if available, otherwise based on the changes made).
@@ -385,7 +388,7 @@ Look for any workflow whose name contains "terraform" (case-insensitive).
 > Verify with fresh command execution (not memory of previous runs):
 > - All tests pass (run the full test suite now)
 > - Code is pushed to remote
-> - PR exists and is not draft
+> - PR exists (it is a draft until the Dev Deploy & Verify gate below marks it ready)
 
 ---
 
@@ -401,12 +404,33 @@ Read and follow the adversarial review procedure in `skills/shared/adversarial-r
 
 ---
 
+## Dev Deploy & Verify (mandatory hand-off gate)
+
+Runs after Adversarial Review (and after the No Story ID path's implementation), on the final HEAD, before the work is handed to review. Follow `skills/shared/dev-deploy.md` for the whole procedure; do not restate it.
+
+**Authorization.** The developer is explicitly authorized and required to trigger the dev deploy CI (`deploy_command`) and to inspect dev (endpoints, service and workflow logs, UI, data). Dev only: no production authority is granted, and local, Makefile, script, `kubectl`, or `helm` deploys never satisfy the gate.
+
+1. **Exemption check.** A repo in `ci_gate_exempt_repos` or `deploy_gate_exempt_repos` runs no deploy: post the exempt-form evidence comment with the literal `jq` proof line, then mark the PR ready.
+2. **Deploy.** The PR is already a draft and pushed. Trigger the dev deploy CI on the branch HEAD, identify the run by SHA, and wait for conclusion `success`.
+3. **Verify.** Verify every acceptance criterion against live dev. Criteria come from the story; with no story ID, use the request's stated behavior. When nothing is observable in dev (a refactor or internal change), still deploy, then record a health check, a clean-logs check, and a regression smoke check of existing behavior as the evidence rows.
+4. **Fix loop.** On any failure, fix, commit, push, redeploy, and reverify until everything passes. A clearly infrastructure failure gets one retry; if it persists, stop with the PR left as a draft and report `dev-verification blocked:` with the reason (fresh dispatch: `status: error`; role session: `blocked`). Never hand off unverified.
+5. **Evidence, then ready.** Post the dev-verification evidence comment for the final HEAD, then mark the PR ready. Any later commit (including an adversarial-review fix commit) invalidates the evidence and the gate re-runs on the new HEAD.
+
+**Multi-repo.** Each per-repo sub-agent runs the gate for its repo before returning. After Adversarial Review, every repo whose HEAD changed (an adversarial fix commit) re-runs the gate on its final HEAD before developing returns, so no repo hands off with stale evidence.
+
+**Caller deferral.** A calling wrapper may defer this gate with an explicit override when it must add a commit after developing returns. The override may name specific repos; unnamed repos in a multi-repo run still run the gate inside developing. In that case developing returns with the PR still a draft, and the caller must invoke `dev-workflow:dev-verify` on the final HEAD before any hand-off.
+
+**Not applicable.** A wrapper whose rules make evidence impossible for a repo (the `not-applicable` hand-off value) may skip the gate there, provided its result states plainly that dev verification was not done and must be done manually.
+
+---
+
 ## Completion Criteria
 
 - All changes are committed with clean messages
 - All tests pass
 - Code is pushed to remote branch
 - PR is created with clean, professional description linking the story
+- Dev-verification evidence is posted for the final HEAD and the PR is marked ready (or the gate was deferred by the caller, or blocked and reported)
 - **Worktree cleanup is manual when this skill runs standalone.** When dispatched by `full-cycle`/`epic` those orchestrators own reclamation (see `full-cycle/SKILL.md`'s Termination section / `epic/SKILL.md`'s `awaiting-merge → done` transition). A human invoking `developing <story-id>` directly has no such reclamation point — nothing here removes the worktree this run created. Look it up live via `git -C <repo root> worktree list --porcelain` (matching the entry whose branch is this story's feature branch), note the path, and once the PR is merged the human should run `git -C <repo root> worktree remove <path>` followed by `git -C <repo root> worktree prune` (or delegate to `superpowers:finishing-a-development-branch`).
 
 ---

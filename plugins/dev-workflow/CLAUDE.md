@@ -72,9 +72,10 @@ skills/
   full-cycle/          # End-to-end lifecycle orchestrator (sequences all stages)
   epic/                # Initiative orchestrator: discovery → consensus → self-managed tasklist → autonomous per-task full-cycle drive
   addressing-pr-comments/ # Address review feedback in current session
+  dev-verify/          # Developer dev deploy + verification gate on an existing PR (verify mode, deferred gates)
   pm-adapter/          # PM tool adapters + interface spec (includes file-backed tasklist adapter)
   notes-adapter/       # Notes storage adapters + interface spec
-  shared/              # Shared protocol docs (standards, adapter-loading, context-compaction, ...)
+  shared/              # Shared protocol docs (standards, adapter-loading, context-compaction, dev-deploy, ...)
 agents/                # Dedicated subagent types dispatched by the orchestrators (one per pipeline role)
   spec-writer.md      # writing-specs; role session (relay mode), fresh relay dispatch, or autonomous dispatch (epic)
   developer.md        # developing (story mode) + addressing-pr-comments (rework mode); role session or fresh dispatch
@@ -101,7 +102,7 @@ Epic state (not committed): `~/.claude/dev-workflow/epics/[epic-slug]/`
 
 ## Working on This Codebase
 
-Content is mostly Markdown skill definitions, plus a small number of static assets (e.g., `skills/writing-specs/spec-template.html`) — there is no compiled code and no build step. The only tests are the shell tests under `tests/` for the hooks; run `bash tests/test_role_session_context.sh` after touching a hook, `hooks/hooks.json` or the role agents, and `bash tests/test_developer_rules.sh` after touching the worktree or attribution wording in the developing skill, repo-discovery or the developer agent. Changes are made by editing `.md` files (and the occasional asset file) in `skills/` and `commands/`.
+Content is mostly Markdown skill definitions, plus a small number of static assets (e.g., `skills/writing-specs/spec-template.html`) — there is no compiled code and no build step. The only tests are the shell tests under `tests/` for the hooks; run `bash tests/test_role_session_context.sh` after touching a hook, `hooks/hooks.json` or the role agents, and `bash tests/test_developer_rules.sh` after touching the worktree or attribution wording in the developing skill, repo-discovery or the developer agent, and `bash tests/test_dev_verification_gate.sh` after touching the dev-verification gate wording in `skills/shared/dev-deploy.md`, the developing, addressing-pr-comments, debugging, reviewing-prs, testing-prs, dev-verify or full-cycle skills, `skills/shared/standards.md`, `skills/shared/role-sessions.md`, `skills/shared/context-compaction.md`, the README, or the agent definitions. Changes are made by editing `.md` files (and the occasional asset file) in `skills/` and `commands/`.
 
 When modifying a skill:
 - Update the version in `.claude-plugin/plugin.json` if changing behavior, **and** bump the matching entry's `version` in the repo-root `.claude-plugin/marketplace.json` to the same value, both in the same PR as the behavior change — the two drift independently and only the second one is what marketplace consumers actually see

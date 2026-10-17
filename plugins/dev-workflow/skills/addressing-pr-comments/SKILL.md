@@ -129,33 +129,15 @@ path" bullet of that file's "Execution scope" section applies here.
 
 ---
 
-## Step 5.5: Functional Verification in Dev Environment
+## Step 5.5: Dev Deploy & Verify (mandatory gate)
 
-After unit/integration tests pass, verify the fixes work in a running environment. Loop until certain.
+After unit/integration tests pass, run the same mandatory gate as `dev-workflow:developing` → Dev Deploy & Verify on the new HEAD, following `skills/shared/dev-deploy.md`. It replaces the former optional deploy step: every hand-off HEAD carries fresh evidence.
 
-**Deploy:**
-
-Check `~/.claude/dev-workflow/config.json` for `deploy_command`.
-
-- **If `deploy_command` is configured:** Deploy the branch to dev — follow the same deployment procedure as `dev-workflow:testing-prs` Phase 3 (GitHub Actions, shell command, or other pattern).
-- **If not configured:** Run the service locally. Start it using whatever mechanism the project provides (Makefile, npm scripts, etc.).
-
-**Test:**
-
-For each item from the Step 3 checklist, design and execute a focused test scenario:
-
-1. Document what you're doing and the expected outcome
-2. Execute with fresh commands — no assumptions from prior runs
-3. Collect evidence: logs, API responses, CLI output, screenshots
-4. Record PASS or FAIL with specific details
-
-Apply the accountability rules from `dev-workflow:testing-prs`: if you see an error, it is a failure — do not rationalize it away.
-
-**Loop:**
-
-- If any test fails → fix the issue, commit, push, re-deploy, re-test
-- Continue until ALL addressed items pass functional testing
-- Only proceed to Step 6 when you are certain every fix works correctly in the running environment
+- **Exempt repos** (in `ci_gate_exempt_repos` or `deploy_gate_exempt_repos`): post the exempt-form evidence comment with the literal `jq` proof line. No deploy.
+- **Non-exempt repos:** trigger the dev deploy CI on the new HEAD, identify the run by SHA, and wait for conclusion `success`. There is no "run the service locally" fallback: a local run never satisfies the gate.
+- **Verify** each addressed item from the Step 3 checklist against live dev, plus a regression check of the original acceptance criteria. Apply the accountability rules from `dev-workflow:testing-prs`: if you see an error, it is a failure.
+- **Loop:** on any failure, fix, commit, push, redeploy, and reverify until everything passes. A persistent infrastructure failure (after one retry) leaves the stale evidence in place and is reported as `dev-verification blocked:` through the existing contracts.
+- **Evidence:** post fresh dev-verification evidence for the new HEAD. Proceed to Step 6 only once it is posted.
 
 ---
 

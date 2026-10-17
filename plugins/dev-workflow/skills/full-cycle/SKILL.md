@@ -69,8 +69,8 @@ A role session or dispatched subagent has no tool to ask the user. The implement
 In **standalone** full-cycle, the spec-writer, developer, reviewer, and tester run as persistent role sessions per `skills/shared/role-sessions.md`, which owns the launch contract, naming, message envelope, routing, liveness, teardown, and resume rules. This skill owns *when* each of those happens:
 
 - **Epic worker rule.** When full-cycle runs as an epic per-task worker — the per-task run the `epic` skill dispatched, which receives a task ID and a task-list-backed PM adapter — it skips the preflight and launches **no** role sessions, because subagent messaging addresses the parent session. An epic worker runs the fresh-dispatch path below: every stage is an Agent-tool dispatch, and each fix loop body is a fresh `dev-workflow:developer` dispatch in rework mode followed by a fresh `dev-workflow:reviewer` or `dev-workflow:tester` dispatch. A standalone run, including one inside a background job, is not an epic worker and always runs the preflight.
-- **Preflight (once per run).** Before the first role-session launch, wherever in the run that is, execute the preflight in `role-sessions.md` (version floor, agent view, background launch, ping handshake); each check is run, never inferred, and a check fails only on an observed failure. The handshake is the `ping` of whichever session is launched first, whatever its role (the spec-writer on a normal run, the developer when resuming at entry row 3, the reviewer or tester when resuming at entry rows 7-8). Any failed check: announce the failed check with the observed output and the remedy once, report any sessions already launched by name and ask before stopping them, and run the remaining work on the fresh-dispatch path; no stage runs on both paths at once. A run that moves from fresh dispatch to role sessions part-way follows `role-sessions.md` → "Mid-run mode change".
-- **Lazy launch.** The story's spec-writer session (named `{story-id}-spec-writer`, one per story) launches when the story enters writing-specs, after creating-stories. Each repo's developer session (named `{story-id}-developer-{repo}`) launches when that repo's first `develop` is sent, or, when a `fix` request is needed and that repo has no developer session (resume at entry rows 5-6), at that point. On resume, match existing sessions by these per-repo names. An unresponsive session is not stopped or removed without permission; ask, and if not granted launch a fresh one under a new name and list the old one as left over. A PR's reviewer session launches at that PR's first review, and its tester session at that PR's first test. Every newly launched session (spec-writer, developer, reviewer, tester) is pinged and must answer `ready` before its first task message. Names, model, and settings follow the launch contract.
+- **Preflight (once per run).** Before the first role-session launch, wherever in the run that is, execute the preflight in `role-sessions.md` (version floor, agent view, background launch, ping handshake); each check is run, never inferred, and a check fails only on an observed failure. The handshake is the `ping` of whichever session is launched first, whatever its role (the spec-writer on a normal run, the developer when resuming at entry row 3 or 4, the reviewer or tester when resuming at entry rows 8-9). Any failed check: announce the failed check with the observed output and the remedy once, report any sessions already launched by name and ask before stopping them, and run the remaining work on the fresh-dispatch path; no stage runs on both paths at once. A run that moves from fresh dispatch to role sessions part-way follows `role-sessions.md` → "Mid-run mode change".
+- **Lazy launch.** The story's spec-writer session (named `{story-id}-spec-writer`, one per story) launches when the story enters writing-specs, after creating-stories. Each repo's developer session (named `{story-id}-developer-{repo}`) launches when that repo's first `develop` is sent, or, when a `fix` request is needed and that repo has no developer session (resume at entry rows 6-7), at that point. On resume, match existing sessions by these per-repo names. An unresponsive session is not stopped or removed without permission; ask, and if not granted launch a fresh one under a new name and list the old one as left over. A PR's reviewer session launches at that PR's first review, and its tester session at that PR's first test. Every newly launched session (spec-writer, developer, reviewer, tester) is pinged and must answer `ready` before its first task message. Names, model, and settings follow the launch contract.
 - **Fresh-dispatch path (fallback and epic workers).** The rest of this skill describes both paths; where a step says "send a message to the session", the fresh-dispatch path instead dispatches the same worker with the Agent tool, as described under "How to dispatch".
 - **Hand-off discipline.** Every message sent to a role session follows the Communication contract in `role-sessions.md` (R5 to R8). In the same turn as the send, name what is in flight (worker, message type, round, and the replies expected: `ready`, or `ack` then a terminal reply, or a `result` of `shutdown`) and arm a watcher: a visible `Monitor` first, then a scheduled wake-up, then, if neither is available, tell the user which request is outstanding. Complete each step of a multi-step hand-off in the turn its trigger arrives (launch then `ping`; `ready` then the task message; a terminal reply then the GitHub read then the next send). Never end a turn after a launch with no `ping` sent, after `ready` with no task sent, after a send with nothing in flight or nothing armed, or after a terminal reply with no next action. Two minutes with no `ack` triggers the missing-ack check in R7.
 - **Cost.** Each role session consumes subscription usage like an interactive session; announce the sessions launched (one spec-writer for the story, one developer per repo, and a reviewer and tester per PR). They are stopped only with the user's permission.
@@ -104,8 +104,10 @@ Test Loop.
 | reviewing-prs | `dev-workflow:reviewer` | `reviewing-prs` | `review` | `opus` |
 | testing-prs | `dev-workflow:tester` | `testing-prs` | `review` | `opus` |
 | decision-read | `dev-workflow:pr-state-reader` | `decision-read` | `implementation` | `sonnet` |
+| handoff-check | `dev-workflow:pr-state-reader` | `handoff-check` | `implementation` | `sonnet` |
+| verify (fresh dispatch) | `dev-workflow:developer` | `verify` | `implementation` | `sonnet` |
 
-In role-session mode the spec-writer session's model is fixed at launch from `models.stages.writing-specs` → `models.reasoning` → default `opus`, and each developer session's model is fixed at launch from `models.stages.developing`; fix requests reuse it. The `models.stages.addressing-pr-comments` key applies only to a fresh developer rework dispatch (fallback path and epic per-task workers) and is ignored in role-session mode. A fresh rework dispatch resolves its model from `models.stages.addressing-pr-comments` → `models.implementation` → default `sonnet`.
+In role-session mode the spec-writer session's model is fixed at launch from `models.stages.writing-specs` → `models.reasoning` → default `opus`, and each developer session's model is fixed at launch from `models.stages.developing`; fix requests reuse it. The `models.stages.addressing-pr-comments` key applies only to a fresh developer rework dispatch (fallback path and epic per-task workers) and is ignored in role-session mode. A fresh rework dispatch resolves its model from `models.stages.addressing-pr-comments` → `models.implementation` → default `sonnet`. A fresh verify dispatch resolves from `models.stages.verify` → `models.implementation` → default `sonnet`; in role-session mode a verify request reuses the developer session. The `handoff-check` dispatch resolves exactly like `decision-read`.
 
 **Output mode (per `standards.md` → "Output Mode Detection").** Determine the mode at startup. The orchestrator is **interactive by nature** when it must run creating-stories or writing-specs, because creating-stories interviews the user and writing-specs relays the spec-writer's questions and gates development on the user's spec approval. If the skill is running non-interactively (no way to ask the user) AND the detected entry stage is creating-stories or writing-specs, STOP and surface that the pipeline needs an interactive session to define/approve the spec. When resuming at developing or later, no further interaction is required and the run may complete autonomously, emitting the flat key/value summary at Termination.
 
@@ -124,18 +126,21 @@ The skill is resumable: re-invoking it at any time must enter the pipeline at th
 | 1 | No story yet (no story ID; feature description or empty argument) | **creating-stories** |
 | 2 | Story exists but no spec is linked, or story state is "In Spec" / earlier | **writing-specs** (reuse or respawn the story's spec-writer by name, then pick the next message from the checkpoint per "Stage — writing-specs") |
 | 3 | Spec present / story "Ready for Dev" and **no** linked PR | **developing** |
-| 4 | A repo's linked PR carries the `tested-in-dev` label and no `tests-failing` label | **finished** — testing passed for that repo; report and skip it |
-| 5 | A repo's linked PR carries the `tests-failing` label | **developer fix → testing-prs** (test loop) for that repo |
-| 6 | A repo's linked PR `reviewDecision` is `CHANGES_REQUESTED` (and no `tests-failing` label) | **developer fix → reviewing-prs** (review loop) for that repo |
-| 7 | A repo's linked PR is review-approved with no `tested-in-dev`/`tests-failing` label | **testing-prs** for that repo |
-| 8 | A repo's linked PR exists but has no review decision yet (`REVIEW_REQUIRED`/null) | **reviewing-prs** for that repo |
+| 4 | A repo's linked PR is open and a draft | **verify** — a developer `mode: verify` request for that repo (evaluated ahead of every label and review-decision row) |
+| 5 | A repo's linked PR carries the `tested-in-dev` label and no `tests-failing` label | **finished** — testing passed for that repo; report and skip it |
+| 6 | A repo's linked PR carries the `tests-failing` label | **developer fix → testing-prs** (test loop) for that repo |
+| 7 | A repo's linked PR `reviewDecision` is `CHANGES_REQUESTED` (and no `tests-failing` label) | **developer fix → reviewing-prs** (review loop) for that repo |
+| 8 | A repo's linked PR is review-approved with no `tested-in-dev`/`tests-failing` label | **testing-prs** for that repo |
+| 9 | A repo's linked PR exists but has no review decision yet (`REVIEW_REQUIRED`/null) | **reviewing-prs** for that repo |
+
+**Why the draft row is row 4:** a PR returned to draft (an interrupted deploy wait, a failed re-pin gate) can still carry stale labels or a stale review, so the draft row precedes the `tested-in-dev` row. A draft PR goes back to the developer, not the reviewer: reviewing-prs stops on drafts without recording a decision.
 
 How to gather each signal, evaluated independently per repo:
 
 1. **Story state:** fetch the story via the PM adapter; read its workflow state. Treat it as a coarse, informational signal only — the plugin's built-in stages do **not** set a "Dev Complete" (or equivalent terminal) state, so resume detection must not depend on one. (A particular PM adapter may add such a transition; if present it corroborates the label, but the label is authoritative.)
 2. **Linked PR (per repo):** use the PM adapter's "Finding PRs linked to a story" instructions to find every linked PR, then resolve each PR's repo/service name from its GitHub owner/repo, matching `repo-discovery.md`'s naming convention. If none is linked there, fall back to a branch-name match: `gh pr list --state all --limit 1000 --json number,url,state,headRefName`, keeping PRs whose head branch contains the delimited story token.
 3. **Review decision:** `gh pr view {PR_NUMBER} --json reviewDecision` for the aggregate, or the latest review's `state` (see Reading the Authoritative Review Decision below).
-4. **Test outcome:** testing-prs applies a `tested-in-dev` (passed) or `tests-failing` (failed) label on every run (see "testing-prs label requirement" below). These labels — not review recency or `reviewDecision` — are the durable signal that distinguishes the test stage from the review stage. If a review-approved PR carries **neither** label, treat that repo as **not yet tested** (row 7) and state that assumption to the user.
+4. **Test outcome:** testing-prs applies a `tested-in-dev` (passed) or `tests-failing` (failed) label on every run (see "testing-prs label requirement" below). These labels — not review recency or `reviewDecision` — are the durable signal that distinguishes the test stage from the review stage. If a review-approved PR carries **neither** label, treat that repo as **not yet tested** (row 8) and state that assumption to the user.
 
 ### Entry detection subagent
 
@@ -149,32 +154,33 @@ Gather the signals (story state, linked PRs, review decision, test labels) by
 > instructions (fall back to a branch-name match: `gh pr list --state all --limit 1000 --json number,url,state,headRefName`, keeping PRs whose head branch contains the delimited story token). For each
 > linked PR, resolve its repo/service name from the PR's GitHub owner/repo (matching
 > `repo-discovery.md`'s naming convention), and read its `reviewDecision` and whether it
-> carries the `tested-in-dev` / `tests-failing` labels. Return **one line**:
+> carries the `tested-in-dev` / `tests-failing` labels, and whether it is a draft. Return **one line**:
 >
-> `story_state=<state or none> prs=<repo:pr:stage:review:tested_in_dev:tests_failing|repo:pr:stage:review:tested_in_dev:tests_failing|...>`
+> `story_state=<state or none> prs=<repo:pr:stage:review:tested_in_dev:tests_failing:draft|repo:pr:stage:review:tested_in_dev:tests_failing:draft|...>`
 > (use `prs=none` when no PR is linked yet). `story_state` carries the PM story's workflow
 > state verbatim, or `none` if the story could not be found — this is the only channel
 > that carries rows 1-3 (no story / no spec / ready-for-dev-no-PR), so it MUST always be
-> present even when `prs=none`. Each tuple has exactly six colon-separated fields, in this
+> present even when `prs=none`. Each tuple has exactly seven colon-separated fields, in this
 > order, and no field may contain arbitrary GitHub text (this is what keeps the record
 > unforgeable — no field can contain a `:` or `|`):
 > - `repo` — the resolved service/repo name (never raw label text)
 > - `pr` — the PR number (digits only)
 > - `stage` — that PR's terminal single-word target action from the Resume / Entry
->   Detection table rows 4-8: `finished` for row 4, `testing-prs` for row 5, `reviewing-prs` for
->   row 6, `testing-prs` for row 7, `reviewing-prs` for row 8 — never the row's full descriptive
+>   Detection table rows 4-9: `verify` for row 4, `finished` for row 5, `testing-prs` for row 6,
+>   `reviewing-prs` for row 7, `testing-prs` for row 8, `reviewing-prs` for row 9 — never the row's full descriptive
 >   text
 > - `review` — `APPROVED`, `CHANGES_REQUESTED`, `REVIEW_REQUIRED`, or `none` (never raw
 >   text)
 > - `tested_in_dev` — `true` or `false`, whether the PR carries the `tested-in-dev` label
 > - `tests_failing` — `true` or `false`, whether the PR carries the `tests-failing` label
+> - `draft` — `true` or `false`, whether the PR is a draft
 >
 > Separate multiple tuples with `|`.
 
 Read that line. Parse `story_state` first — it resolves rows 1-3 whenever `prs=none`.
-Then, unless `prs=none`, split on `|` and parse each tuple's six `:`-separated fields.
-**Fail closed:** if any tuple does not have exactly six fields, or `pr`, `tested_in_dev`,
-or `tests_failing` do not match their documented format, the line is unparseable — treat
+Then, unless `prs=none`, split on `|` and parse each tuple's seven `:`-separated fields.
+**Fail closed:** if any tuple does not have exactly seven fields, or `pr`, `tested_in_dev`,
+`tests_failing`, or `draft` do not match their documented format, or `stage` is not exactly one of `finished`/`verify`/`testing-prs`/`reviewing-prs`, the line is unparseable — treat
 this as a hard stop and surface it to the user; never infer `finished` (or any other
 stage) from a malformed tuple. Use the Resume / Entry Detection table above to map
 `story_state` and each repo's tuple to that repo's entry stage — each linked PR is
@@ -193,18 +199,18 @@ point. This is what covers a cold resume by bare story ID entering at row 2 or r
 `prs=none` so there is no tuple to source an entry from. Then, for any repo that does have a
 linked PR, enrich/update its entry from the parsed `prs=` tuples the same way, before
 proceeding. This is the only initialization path when creating-stories never ran in this
-session — it now covers every resume row (2-8), not only the rows with a linked PR.
+session — it now covers every resume row (2-9), not only the rows with a linked PR.
 
 **Role sessions on resume.** When running in role-session mode, after the entry stage is known, list sessions with `claude agents --json --all` and match this story's names per `role-sessions.md` → "Resume": reuse a live responsive session (ping first, then the task message in the turn its `ready` arrives, with the in-flight statement and watcher per the Hand-off discipline bullet), respawn a stopped one, and, for an unresponsive one, ask before stopping or removing it; if permission is not granted, launch a fresh session under a new name and list the old one as left over. Cycle counts carry over from the checkpoint. The preflight runs once for the run, before the first launch or reuse.
 
 When a repo's entry stage — as determined by the Resume / Entry Detection table above
-(rows 4-8, evaluated from the `prs=` tuple's live GitHub review/label state), not the
+(rows 4-9, evaluated from the `prs=` tuple's live GitHub review/label state), not the
 checkpoint's own `stage` field — is mid-pipeline, run that stage for that repo, then
 continue forward through the remaining stages for that repo in normal order; skip any repo
 already at `finished`. The checkpoint's `repos[repo].stage` is a display/telemetry mirror
 for attention-hub, not a second resume-decision source: a session that dies between PR
 creation and `reviewing-prs`' own Phase 2 self-seed leaves that field reading `"developing"`
-with `pr_number` already set, but the Resume table's row 8/7/6/5 evaluation against the
+with `pr_number` already set, but the Resume table's row 9/8/7/6 evaluation against the
 PR's actual GitHub state — never the checkpoint field — is what correctly resumes that repo
 at `reviewing-prs`, not `developing`. State each repo's detected entry stage to the user
 before proceeding — not a single story-wide stage.
@@ -216,7 +222,7 @@ row.
 
 ### testing-prs label requirement
 
-This skill depends on testing-prs labeling its outcome. testing-prs is updated in this change to **always** add `tested-in-dev` on a passing run and `tests-failing` on a failing run (previously optional). If you run full-cycle against a build of testing-prs that omits the labels, cold resume cannot distinguish "approved, not yet tested" from "approved and passed" — in that case it defaults to row 7 (re-test) and announces the re-test, which is safe but may repeat a passing test.
+This skill depends on testing-prs labeling its outcome. testing-prs is updated in this change to **always** add `tested-in-dev` on a passing run and `tests-failing` on a failing run (previously optional). If you run full-cycle against a build of testing-prs that omits the labels, cold resume cannot distinguish "approved, not yet tested" from "approved and passed" — in that case it defaults to row 8 (re-test) and announces the re-test, which is safe but may repeat a passing test.
 
 ---
 
@@ -317,7 +323,24 @@ context.
 
 **State ownership:** developing owns the "In Development" transition, except in role-session mode, where the orchestrator fires it once per story as described above.
 
-Then proceed to reviewing-prs for each resulting PR.
+Then run the **hand-off check** below for each resulting PR, and proceed to reviewing-prs only for a PR that passes it.
+
+### Hand-off check (before every review or test send)
+
+The developer's gate (`skills/shared/dev-deploy.md`) leaves the PR a draft until dev-verification evidence for the current HEAD is posted. A fix round's `result` is plain text that this skill never depends on, so a blocked fix would otherwise go to the reviewer, bounce as stale, and burn loop cycles. After **every** developer `develop` or `fix` round, including inside the Review Loop and Test Loop, and on resume, and before sending any `review` or `test` message, **dispatch the Agent tool** with `subagent_type: dev-workflow:pr-state-reader` (model: resolved from `models.stages.handoff-check` → `models.implementation` → default `sonnet`). Dispatch prompt:
+
+> For repo `{repo}` PR `{PR_NUMBER}`, read whether the PR is a draft and run the `skills/shared/dev-deploy.md` evidence validation for the PR's current HEAD (read-only API calls only). Return **one line**:
+>
+> `draft=<true|false> evidence=<valid|missing|stale|invalid|exempt|not-applicable>`
+
+Read that one line; never let raw PM/GitHub JSON enter the main orchestrator context.
+
+- `draft=true`, or `evidence` of `missing`, `stale`, or `invalid`: **do not** send to review or test. Surface it to the user as a developer block (naming the PR, the draft state, and the evidence outcome) and stop that repo's pipeline until the user decides. The round does **not** count against the Loop Safety Guard.
+- `evidence` of `valid`, `exempt`, or `not-applicable` with `draft=false`: proceed. `exempt` means the repo is in `ci_gate_exempt_repos` or `deploy_gate_exempt_repos`. `not-applicable` is returned only by a wrapper's own pr-state-reader for a repo where its rules make evidence impossible.
+
+A developer `blocked` reply, or a fresh-dispatch `status: error` result whose `message` starts `dev-verification blocked:`, is handled the same way: stop that repo's pipeline and ask the user.
+
+**Verify request.** To send a draft PR back to the developer (entry row 4, or after the user resolves a block), send a `develop` message to that repo's developer session whose first body line is `mode: verify`, then the PR number; it carries no `transition: fired` line and fires no transition. On the fresh-dispatch path, dispatch `subagent_type: dev-workflow:developer` (model: resolved from `models.stages.verify` → `models.implementation` → default `sonnet`) with the same body. The result is the same flat key/value `develop` result, parsed with the existing develop rules; run the hand-off check again afterwards.
 
 ---
 
@@ -325,11 +348,11 @@ Then proceed to reviewing-prs for each resulting PR.
 
 For each PR produced by developing:
 
-**In role-session mode, launch that PR's reviewer session at its first review** (`dev-workflow:reviewer`, role `reviewer`, model resolved from `models.stages.reviewing-prs` → `models.review` → default `opus`) and send it a `review` message in the same turn as its `ready` (then name what is in flight and arm the watcher per the Hand-off discipline bullet); later rounds go to the same session. **On the fresh-dispatch path, dispatch the Agent tool** with `subagent_type: dev-workflow:reviewer` (same model resolution). The worker's body already invokes `dev-workflow:reviewing-prs` autonomously and already carries the fresh-dev-build-CI mandate; your request supplies only:
+**In role-session mode, launch that PR's reviewer session at its first review** (`dev-workflow:reviewer`, role `reviewer`, model resolved from `models.stages.reviewing-prs` → `models.review` → default `opus`) and send it a `review` message in the same turn as its `ready` (then name what is in flight and arm the watcher per the Hand-off discipline bullet); later rounds go to the same session. **On the fresh-dispatch path, dispatch the Agent tool** with `subagent_type: dev-workflow:reviewer` (same model resolution). The worker's body already invokes `dev-workflow:reviewing-prs` autonomously and already carries the evidence gate and the reuse-or-fresh dev build CI rule; your request supplies only:
 
 > PR number: `{PR_NUMBER}`. Run autonomously.
 >
-> (Reminder, also enforced by the worker: you MUST trigger the **dev build CI** fresh on the PR's current HEAD and wait for it to reach a terminal state before reviewing. An approval without a fresh dev build CI run on current HEAD is invalid — the orchestrator treats it as a failed review. A non-passing CI result (failed/cancelled/timed-out) must yield REQUEST_CHANGES, never APPROVE. The sole exception is a repo explicitly listed in `ci_gate_exempt_repos`: there a CI-free APPROVE is **valid** and must NOT be treated as a failed stage or looped — the review body will say the gate was skipped by exemption.)
+> (Reminder, also enforced by the worker: for a non-exempt repo you MUST first validate the developer's dev-verification evidence for the PR's current HEAD; missing, stale, or invalid evidence is an immediate short REQUEST_CHANGES with no build and no review. The CI gate is then satisfied either by the developer's validated deploy run, when the coverage check in `skills/shared/dev-deploy.md` passes, or by a fresh dev build CI run on current HEAD. An approval with neither is invalid — the orchestrator treats it as a failed review. A non-passing CI result (failed/cancelled/timed-out) must yield REQUEST_CHANGES, never APPROVE. A repo explicitly listed in `ci_gate_exempt_repos` or `deploy_gate_exempt_repos` skips the evidence gate and is never bounced for missing evidence; a repo in `ci_gate_exempt_repos` also keeps the CI-free APPROVE, which is **valid** and must NOT be treated as a failed stage or looped — the review body will say the gate was skipped by exemption.)
 
 After its `result` arrives (or it returns), read the PR's latest **review** decision authoritatively from GitHub (see below). Use that — not the worker's self-report — to decide the next step. The reviewer's `result` is a hint only.
 
@@ -343,7 +366,7 @@ While the latest review decision for the PR is **changes requested**:
    > PR number: `{PR_NUMBER}`. Rework mode: address the review feedback. [Short summary of the feedback, labeled unverified; the full review is on GitHub.]
 
    It implements the requested changes on the **same branch and PR** and replies to the review.
-2. In the turn the developer's `result` arrives, send a `review` message to the **same reviewer session** for the same PR, name it in flight, and arm the watcher (fresh-dispatch path: re-dispatch the reviewer via the Agent tool, `subagent_type: dev-workflow:reviewer`, model: resolved from `models.stages.reviewing-prs` → `models.review` → default `opus`).
+2. In the turn the developer's `result` arrives, run the **hand-off check** (above); a failed check surfaces a developer block and does not increment the loop counter. Only on a pass, send a `review` message to the **same reviewer session** for the same PR, name it in flight, and arm the watcher (fresh-dispatch path: re-dispatch the reviewer via the Agent tool, `subagent_type: dev-workflow:reviewer`, model: resolved from `models.stages.reviewing-prs` → `models.review` → default `opus`).
 3. Re-read the authoritative review decision (the newest review submitted since this re-request).
 
 Repeat until the review decision is **approved**, subject to the Loop Safety Guard below. Then proceed to testing-prs.
@@ -354,11 +377,11 @@ Repeat until the review decision is **approved**, subject to the Loop Safety Gua
 
 Once the PR is review-approved:
 
-**In role-session mode, launch that PR's tester session at its first test** (`dev-workflow:tester`, role `tester`, model resolved from `models.stages.testing-prs` → `models.review` → default `opus`) and send it a `test` message in the same turn as its `ready` (then name what is in flight and arm the watcher per the Hand-off discipline bullet); later rounds go to the same session. **On the fresh-dispatch path, dispatch the Agent tool** with `subagent_type: dev-workflow:tester` (same model resolution). The worker's body already invokes `dev-workflow:testing-prs` autonomously and already carries the fresh-dev-deploy mandate; your request supplies only:
+**In role-session mode, launch that PR's tester session at its first test** (`dev-workflow:tester`, role `tester`, model resolved from `models.stages.testing-prs` → `models.review` → default `opus`) and send it a `test` message in the same turn as its `ready` (then name what is in flight and arm the watcher per the Hand-off discipline bullet); later rounds go to the same session. **On the fresh-dispatch path, dispatch the Agent tool** with `subagent_type: dev-workflow:tester` (same model resolution). The worker's body already invokes `dev-workflow:testing-prs` autonomously and already carries the evidence gate and the reuse-or-fresh dev deploy rule; your request supplies only:
 
 > PR number: `{PR_NUMBER}`. Run autonomously.
 >
-> (Reminder, also enforced by the worker: you MUST run the **dev deploy CI** to deploy the branch fresh and wait for it to succeed before executing any test scenario. A test result without a fresh dev deploy is invalid — the orchestrator treats it as a failed test. A local/Makefile/script deploy never counts; without a successful dev deploy CI run the verdict is REQUEST_CHANGES + `tests-failing`, never APPROVE. The sole exception is a repo explicitly listed in `deploy_gate_exempt_repos`: there a deploy-CI-free APPROVE is **valid** and must NOT be treated as a failed stage or looped — the test report will say functional dev testing was skipped by exemption.)
+> (Reminder, also enforced by the worker: for a non-exempt repo you MUST first validate the developer's dev-verification evidence for the PR's current HEAD; missing, stale, or invalid evidence is an immediate REQUEST_CHANGES + `tests-failing` with no deploy and no scenarios. You then reuse the developer's deploy run only when it is the newest run of the deploy workflow with nothing in flight (per `skills/shared/dev-deploy.md`), else deploy fresh with the dev deploy CI and wait for it to succeed before executing any test scenario. A test result without a successful dev deploy run on current HEAD is invalid — the orchestrator treats it as a failed test. A local/Makefile/script deploy never counts; without one the verdict is REQUEST_CHANGES + `tests-failing`, never APPROVE. A repo explicitly listed in `ci_gate_exempt_repos` or `deploy_gate_exempt_repos` skips the evidence gate and is never bounced for missing evidence; a repo in `deploy_gate_exempt_repos` also keeps the deploy-CI-free APPROVE, which is **valid** and must NOT be treated as a failed stage or looped — the test report will say functional dev testing was skipped by exemption.)
 
 After its `result` arrives (or it returns), read the PR's latest **test** decision authoritatively from GitHub.
 
@@ -371,7 +394,7 @@ After its `result` arrives (or it returns), read the PR's latest **test** decisi
 While testing **requests changes**:
 
 1. **Send a `fix` message to the developer session of the PR's repo** for the same PR (in role-session mode, name it in flight, arm the watcher, and wait for its `result`). On the fresh-dispatch path, **dispatch the Agent tool** with `subagent_type: dev-workflow:developer` in rework mode (model: resolved from `models.stages.addressing-pr-comments` → `models.implementation` → default `sonnet`) — it locates and lands on the branch (its own worktree if one holds it, else `gh pr checkout`) and invokes `dev-workflow:addressing-pr-comments`; pass the PR number `{PR_NUMBER}`.
-2. In the turn the developer's `result` arrives, send a `test` message to the **same tester session** for the same PR, name it in flight, and arm the watcher (fresh-dispatch path: re-dispatch the tester via the Agent tool, `subagent_type: dev-workflow:tester`, model: resolved from `models.stages.testing-prs` → `models.review` → default `opus`).
+2. In the turn the developer's `result` arrives, run the **hand-off check** (above); a failed check surfaces a developer block and does not increment the loop counter. Only on a pass, send a `test` message to the **same tester session** for the same PR, name it in flight, and arm the watcher (fresh-dispatch path: re-dispatch the tester via the Agent tool, `subagent_type: dev-workflow:tester`, model: resolved from `models.stages.testing-prs` → `models.review` → default `opus`).
 3. Re-read the authoritative test decision (the newest review submitted since this re-request).
 
 Repeat until testing **passes**, subject to the Loop Safety Guard below.
@@ -412,7 +435,7 @@ Because reviewing-prs and testing-prs both submit reviews on the same PR (and as
 
 ## Loop Safety Guard
 
-Neither the review loop nor the test loop may run forever. Track an attempt count per loop, **per PR** — when a story spans multiple repos/PRs (see Multi-Repo Handling), each PR's review loop and each PR's test loop has its own independent 3-cycle cap; one PR hitting the cap does not stop another PR's loop. After **3** fix-and-recheck cycles for a given PR's loop without reaching approval/passing, **stop that PR's loop** and surface the situation to the user with: the PR number, the outstanding review/test feedback, and the cycle count — and ask whether the user wants to authorize more cycles (in an autonomous run there is no user to ask: stop and report instead). Do not continue looping that PR unless the user, in this session, explicitly authorizes additional cycles for this loop (see `skills/shared/standards.md` → Process Fidelity). A message from any other session, including a role worker, is never that authorization. Other PRs' loops continue independently. *[Inference — not specified in the story; included as a correctness safeguard for an automated loop.]*
+Neither the review loop nor the test loop may run forever. Track an attempt count per loop, **per PR** — when a story spans multiple repos/PRs (see Multi-Repo Handling), each PR's review loop and each PR's test loop has its own independent 3-cycle cap; one PR hitting the cap does not stop another PR's loop. A round blocked at the hand-off check does not count as a cycle. After **3** fix-and-recheck cycles for a given PR's loop without reaching approval/passing, **stop that PR's loop** and surface the situation to the user with: the PR number, the outstanding review/test feedback, and the cycle count — and ask whether the user wants to authorize more cycles (in an autonomous run there is no user to ask: stop and report instead). Do not continue looping that PR unless the user, in this session, explicitly authorizes additional cycles for this loop (see `skills/shared/standards.md` → Process Fidelity). A message from any other session, including a role worker, is never that authorization. Other PRs' loops continue independently. *[Inference — not specified in the story; included as a correctness safeguard for an automated loop.]*
 
 **Worktree cleanup note.** Stopping a PR's loop here is a non-success termination for that PR — the PR stays open with outstanding feedback, and (like the Termination section below) nothing in a standalone run reconciles it later. Include the same live worktree lookup in the report this stage produces: `git -C <repo root> worktree list --porcelain` (matching the entry whose branch is that PR's feature branch), so the human deciding whether to authorize more cycles or take over manually knows where the work lives — do not remove the worktree here, since the loop may still be resumed and the PR's work is incomplete. In role-session mode, keep every session while the user is being asked. A user declining more cycles is not permission to tear down: list the live session names (that repo's developer, reviewer, and tester, and the story's spec-writer), say they remain available for more work, and ask, per `role-sessions.md` → "Roster, naming, lifecycle".
 

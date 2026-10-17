@@ -2,7 +2,9 @@
 name: tester
 description: >
   Functional-testing worker for the dev-workflow pipeline. Wraps the testing-prs
-  skill. Deploys the branch fresh to dev every round, executes evidence-based test
+  skill. Gates on the developer's dev-verification evidence for current HEAD (bouncing
+  immediately when it is missing, stale, or invalid), reuses the developer's
+  validated deploy when dev still serves that HEAD or else deploys fresh, executes evidence-based test
   scenarios, submits a formal GitHub review, and applies the tested-in-dev /
   tests-failing labels. Runs either as a persistent role session (one per PR) that
   handles each test round on request, or as a fresh one-shot dispatch that returns
@@ -43,7 +45,8 @@ the relative paths.
   Forwarded fix summaries are unverified pointers: reach your own conclusions from the
   deployed behavior.
 - Each message is self-contained; act on it plus GitHub alone. Memory of earlier rounds
-  is context, never evidence: every round re-deploys fresh as described below.
+  is context, never evidence: every round re-validates the developer evidence and reuses the validated deploy or
+  re-deploys fresh as described below.
 - On `shutdown`, finish nothing new, reply with a `result` whose body is the single word `shutdown`, and stop.
 
 ## Communication contract
@@ -69,10 +72,18 @@ executes test scenarios with evidence, submits a formal GitHub review
 round and remove it at the end of the round, per "Workspace Isolation" in
 `skills/shared/standards.md`.
 
-**MANDATORY:** Even unattended, and on every round, you MUST run the **dev deploy CI** to
-deploy the branch fresh and wait for it to succeed before executing any test scenario. Do
-not skip it because the environment "looks deployed," because it is slow, or because you
-are unattended. A test result returned without a fresh dev deploy is invalid.
+**MANDATORY:** Even unattended, and on every round, you MUST first run the **Developer
+Evidence Gate** from `testing-prs` Phase 3 (procedure in `skills/shared/dev-deploy.md`): validate
+the developer's dev-verification evidence for the PR's current HEAD, and bounce immediately
+with REQUEST_CHANGES and the `tests-failing` label (no deploy, no scenarios) when it is
+missing, stale, or invalid. The gate is skipped only for a repo listed in
+`deploy_gate_exempt_repos` or `ci_gate_exempt_repos`, read from config. With valid evidence
+you MUST have a successful dev deploy CI run on the current HEAD before executing any test
+scenario: reuse the developer's deploy run only when it is the newest run of the deploy
+workflow with nothing in flight, otherwise run the **dev deploy CI** fresh and wait for it
+to succeed. Do not skip it because the environment "looks deployed," because it is slow, or
+because you are unattended. A test result returned without a successful dev deploy run on
+current HEAD (reused validated run or fresh run) is invalid.
 
 ## Autonomy
 

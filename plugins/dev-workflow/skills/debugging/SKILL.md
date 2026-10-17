@@ -89,6 +89,7 @@ Apply the full TDD cycle:
 
 ### Step 6: Commit and Create PR
 - Branch naming: `fix/[brief-description]`, chosen per `skills/developing/SKILL.md` → Branch Management (caller-supplied branch first, then the repo's branch-name rule looked up before creating the branch, then the story token default). A debugging run with no story keeps its token-free branch name.
+- Create the PR as a draft (`gh pr create --draft`); it is marked ready only by the gate in Step 8
 - PR body: follow `skills/developing/SKILL.md` → PR Creation Requirements; the bug, root cause (with file:line refs), and fix go in whichever template section describes the changes
 - Include test results as evidence
 - Attach the PR to the story as described in PR Creation Requirements; a run with no story skips the attach
@@ -102,6 +103,10 @@ Read and follow the adversarial review procedure in `skills/shared/adversarial-r
 - `review_context`: the bug description from Step 1, root cause analysis from Step 4, and the reproduction test name from Step 5
 
 The adversarial agent verifies the fix actually addresses the identified root cause, the test genuinely reproduces the original bug (not a different scenario), and no regressions were introduced.
+
+### Step 8: Dev Deploy & Verify
+
+Run the Dev Deploy & Verify gate directly, per `skills/developing/SKILL.md` → Dev Deploy & Verify and `skills/shared/dev-deploy.md`: deploy the branch HEAD to dev through the dev deploy CI, verify the bug's reproduction steps (the bug no longer reproduces) plus the regression smoke check of existing behavior in live dev, post the evidence comment, then mark the PR ready. This mode does not go through addressing-pr-comments, so it does not inherit the gate. Exempt repos post the exempt form.
 
 ---
 
@@ -170,6 +175,7 @@ With the plan written, and before creating the branch:
 - Push to remote branch
 
 ### Step 5: Create PR
+- Create it as a draft (`gh pr create --draft`); the Step 7 gate marks it ready
 - Title: concise and descriptive
 - Body: follow `skills/developing/SKILL.md` → PR Creation Requirements (the repo's pull request template)
 - Attach the PR to the story as described there
@@ -184,6 +190,10 @@ Read and follow the adversarial review procedure in `skills/shared/adversarial-r
 - `review_context`: the Claude Instructions spec loaded in Step 1
 
 The adversarial agent verifies the implementation satisfies all spec requirements and story acceptance criteria.
+
+### Step 7: Dev Deploy & Verify
+
+Run the Dev Deploy & Verify gate directly, per `skills/developing/SKILL.md` → Dev Deploy & Verify and `skills/shared/dev-deploy.md`: deploy the branch HEAD to dev through the dev deploy CI, verify every story acceptance criterion in live dev, post the evidence comment, then mark the PR ready. This mode does not go through addressing-pr-comments, so it does not inherit the gate. Exempt repos post the exempt form.
 
 **Worktree cleanup is manual when Development Mode runs standalone.** When dispatched by `full-cycle`/`epic`, those orchestrators own reclamation (see `full-cycle/SKILL.md`'s Termination section / `epic/SKILL.md`'s `awaiting-merge → done` transition). A human running `debugging <story-id>` directly has no such reclamation point — look up the worktree live via `git -C <repo root> worktree list --porcelain` (matching the entry whose branch is this story's feature branch), and once the PR is merged the human should run `git -C <repo root> worktree remove <path>` followed by `git -C <repo root> worktree prune` (or delegate to `superpowers:finishing-a-development-branch`).
 
@@ -264,7 +274,7 @@ asking whether to proceed.
 
 ### Step 5: Create PR
 
-Build the PR body per `skills/developing/SKILL.md` → PR Creation Requirements (the repo's pull request template). List the reworked items, and what changed for each, in whichever template section describes the changes made. Attach the PR to the story as described there.
+Create the PR as a draft (`gh pr create --draft`); the Step 7 gate marks it ready. Build the PR body per `skills/developing/SKILL.md` → PR Creation Requirements (the repo's pull request template). List the reworked items, and what changed for each, in whichever template section describes the changes made. Attach the PR to the story as described there.
 
 ### Step 6: Adversarial Review
 
@@ -275,6 +285,10 @@ Read and follow the adversarial review procedure in `skills/shared/adversarial-r
 - `review_context`: the rework checklist from Step 2 and the Claude Instructions spec from Step 1
 
 The adversarial agent verifies each rework item from the checklist was properly addressed.
+
+### Step 7: Dev Deploy & Verify
+
+Run the Dev Deploy & Verify gate directly, per `skills/developing/SKILL.md` → Dev Deploy & Verify and `skills/shared/dev-deploy.md`: deploy the branch HEAD to dev through the dev deploy CI, verify each rework item from the Step 2 checklist plus a regression check of the original criteria in live dev, post the evidence comment, then mark the PR ready. This mode does not go through addressing-pr-comments, so it does not inherit the gate. Exempt repos post the exempt form. Rework creates its own `fix/` branch and PR, so it never inherits the gate from addressing-pr-comments.
 
 **Worktree cleanup is manual when Rework Mode runs standalone.** When dispatched by `full-cycle`/`epic`'s review or test fix loop, those orchestrators own reclamation (see `full-cycle/SKILL.md`'s Termination section / `epic/SKILL.md`'s `awaiting-merge → done` transition). A human running `debugging <story-id> --rework` directly has no such reclamation point — look up the worktree live via `git -C <repo root> worktree list --porcelain` (matching the entry whose branch is this story's feature branch), and once the PR is merged the human should run `git -C <repo root> worktree remove <path>` followed by `git -C <repo root> worktree prune` (or delegate to `superpowers:finishing-a-development-branch`).
 

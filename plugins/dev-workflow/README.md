@@ -23,6 +23,7 @@ The superpowers plugin provides core methodology skills (TDD, systematic debuggi
 | `/start debugging` | debugging | Debug-first workflow (describe bug → investigate → TDD fix) |
 | `/start debugging story-id --rework` | debugging | Read story comments as rework items → fix → new PR |
 | `/start creating-stories` | creating-stories | Interview user → draft story → submit to PM tool |
+| `dev-workflow:dev-verify PR` | dev-verify | Run the developer's dev deploy and verification gate on an existing PR: deploy to dev, verify each criterion, post evidence, mark ready |
 | `/start full-cycle [story-id\|description]` | full-cycle | Drive the whole lifecycle end to end: creating-stories → writing-specs → developing → reviewing-prs → testing-prs, looping until tests pass |
 
 ## Configuration
@@ -59,7 +60,9 @@ Create `~/.claude/dev-workflow/config.json`:
       "addressing-pr-comments": "sonnet",
       "entry-detection": "sonnet",
       "pr-number-read": "sonnet",
-      "decision-read": "sonnet"
+      "decision-read": "sonnet",
+      "handoff-check": "sonnet",
+      "verify": "sonnet"
     }
   }
 }
@@ -84,6 +87,8 @@ The `models` section is optional. When absent, all dispatches use the built-in d
 | `models.stages.entry-detection` | `sonnet` | full-cycle's resume/entry-detection subagent |
 | `models.stages.pr-number-read` | `sonnet` | full-cycle's post-developing PR-number resolution subagent |
 | `models.stages.decision-read` | `sonnet` | full-cycle's authoritative review/test decision-read subagent |
+| `models.stages.handoff-check` | `sonnet` | full-cycle's pre-send hand-off check subagent (PR draft state and dev-verification evidence) |
+| `models.stages.verify` | `sonnet` | The fresh developer `mode: verify` dispatch (fallback path and epic per-task workers); falls back to `models.implementation` |
 
 **Resolution order** for any dispatch: `models.stages.<stage-key>` → `models.<task-type>` → built-in default. Stage-level keys take priority over task-type keys. Users who never add the `models` section see no change in behavior.
 
@@ -98,13 +103,27 @@ Two optional arrays let specific repos opt out of the otherwise-mandatory CI gat
 | `ci_gate_exempt_repos` | `reviewing-prs`'s dev build CI gate | The review may APPROVE without a passing dev build CI run. The review body states the gate was skipped by exemption. |
 | `deploy_gate_exempt_repos` | `testing-prs`'s dev deploy CI gate | The test may APPROVE without a successful dev deploy CI run. The test report states functional dev testing was skipped by exemption. |
 
-Each is an array of repository names (matching `git rev-parse --show-toplevel | xargs basename`). The two gates are independent — a repo may be exempt from one and not the other.
+Each is an array of repository names (matching `git rev-parse --show-toplevel | xargs basename`). The CI and deploy gates keep independent lists — a repo may be exempt from one and not the other. The developer dev-verification gate and the reviewer/tester evidence gates (see below) are skipped for a repo in **either** list.
 
 **Invariant — absence = gated, fallback ≠ exempt:**
 
 - A repo that is **not** listed in the relevant array is **gated**. Exemption requires explicit listing.
 - The `review_ci_command` / `deploy_command` `fallback` entry is **not** an exemption — falling back to the fallback instruction still requires the gate to run and pass.
 - Absence of a CI/deploy workflow on a non-exempt repo is **not** auto-exempt — it is a `REQUEST_CHANGES` (review) or `REQUEST_CHANGES` + `tests-failing` (test).
+
+### Developer dev verification
+
+Before hand-off the developer deploys its branch to dev through the dev deploy CI and verifies the change against live data. The ordering for non-exempt repos:
+
+1. Implement, then local tests, lint, and plan.
+2. Push and open the PR as a **draft**.
+3. Run the dev deploy CI (`deploy_command`) on the branch HEAD and wait for conclusion `success`.
+4. Verify every acceptance criterion against live dev.
+5. On any failure: fix, commit, push, redeploy, reverify.
+6. Post the dev-verification evidence comment (a hidden marker with the SHA and run ID, plus a per-criterion table), then mark the PR ready.
+7. Reviewer, then tester.
+
+The reviewer and tester validate that evidence against the GitHub run API, never trusting the comment text. Missing, stale, or invalid evidence is bounced immediately (REQUEST_CHANGES; the tester also applies `tests-failing`) with no build, no review, and no deploy. With valid evidence the reviewer reads the developer's deploy run output instead of triggering its own dev build CI when every build job has a counterpart in the deploy run, and the tester reuses the deploy only when it is still the newest run of the deploy workflow with nothing in flight. A repo in **either** `ci_gate_exempt_repos` or `deploy_gate_exempt_repos` gets no developer deploy and no bounce; the developer posts an exempt-form note with the `jq` proof line. The reviewer also skips its evidence gate for `ci_gate_exempt_repos`. The procedure lives in `skills/shared/dev-deploy.md`, and `dev-workflow:dev-verify` runs it on an existing PR.
 
 A non-passing CI/deploy result on a non-exempt repo always yields `REQUEST_CHANGES`, never `APPROVE`. A local/Makefile/script deploy never satisfies the dev deploy gate — only a successful dev deploy CI run does.
 
