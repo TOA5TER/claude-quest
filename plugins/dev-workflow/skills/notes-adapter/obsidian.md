@@ -21,7 +21,7 @@ Example: for story ID `sc-12345` passed in, service `api-server`:
 
 Get the service name from the current repo:
 ```bash
-git rev-parse --show-toplevel | xargs basename
+basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
 ```
 
 ## Read spec

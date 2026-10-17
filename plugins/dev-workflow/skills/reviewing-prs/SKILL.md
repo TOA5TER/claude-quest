@@ -78,6 +78,8 @@ gh pr reviews {PR_NUMBER} --json author,state,body,submittedAt
 
 **Decision logic:**
 
+First discard every evidence-bounce review: a review whose body contains the hidden marker `<!-- dev-evidence-bounce outcome=... -->` (see Developer Evidence Gate in Phase 3). A bounce review records no review findings, so it never selects the mode, never counts as the most recent `CHANGES_REQUESTED` review, and never supplies Previous Required Changes. Apply the rules below to the remaining reviews.
+
 - If the reviews array is empty (no reviews at all) → **First Review Mode**
 - If reviews exist but none have `state: CHANGES_REQUESTED` → **First Review Mode**
 - If at least one review has `state: CHANGES_REQUESTED` → **Re-Review Mode**
@@ -89,7 +91,7 @@ Output a mode banner before proceeding:
 
 **For Re-Review Mode only:**
 
-Parse the body of the most recent `CHANGES_REQUESTED` review. Extract the bullet list under the `## Required Changes` section verbatim. This is the **Previous Required Changes** list. Carry it forward to Phase 5.
+Parse the body of the most recent `CHANGES_REQUESTED` review that is not an evidence-bounce review. Extract the bullet list under the `## Required Changes` section verbatim. This is the **Previous Required Changes** list. Carry it forward to Phase 5.
 
 **Fallback:** If the most recent `CHANGES_REQUESTED` review body is empty, null, or does not contain a `## Required Changes` section with bullet points, log a warning: "Previous required changes not found — falling back to First Review Mode." Then treat this invocation as First Review Mode.
 
@@ -107,7 +109,7 @@ Resolve the story with the PM adapter's **Resolve story from PR** capability (`s
 
 1. Read `~/.claude/dev-workflow/config.json` to get `pm_adapter` and `notes_adapter`
 2. Load PM adapter per procedure in `skills/shared/adapter-loading.md` → fetch story by ID
-3. Detect service name: `git rev-parse --show-toplevel | xargs basename`
+3. Detect service name: `basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"`
 4. Call `skills/shared/checkpoint-seeding.md`'s "Seed or Refresh Stage" with the resolved
    story ID, the detected service name, stage `"reviewing-prs"`, this PR's number, and the
    story title fetched in step 2 (attention-hub shows it in the story group header) — this
@@ -126,19 +128,30 @@ Resolve the story with the PM adapter's **Resolve story from PR** capability (`s
 
 **NEVER run terraform apply.** Only run terraform plan for validation.
 
+### Developer Evidence Gate
+
+Read `skills/shared/dev-deploy.md` — it owns the evidence format, the validation outcomes, and the coverage check used below. Run this gate first, before any build and before any review work.
+
+- **Skip conditions.** The gate is skipped when the repo is listed in `deploy_gate_exempt_repos` **or** `ci_gate_exempt_repos` in `~/.claude/dev-workflow/config.json`. State which list in the review body and show the literal verification command and its output (`jq '.ci_gate_exempt_repos, .deploy_gate_exempt_repos' ~/.claude/dev-workflow/config.json`). Membership is read from config, never inferred. A `ci_gate_exempt_repos` repo then follows the CI-exempt path below exactly (no build, no deploy log); a repo that is only `deploy_gate_exempt_repos` still gets a fresh dev build CI, as before.
+- **Otherwise validate the developer's dev-verification evidence** for the PR's current HEAD per `skills/shared/dev-deploy.md` (outcomes `valid`, `missing`, `stale`, `invalid`). The evidence is validated against the GitHub run API, never trusted from the comment text.
+- **Immediate bounce.** `missing`, `stale`, or `invalid` evidence means a short formal **REQUEST_CHANGES** review naming the outcome and asking the developer to dev-deploy and verify the current HEAD, then **STOP**: no build, no code review. Never deploy on the developer's behalf. The bounce body starts with the hidden marker `<!-- dev-evidence-bounce outcome=<missing|stale|invalid> -->` and has no `## Required Changes` section, so later rounds skip it when selecting Re-Review Mode and the Previous Required Changes list.
+
 ### Mandatory Dev Build CI Gate
 
-> **NON-SKIPPABLE — DEV BUILD CI.** Every review — including reviews dispatched autonomously by `epic` or `full-cycle` — MUST trigger the **dev build CI** and wait for it to reach a terminal state before any code review begins. This gate is mandatory and has no exceptions.
+> **NON-SKIPPABLE — DEV BUILD CI.** Every review — including reviews dispatched autonomously by `epic` or `full-cycle` — MUST satisfy the dev build CI gate on the PR's current HEAD and reach a terminal CI state before any code review begins. The gate is satisfied by exactly one of two paths:
 >
-> - **Always run it fresh on the PR's current HEAD.** Trigger a new dev build CI run against the PR branch's latest commit. Do not reuse, point at, or "count" a pre-existing run — a prior run does not satisfy this gate.
+> - **(a) Reuse the validated developer deploy run.** When the Developer Evidence Gate returned `valid` and the coverage check in `skills/shared/dev-deploy.md` passes (every job of the dev build CI workflow has a successful counterpart in the deploy run, and the PR's diff does not touch the build or deploy workflow files or the local reusable workflows they call), read that run's build, plan, and apply logs as the CI evidence instead of triggering a new run.
+> - **(b) Fresh dev build CI.** Otherwise trigger a new dev build CI run against the PR branch's latest commit and wait for it, as below. Do not reuse, point at, or "count" any other pre-existing run — only the validated developer deploy run under (a) may be reused.
+>
 > - **You may NOT skip this step for any of the following reasons** (each is an explicitly forbidden rationalization):
 >   - a build run already exists on the branch,
 >   - the dev build CI is slow and you are under time pressure,
 >   - you are running unattended / autonomously / inside an orchestrator,
 >   - the diff "looks safe" or the code "obviously builds."
-> - **Code review must not begin until the dev build CI reaches a terminal state** (success, failure, or cancelled). If it fails, stop and report per the failure handling below — do not proceed to the multi-perspective review.
-> - **An approval produced without a fresh dev build CI run on current HEAD is invalid.** If you reach Phase 6 and the gate was not satisfied, return to this gate and run it.
-> - **Hard fail, never silent fall-through.** If the dev build CI does not reach a `success` conclusion on current HEAD — it failed, was cancelled, or timed out without confirming success — the review verdict is a formal **REQUEST_CHANGES** (see the failure handling below). A non-passing CI state may NEVER result in APPROVE, and may never end in only a bare comment or STOP with no recorded review decision.
+> - **Code review must not begin until the gate reaches a terminal state** (success, failure, or cancelled). If it fails, stop and report per the failure handling below — do not proceed to the multi-perspective review.
+> - **An approval produced without a successful dev build CI gate on current HEAD — path (a) or path (b) — is invalid.** If you reach Phase 6 and the gate was not satisfied, return to this gate and run it.
+> - **Hard fail, never silent fall-through.** If the gate does not reach a `success` conclusion on current HEAD — it failed, was cancelled, or timed out without confirming success — the review verdict is a formal **REQUEST_CHANGES** (see the failure handling below). A non-passing CI state may NEVER result in APPROVE, and may never end in only a bare comment or STOP with no recorded review decision.
+> - **State the path.** The review body names which path was used: the reused deploy run ID (a), or the fresh run ID (b).
 
 #### Dev Build CI Exemption (opt-in, explicit, per repo)
 
@@ -152,7 +165,7 @@ Some repos legitimately have no dev build CI (e.g. documentation-only or plugin 
 - **A missing verification line invalidates the exemption claim.** If the review body asserts an exemption but does not show the verification command and its output, treat the claim as unverified — this is a gate failure (**REQUEST_CHANGES**), never a pass, and never something to silently correct or wave through.
 - **Process Fidelity applies here (see `skills/shared/standards.md` → "Process Fidelity", hard-fail carve-out) — and it does not soften this gate.** Silently treating a non-exempt repo as if it were listed in `ci_gate_exempt_repos`, silently overriding a failing, missing, or cancelled CI result, silently expanding who counts as exempt, or asserting an exemption without the required verification line must STOP and be flagged to the user. No user answer converts any of those into a passing verdict the CI did not produce — the gate's pass/fail logic and its config-driven exemption list stay exactly as strict as documented above.
 
-The dev build CI is the build workflow described under "Load CI Configuration" and "Required Workflows" below; this gate makes triggering and waiting on it non-negotiable. Run it as the first action of Phase 3.
+The dev build CI is the build workflow described under "Load CI Configuration" and "Required Workflows" below; this gate makes satisfying it non-negotiable. Run it right after the Developer Evidence Gate. A repo in `ci_gate_exempt_repos` follows this exemption path unchanged.
 
 ### Load CI Configuration
 
@@ -163,10 +176,12 @@ Read `~/.claude/dev-workflow/config.json` for `review_ci_command`.
 Detect the current repository name:
 
 ```bash
-git rev-parse --show-toplevel | xargs basename
+basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
 ```
 
 Look up the repo name in `review_ci_command`. If not found, use the `fallback` entry. If `review_ci_command` is not configured at all, fall through to the default behavior below.
+
+**Path (b) only (path (a) reads the validated deploy run's logs instead):** the steps from here to Terraform Plan Validation run only when the gate is satisfied by a fresh build.
 
 **If `review_ci_command` is configured:** Interpret the natural language instruction and execute it against the PR branch. Then proceed to monitoring below.
 
@@ -197,6 +212,8 @@ After waiting, check results:
 - If any non-terraform workflow has failed: the CI gate has not passed — **submit a formal REQUEST_CHANGES review** whose body names each failed workflow and its conclusion (e.g., "Build workflow failed with conclusion: failure") and states that CI did not pass on current HEAD, then **STOP** the multi-perspective review. Do not proceed to Terraform Plan Validation or code review until all non-terraform checks pass. Never APPROVE on a failed CI result.
 
 #### Terraform Plan Validation
+
+Under path (a), take the terraform plan and apply output from the validated deploy run's logs and apply the same drift evaluation and redaction as below, instead of the CI run snapshot steps.
 
 Fetch changed files and most recent commit timestamp in a single call:
 
@@ -418,6 +435,8 @@ Once the verification checklist is complete, skip to Phase 5.5.
 ~~~markdown
 ## Review Score: X/10
 
+**CI path:** [(a) reused developer deploy run {RUN_ID} | (b) fresh dev build CI run {RUN_ID} | skipped by exemption]
+
 ## Summary
 [2-3 sentence overview of whether previous requests were addressed]
 
@@ -441,6 +460,8 @@ Once the verification checklist is complete, skip to Phase 5.5.
 **Review body format:**
 ```markdown
 ## Review Score: X/10
+
+**CI path:** [(a) reused developer deploy run {RUN_ID} | (b) fresh dev build CI run {RUN_ID} | skipped by exemption]
 
 ## Summary
 [2-3 sentence overview of the implementation quality]
@@ -486,7 +507,7 @@ gh api repos/{owner}/{repo}/pulls/{PR_NUMBER}/reviews -f event="REQUEST_CHANGES"
 ```
 
 **Dev build CI is a necessary precondition for APPROVE — independent of the 1–10 score.** A review may be **APPROVE only if all** of the following hold:
-1. The dev build CI (and every required CI check) reached a `success` conclusion on the PR's current HEAD — **or** the repo is dev-build-CI-exempt (listed in `ci_gate_exempt_repos`), in which case the review body states the gate was skipped by exemption **and** includes the verification command and its output per the Dev Build CI Exemption section above; **and**
+1. The dev build CI gate passed on the PR's current HEAD — path (a), the validated developer deploy run, or path (b), a fresh dev build CI run, with every required CI check at `success` — **or** the repo is dev-build-CI-exempt (listed in `ci_gate_exempt_repos`), in which case the review body states the gate was skipped by exemption **and** includes the verification command and its output per the Dev Build CI Exemption section above; **and**
 2. score ≥ 8; **and**
 3. no required changes exist.
 
@@ -495,8 +516,8 @@ If the CI gate did not pass (failed, cancelled, or timed-out/unconfirmed) on a n
 **Migration immutability is likewise a necessary precondition for APPROVE — independent of the 1–10 score.** Any finding recorded by the Migration Immutability Check (Phase 3) must be force-included in the review's Required Changes section, explicitly naming the check, the offending file path(s), and each file's change type. An approval produced while a Migration Immutability Check finding exists is invalid — the verdict is **REQUEST_CHANGES** regardless of score.
 
 Submit formal GitHub review with decision:
-- **APPROVE** only if the CI gate passed (or the repo is dev-build-CI-exempt with a verified exemption claim) **and** score ≥ 8 **and** no required changes
-- **REQUEST_CHANGES** if the CI gate did not pass on a non-exempt repo, if an exemption claim is missing its verification line, or if required changes exist
+- **APPROVE** only if the CI gate passed via path (a) or (b) (or the repo is dev-build-CI-exempt with a verified exemption claim) **and** score ≥ 8 **and** no required changes
+- **REQUEST_CHANGES** if the Developer Evidence Gate bounced (missing, stale, or invalid evidence on a non-exempt repo), if the CI gate did not pass on a non-exempt repo, if an exemption claim is missing its verification line, or if required changes exist
 - **COMMENT** if neutral/informational
 
 Use the actual PR number:

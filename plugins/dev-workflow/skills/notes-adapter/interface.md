@@ -15,7 +15,7 @@ Read `~/.claude/dev-workflow/config.json`. The `notes_adapter` field names which
 ## Service name detection
 
 ```bash
-git rev-parse --show-toplevel | xargs basename
+basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
 ```
 
 Run this to determine the current service name. Use it as part of the spec path.

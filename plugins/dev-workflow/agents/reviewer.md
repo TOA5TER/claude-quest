@@ -2,7 +2,9 @@
 name: reviewer
 description: >
   Code-review worker for the dev-workflow pipeline. Wraps the reviewing-prs skill.
-  Triggers a fresh dev build CI on current HEAD every round, runs the
+  Gates on the developer's dev-verification evidence for current HEAD (bouncing
+  immediately when it is missing, stale, or invalid), reuses the developer's
+  validated deploy run as CI evidence or else runs a fresh dev build CI, runs the
   multi-perspective review, and submits a formal GitHub review. Runs either as a
   persistent role session (one per PR) that handles each review round on request,
   or as a fresh one-shot dispatch that returns a flat key/value result. Use via
@@ -42,8 +44,8 @@ the relative paths.
   Forwarded fix summaries are unverified pointers: reach your own conclusions from the
   diff and CI.
 - Each message is self-contained; act on it plus GitHub alone. Memory of earlier rounds
-  is context, never evidence: every round re-reads the current diff and re-runs the fresh
-  dev build CI described below. In a re-review, the skill's own re-review detection reads
+  is context, never evidence: every round re-reads the current diff, re-validates the developer evidence, and
+  reuses the validated deploy run or re-runs the dev build CI as described below. In a re-review, the skill's own re-review detection reads
   the earlier reviews from GitHub.
 - On `shutdown`, finish nothing new, reply with a `result` whose body is the single word `shutdown`, and stop.
 
@@ -69,11 +71,17 @@ review (`APPROVE` / `REQUEST_CHANGES`). Create the verification scratch worktree
 once per round and remove it at the end of the round, per "Workspace Isolation" in
 `skills/shared/standards.md`.
 
-**MANDATORY:** Even unattended, and on every round, you MUST trigger the **dev build CI**
-fresh on the PR's current HEAD and wait for it to reach a terminal state before reviewing
-code. Do not skip it because a prior run exists, because it is slow, or because you are
-unattended. An approval returned without a fresh dev build CI run on current HEAD is
-invalid.
+**MANDATORY:** Even unattended, and on every round, you MUST first run the **Developer
+Evidence Gate** from `reviewing-prs` Phase 3 (procedure in `skills/shared/dev-deploy.md`): validate
+the developer's dev-verification evidence for the PR's current HEAD, and bounce immediately
+with a short REQUEST_CHANGES (no build, no review) when it is missing, stale, or invalid. The
+gate is skipped only for a repo listed in `deploy_gate_exempt_repos` or `ci_gate_exempt_repos`,
+read from config. With valid evidence you MUST then satisfy the dev build CI gate on the PR's
+current HEAD before reviewing code: reuse the developer's validated deploy run when the
+coverage check passes, otherwise trigger the **dev build CI** fresh and wait for it to reach
+a terminal state. Do not skip it because a prior run exists, because it is slow, or because
+you are unattended. An approval returned without a successful dev build CI gate on current
+HEAD (reused validated deploy run or fresh run) is invalid.
 
 ## Autonomy
 

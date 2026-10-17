@@ -50,6 +50,8 @@ Parse the argument from `$ARGUMENTS`.
 
 **The app must work. That is your responsibility.**
 
+The developer has already deployed this change to dev and verified it against live data before hand-off. Your purpose is to catch the bugs the developer missed. You still verify everything independently and never take the developer's evidence as proof that the app works.
+
 You are not here to give the PR a soft pass — you are here to find out if it works. Be aggressive:
 
 - **If you see an error, call it out.** Do not soften it, do not say "this might be environment-specific." An error is a failure.
@@ -79,7 +81,7 @@ For a migration-related symptom specifically, independent verification means que
 
 ## Phase 1: Load PR Details
 
-> **ALWAYS-FRESH MANDATE:** Every invocation of this skill must be treated as a fresh test run. Never assume prior test results still apply or that nothing changed since the last run. Always deploy and test from scratch — there are always new changes to validate.
+> **ALWAYS-FRESH MANDATE:** Every invocation of this skill must be treated as a fresh test run. Never assume prior test results still apply or that nothing changed since the last run. Every run re-validates from scratch: a fresh developer-evidence check and fresh tests. The deploy follows the reuse-or-fresh rule in Phase 3 — a validated reuse of the developer's deploy run is the single allowed exception to deploying anew.
 
 Get PR details using the actual PR number from arguments:
 
@@ -100,7 +102,7 @@ Resolve the story with the PM adapter's **Resolve story from PR** capability (`s
 **If story ID found:**
 1. Read `~/.claude/dev-workflow/config.json` for `pm_adapter` and `notes_adapter`
 2. Load PM adapter per procedure in `skills/shared/adapter-loading.md` → fetch story by ID
-3. Detect service name: `git rev-parse --show-toplevel | xargs basename`
+3. Detect service name: `basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"`
 4. Call `skills/shared/checkpoint-seeding.md`'s "Seed or Refresh Stage" with the resolved
    story ID, the detected service name, stage `"reviewing-prs"`, this PR's number, and the
    story title fetched in step 2 (attention-hub shows it in the story group header) — this
@@ -135,27 +137,36 @@ Extract any stated deviations or scope adjustments. Carry these forward as **Ack
 
 ## Phase 3: Deploy
 
+### Developer Evidence Gate
+
+Read `skills/shared/dev-deploy.md` — it owns the evidence format, the validation outcomes, the SHA-based run identification, and the newest-run check used below. Run this gate as the first step of Phase 3, before any deploy.
+
+- **Skip conditions.** The gate is skipped when the repo is listed in `deploy_gate_exempt_repos` **or** `ci_gate_exempt_repos` in `~/.claude/dev-workflow/config.json`. State which list in the test report and show the literal verification command and its output (`jq '.ci_gate_exempt_repos, .deploy_gate_exempt_repos' ~/.claude/dev-workflow/config.json`). Membership is read from config, never inferred. A `deploy_gate_exempt_repos` repo then takes the existing exemption path below; a repo that is only `ci_gate_exempt_repos` deploys fresh as today (there is no developer run to reuse).
+- **Otherwise validate the developer's dev-verification evidence** for the PR branch's current HEAD per `skills/shared/dev-deploy.md` (outcomes `valid`, `missing`, `stale`, `invalid`), validated against the GitHub run API and never trusted from the comment text.
+- **Immediate bounce.** `missing`, `stale`, or `invalid` evidence yields a formal **REQUEST_CHANGES** review plus the `tests-failing` label (Phase 7): no deploy, no scenarios. Never deploy on the developer's behalf.
+- **Reuse or redeploy.** With `valid` evidence, reuse the developer's deploy only if dev still serves that HEAD per the tester newest-run check in `skills/shared/dev-deploy.md`: the evidence run is the newest run of the deploy workflow across all branches and triggers, with no run of that workflow queued or in progress. Otherwise redeploy fresh using the steps below. The test report states the deploy path: the reused run ID or the fresh run ID.
+
 ### Mandatory Dev Deploy CI Gate
 
-> **NON-SKIPPABLE — DEV DEPLOY CI.** Every test run — including runs dispatched autonomously by `epic` or `full-cycle` — MUST run the **dev deploy CI** to deploy the PR branch fresh to the dev/test environment and wait for it to succeed before executing any test scenario. This gate is mandatory and has no exceptions.
+> **NON-SKIPPABLE — DEV DEPLOY CI.** Every test run — including runs dispatched autonomously by `epic` or `full-cycle` — MUST have a successful dev deploy CI run on the PR branch's current HEAD before executing any test scenario. That run is either the validated reused developer run (per the Developer Evidence Gate) or a fresh tester run of the **dev deploy CI**.
 >
-> - **Always deploy the branch fresh.** Trigger the configured deploy CI on the PR branch's current HEAD on every run. Do not skip the deploy and test against whatever is already running.
+> - **Deploy fresh whenever reuse is not validated.** If the evidence is not reusable (dev no longer serves the HEAD, or the repo is only CI-exempt), trigger the configured deploy CI on the PR branch's current HEAD. Do not skip the deploy and test against whatever is already running.
 > - **You may NOT skip this step for any of the following reasons** (each is an explicitly forbidden rationalization):
 >   - the environment "looks deployed" or appears to already have this branch,
->   - a prior deploy ran earlier in the cycle,
+>   - a prior deploy ran earlier in the cycle and was not validated for reuse,
 >   - the dev deploy CI is slow and you are under time pressure,
 >   - you are running unattended / autonomously / inside an orchestrator.
-> - **No test scenario may execute until the dev deploy CI completes successfully.** If the deploy fails, stop and report the failure in the test report — do not test against a stale or partial environment.
+> - **No test scenario may execute until a successful dev deploy run on current HEAD exists.** If a fresh deploy fails, stop and report the failure in the test report — do not test against a stale or partial environment.
 > - **Only a dev deploy CI run counts.** The gate is satisfied **only** by a dev deploy CI run that completes with conclusion `success` on the PR branch's current HEAD. A local/Makefile/script/manual deploy NEVER satisfies this gate.
-> - **Hard fail, never skip-and-proceed.** For a non-exempt repo, if no dev deploy CI can be run, the deploy fails, the CI run concludes non-`success`, or only a local deploy path is available, the test verdict is **REQUEST_CHANGES** and the PR gets the `tests-failing` label (see Phase 7). Testing must never proceed to an APPROVE without a successful fresh dev deploy CI run.
+> - **Hard fail, never skip-and-proceed.** For a non-exempt repo, if the evidence bounces, no dev deploy CI can be run, a fresh deploy fails, the CI run concludes non-`success`, or only a local deploy path is available, the test verdict is **REQUEST_CHANGES** and the PR gets the `tests-failing` label (see Phase 7). Testing must never proceed to an APPROVE without a successful dev deploy run on current HEAD — either the validated reused developer run or a fresh tester run.
 >
-> The dev deploy CI is the `deploy_command` deployment described below; this gate makes running it fresh and waiting for success non-negotiable. Run it as the first action of Phase 3.
+> The dev deploy CI is the `deploy_command` deployment described below. A verified deploy exemption leaves the exemption path unchanged.
 
 #### Dev Deploy CI Exemption (opt-in, explicit, per repo)
 
 Some repos legitimately have no dev deploy CI (e.g. documentation-only or plugin repos). The gate is skipped **only** when the current repo is explicitly listed in the dev-deploy-CI exemption.
 
-- Read the exemption list from `~/.claude/dev-workflow/config.json` → `deploy_gate_exempt_repos` (an array of repo names). Detect the current repo name with `git rev-parse --show-toplevel | xargs basename`. The gate is skipped for the current repo **only if its name appears in this array**.
+- Read the exemption list from `~/.claude/dev-workflow/config.json` → `deploy_gate_exempt_repos` (an array of repo names). Detect the current repo name with `basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"`. The gate is skipped for the current repo **only if its name appears in this array**.
 - **Default is gated.** A repo absent from `deploy_gate_exempt_repos` is gated. The `deploy_command` `fallback` entry is NOT an exemption — falling back to the fallback deploy instruction still requires a successful dev deploy CI run.
 - **Absence of a deploy CI is not an exemption.** For a non-exempt repo with no runnable dev deploy CI, the verdict is **REQUEST_CHANGES + `tests-failing`**, never a skip.
 - **Announce every skip.** When the gate is skipped by exemption, the test report MUST state that functional dev testing was skipped by explicit exemption (naming the repo and `deploy_gate_exempt_repos`) and describe how the change was otherwise validated. Silent skipping is forbidden.
@@ -169,7 +180,7 @@ Read `~/.claude/dev-workflow/config.json` for `deploy_command`.
 
 **If `deploy_command` is not configured (or yields no runnable dev deploy CI) for a non-exempt repo:**
 - Do **not** skip the deploy and do **not** test against the currently running environment — that loophole is removed.
-- There is no successful fresh dev deploy CI run, so the dev deploy gate cannot be satisfied. **Submit a formal REQUEST_CHANGES review**, apply the `tests-failing` label (Phase 7), and stop. Never proceed to an APPROVE.
+- There is no successful dev deploy CI run, so the dev deploy gate cannot be satisfied. **Submit a formal REQUEST_CHANGES review**, apply the `tests-failing` label (Phase 7), and stop. Never proceed to an APPROVE.
 - The only case where a missing deploy is acceptable is a repo explicitly listed in `deploy_gate_exempt_repos` — in which case follow the exemption path above (skip the gate and announce it in the report).
 
 **If `deploy_command` is configured**, interpret the instruction:
@@ -184,25 +195,17 @@ Instructions like "Run the dev CI in Github Actions", "Trigger the deploy-dev wo
    ```
    Match the instruction to the most relevant workflow name or file.
 
-2. Trigger the workflow on the PR branch (use the actual branch name from Phase 1):
+2. Trigger the workflow on the PR branch (use the actual branch name from Phase 1) and identify the run by SHA, following "Trigger and Identify the Run by SHA" in `skills/shared/dev-deploy.md`: the run is the newest run of that workflow whose `headSha` equals the PR's current HEAD SHA and that was created after the trigger. Never take the branch's latest run.
    ```bash
    gh workflow run <workflow-file-or-id> --ref "feature/branch-name"
    ```
 
-3. Get the run ID (allow a few seconds for the run to register):
-   ```bash
-   sleep 5
-   ```
-   ```bash
-   gh run list --workflow=<workflow> --branch="feature/branch-name" --limit=1 --json databaseId -q '.[0].databaseId'
-   ```
-
-4. Watch until completion:
+3. Watch until completion:
    ```bash
    gh run watch <run-id>
    ```
 
-5. Check the result:
+4. Check the result:
    ```bash
    gh run view <run-id> --json conclusion -q .conclusion
    ```
@@ -308,6 +311,7 @@ If Phase 5 produced **3 or more independent test failures** across different sub
 **Environment:** [where tests ran]
 **Branch:** [branch name]
 **Story:** [story ID or "no story linked"]
+**Deploy path:** [reused developer deploy run {RUN_ID} | fresh tester deploy run {RUN_ID} | skipped by exemption]
 
 ## Summary
 **{X}/{Y} tests passed**
@@ -330,7 +334,7 @@ If Phase 5 produced **3 or more independent test failures** across different sub
 [APPROVE / REQUEST CHANGES with reasoning]
 ```
 
-**A successful fresh dev deploy CI run is a necessary precondition for an APPROVE recommendation.** The recommendation may be APPROVE only if the dev deploy CI reached conclusion `success` on the PR branch's current HEAD (or the repo is dev-deploy-CI-exempt and the report shows the verification command and output per the Dev Deploy CI Exemption section above) **and** all test scenarios passed. A deploy failure, a missing/unrunnable deploy CI on a non-exempt repo, a non-`success` deploy CI conclusion, a local-only deploy, or an exemption claim missing its verification line yields **REQUEST CHANGES** regardless of any local validation.
+**A successful dev deploy run on current HEAD is a necessary precondition for an APPROVE recommendation.** The recommendation may be APPROVE only if a dev deploy CI run reached conclusion `success` on the PR branch's current HEAD — either the validated reused developer run or a fresh tester run (or the repo is dev-deploy-CI-exempt and the report shows the verification command and output per the Dev Deploy CI Exemption section above) **and** all test scenarios passed. Missing, stale, or invalid developer evidence on a non-exempt repo, a deploy failure, a missing/unrunnable deploy CI on a non-exempt repo, a non-`success` deploy CI conclusion, a local-only deploy, or an exemption claim missing its verification line yields **REQUEST CHANGES** regardless of any local validation.
 
 ---
 
@@ -354,8 +358,8 @@ gh api repos/{owner}/{repo}/pulls/{PR_NUMBER}/reviews -f event="REQUEST_CHANGES"
 ### Submit
 
 Submit formal GitHub review using the actual PR number:
-- **APPROVE** (`gh pr review {PR_NUMBER} --approve`) only if a fresh dev deploy CI run concluded `success` on current HEAD (or the repo is dev-deploy-CI-exempt with a verified exemption claim) **and** all tests pass
-- **REQUEST_CHANGES** (`gh pr review {PR_NUMBER} --request-changes`) if the dev deploy gate was not satisfied on a non-exempt repo (deploy failed, no runnable deploy CI, non-`success` conclusion, or local-only deploy), if an exemption claim is missing its verification line, **or** any test fails
+- **APPROVE** (`gh pr review {PR_NUMBER} --approve`) only if a dev deploy CI run concluded `success` on current HEAD — the validated reused developer run or a fresh tester run (or the repo is dev-deploy-CI-exempt with a verified exemption claim) **and** all tests pass
+- **REQUEST_CHANGES** (`gh pr review {PR_NUMBER} --request-changes`) if the dev deploy gate was not satisfied on a non-exempt repo (developer evidence missing, stale, or invalid, deploy failed, no runnable deploy CI, non-`success` conclusion, or local-only deploy), if an exemption claim is missing its verification line, **or** any test fails
 
 A successful dev deploy CI run is a precondition for both APPROVE and the `tested-in-dev` label below. Never APPROVE + `tested-in-dev` without it.
 
