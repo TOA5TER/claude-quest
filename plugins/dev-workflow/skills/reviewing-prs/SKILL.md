@@ -435,6 +435,8 @@ Once the verification checklist is complete, skip to Phase 5.5.
 ~~~markdown
 ## Review Score: X/10
 
+**CI path:** [(a) reused developer deploy run {RUN_ID} | (b) fresh dev build CI run {RUN_ID} | skipped by exemption]
+
 ## Summary
 [2-3 sentence overview of whether previous requests were addressed]
 
@@ -458,6 +460,8 @@ Once the verification checklist is complete, skip to Phase 5.5.
 **Review body format:**
 ```markdown
 ## Review Score: X/10
+
+**CI path:** [(a) reused developer deploy run {RUN_ID} | (b) fresh dev build CI run {RUN_ID} | skipped by exemption]
 
 ## Summary
 [2-3 sentence overview of the implementation quality]

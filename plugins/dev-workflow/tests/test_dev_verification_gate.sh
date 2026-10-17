@@ -60,7 +60,7 @@ need "$DD" "dev-deploy.md" \
   "dev-verification sha=" "run=" "workflow=" "exempt=" \
   "missing: no marked comment" "stale: the marker" "invalid: the SHA matches" "valid: every check passes" \
   "headSha" "created after the trigger" \
-  "treated as the same word" "terraform-plan / Security Scan" \
+  "treated as the same word" "in any segment (caller or callee)" "terraform-plan / Security Scan" ".github/workflows/*" \
   "whose author is the PR author or the developer's authenticated identity" \
   "-R <owner>/<repo>" \
   "touches the build workflow file" "builds fresh" \
@@ -93,12 +93,12 @@ need "$DBG" "debugging" "does not inherit the gate"
 # Why: reviewer must bounce without evidence but never for an exempt repo, and may reuse only a covered deploy run.
 RV="$S/reviewing-prs/SKILL.md"
 forbid "$RV" "reviewing-prs" "Always run it fresh on the PR's current HEAD"
-need "$RV" "reviewing-prs" "dev-evidence-bounce" "path (a) or path (b)" "not an evidence-bounce review" "Developer Evidence Gate" "ci_gate_exempt_repos" "deploy_gate_exempt_repos" \
+need "$RV" "reviewing-prs" "CI path:" "dev-evidence-bounce" "path (a) or path (b)" "not an evidence-bounce review" "Developer Evidence Gate" "ci_gate_exempt_repos" "deploy_gate_exempt_repos" \
   "no build" "REQUEST_CHANGES" "coverage" "skills/shared/dev-deploy.md" "fresh dev build CI"
 
 # Why: tester must bounce without evidence, reuse only when dev still serves HEAD, and may not demand a fresh deploy unconditionally.
 TS="$S/testing-prs/SKILL.md"
-need "$TS" "testing-prs" "Developer Evidence Gate" "ci_gate_exempt_repos" "deploy_gate_exempt_repos" \
+need "$TS" "testing-prs" "either the validated reused developer run or a fresh tester run" "Deploy path:" "Developer Evidence Gate" "ci_gate_exempt_repos" "deploy_gate_exempt_repos" \
   "tests-failing" "newest run" "skills/shared/dev-deploy.md" "catch" "developer missed"
 forbid "$TS" "testing-prs" \
   "Always deploy and test from scratch" "Always deploy the branch fresh" "has no exceptions" \
@@ -110,12 +110,15 @@ for f in reviewer tester; do
 done
 need "$A/reviewer.md" "agents/reviewer.md" "reuse"
 need "$A/tester.md" "agents/tester.md" "reuse"
+need "$S/dev-verify/SKILL.md" "dev-verify" "skills/shared/adapter-loading.md"
 forbid "$A/reviewer.md" "agents/reviewer.md" "re-runs the fresh dev build CI"
 forbid "$A/tester.md" "agents/tester.md" "every round re-deploys fresh"
 
 # Why: the developer agent must gate its own result, expose verify mode, and check the mode before the transition logic.
 DA="$A/developer.md"
-need "$DA" "agents/developer.md" "Dev Deploy & Verify" "Verify mode" "mode: verify" \
+sed -n '/^## Story mode/,/^## Rework mode/p' "$DA" | grep -q 'Dev Deploy & Verify' || fail "agents/developer.md: story mode must name the gate"
+sed -n '/^## Rework mode/,/^## Verify mode/p' "$DA" | grep -q 'Dev Deploy & Verify' || fail "agents/developer.md: rework mode must name the gate"
+need "$DA" "agents/developer.md" "Verify mode" "mode: verify" \
   "dev-workflow:dev-verify" "dev-verification blocked:" "status: error"
 before "$DA" "agents/developer.md" "## Mode selection" "If the request's first body line is \`transition: fired\`"
 
@@ -123,7 +126,7 @@ before "$DA" "agents/developer.md" "## Mode selection" "If the request's first b
 FC="$S/full-cycle/SKILL.md"
 need "$FC" "full-cycle" "hand-off check" "handoff-check" "mode: verify" \
   "does not count against the Loop Safety Guard" \
-  "finished/verify/testing-prs/reviewing-prs" "seven" "draft" \
+  "finished/verify/testing-prs/reviewing-prs" "exactly seven" "draft=<true|false>" \
   "dev-verification blocked:" "deploy_gate_exempt_repos" "ci_gate_exempt_repos"
 forbid "$FC" "full-cycle" "exactly six fields" "trigger the dev build CI fresh"
 need "$FC" "full-cycle" "proceed regardless of draft" "-R {owner}/{repo}"

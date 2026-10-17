@@ -13,11 +13,13 @@ Read `skills/shared/standards.md` — these mandatory rules govern this entire s
 
 Read `skills/shared/dev-deploy.md` — the procedure this skill runs, end to end.
 
+Read `skills/shared/adapter-loading.md` — adapter loading procedure, used to load the PM adapter and fetch the linked story.
+
 ## Input
 
 The PR number. Resolve the PR's head branch and current head SHA, and land on the branch in its worktree exactly as rework mode does (look up the live worktree with `git -C <repo root> worktree list --porcelain`, else check the PR out).
 
-The acceptance criteria to verify come from the linked story (resolve it from the branch token or PR description via the PM adapter), or from the PR description when no story is linked.
+The acceptance criteria to verify come from the linked story (resolve it from the branch token or PR description, loading the PM adapter per `skills/shared/adapter-loading.md`), or from the PR description when no story is linked.
 
 ## Procedure
 

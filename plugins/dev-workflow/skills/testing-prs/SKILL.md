@@ -311,6 +311,7 @@ If Phase 5 produced **3 or more independent test failures** across different sub
 **Environment:** [where tests ran]
 **Branch:** [branch name]
 **Story:** [story ID or "no story linked"]
+**Deploy path:** [reused developer deploy run {RUN_ID} | fresh tester deploy run {RUN_ID} | skipped by exemption]
 
 ## Summary
 **{X}/{Y} tests passed**
