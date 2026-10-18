@@ -130,7 +130,7 @@ has "$SHORTCUT_TEXT" "treat the story type as unknown and never assert it" || fa
 has "$(whole "$PLUGIN_ROOT/skills/writing-specs/spec-template.html")" "feature | bug | chore | unknown" || fail "spec-template.html: story type placeholder does not allow unknown"
 
 PLUGIN_VERSION="$(jq -r '.version' "$PLUGIN_ROOT/.claude-plugin/plugin.json")"
-[ "$PLUGIN_VERSION" = "2.55.0" ] || fail "plugin version $PLUGIN_VERSION is not 2.55.0"
+[ "$PLUGIN_VERSION" = "2.56.0" ] || fail "plugin version $PLUGIN_VERSION is not 2.56.0"
 
 if [ "$FAILURES" -eq 0 ]; then
   echo "PASS"
