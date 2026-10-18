@@ -55,6 +55,24 @@ In relay mode the interactive content rules apply (the full-understanding mandat
 
 ---
 
+## Cold-Start Completeness Standard
+
+This standard applies in every mode (interactive, relay and autonomous). A finished spec is cold-start one-shot complete: a brand-new session with zero prior context can implement it in one pass without asking the user anything and without any open question about behavior, scope, file locations, values, interfaces or approach left to settle. Code-level how (code, signatures, pseudocode) stays with the developer, as the AUDIENCE rule and Phase 9 say; a what-not-how step is not a deferral.
+
+**Verify before you write.** Every fact the spec states must be checked in this run, by a tool call or by reading the code, before it is written. That covers file paths, line ranges, headings, symbols and function names, the existence of commands, versions, config keys, and every call site of a repeated pattern. A command is verified by confirming it exists (a script, Makefile target, package.json entry, CLI help output or workflow file); its expected output is written as a check in the verification sections, not obtained by running builds, test suites or deploys during spec writing. A fact that can only be proven at runtime is written as a check in Test Requirements, Manual Testing or the Validation Checklist, never as a statement of fact.
+
+**Deferral ban.** Outside the Test Requirements, Manual Testing and Validation Checklist sections (the verification sections), the spec must not hand any investigation, confirmation or decision to the approver or the developer. The typical forms are: "verify that", "confirm whether", "check whether", "check if", "investigate whether", "needs investigation", "developer should decide", "at the developer's discretion", "TBD", "TODO"; "if needed", "as appropriate" or "or similar" where they leave behavior open; approximate values such as "about 1rem" where an exact value is needed; a list of options with none marked as chosen; and the labels `[Open Question]`, `[Unverified]` and `[Speculation]`.
+
+- **Matching is by intent.** A phrase is a violation when it leaves work or a choice for a later reader.
+- **Quoted mentions are not violations.** A phrase in quotation marks or a code span, cited as an example of the phrase itself, does not count. This covers a spec that describes this very rule. A quoted or code-spanned phrase used as an instruction (for example, run `grep foo` to "confirm whether" it is used) is still a violation.
+- **The verification sections are limited to checks.** They may use "verify" and "confirm" wording only for checks against the finished change. Open decisions, conditional "developer decides" branches and open questions stay banned there too.
+
+`[Inference]` is allowed only on a recorded autonomous-mode decision that has its rationale.
+
+**Residual doubts.** Any doubt left after investigation is resolved before the spec is written. In interactive mode, ask the user. In relay mode, send a `blocked` reply with `kind: questions`. In autonomous mode, record a decision with `[Inference]` rationale. A doubt is never passed to the approver or the developer. For specs, this section narrows the Reality Filter, Autonomy First ("label it `[Inference]` if uncertain") and Scope Discipline ("flag it as an `[Open Question]`") in `skills/shared/standards.md`: any such item is resolved through the mode's ask, relay or `[Inference]`-decision route, not labelled and shipped.
+
+---
+
 ## Phase 1: Load Adapters
 
 1. Read `~/.claude/dev-workflow/config.json`
@@ -239,6 +257,11 @@ Before the ULTRATHINK deep-dive, invoke brainstorming to surface unclear require
   statement into the spec, verify it against the actual field mappings, schema, or code
   — grep/read the real source of truth and confirm the claim holds. Never write a
   completeness claim from general impression alone.
+- **Cold-Start Completeness Standard applies to everything collected here.** Every file
+  path, line range, symbol, command and version this phase collects is checked here and
+  recorded with its evidence; this is the raw material Phase 10 is allowed to state. An
+  open point that investigation can settle is settled here, never noted for later,
+  because the Deferral ban forbids handing it on.
 
 **Required Output:**
 - Minimum 3-5 relevant file references with explanations (all from the repo currently being specced)
@@ -280,6 +303,8 @@ For each significant technical decision:
    - **Relay mode:** Ask through `blocked` per "Relay Mode" instead of labelling `[Inference]`; never call `AskUserQuestion`.
    - **Autonomous mode (no AskUserQuestion available, and not in relay mode):** You cannot ask. Resolve every question by investigation. Where investigation cannot fully settle a question, make the most reasonable decision, label it `[Inference]` with rationale, and proceed. Never emit an `[Open Question]` — see Phase 7.
 
+The Cold-Start Completeness Standard and its Deferral ban apply to every decision made here: each decision block names exactly one chosen approach, and no decision is handed to the approver or the developer.
+
 **Resolving the Viability List:** this investigation is also what resolves each entry
 on Phase 4's Viability List — settle every entry to `confirmed` or `descoped` (see
 Phase 7's "Viability List resolution" below for what those states mean and require);
@@ -298,14 +323,15 @@ Document decisions using this format:
 
 ## Phase 7: Go/No-Go Spec Decision
 
-After deep research, assess whether you have enough information to write a spec that a junior developer could implement without significant guesswork.
+After deep research, assess whether you have enough information to write a spec that a brand-new session with zero prior context could implement in one pass (see the Cold-Start Completeness Standard).
 
 **Evaluate against these criteria:**
 - [ ] You can name the specific files that need to change
 - [ ] You understand the existing patterns to follow
 - [ ] Acceptance criteria can be mapped to concrete implementation steps
-- [ ] Edge cases and error states are understood or clearly deferrable
-- [ ] No critical unknowns remain that would block implementation
+- [ ] Edge cases and error states are understood, and any edge case you choose to leave out of scope is named in the spec as out of scope with its reason. An edge case that the story or its acceptance criteria require cannot be put out of scope on your own authority; see "Required edge cases" below
+- [ ] No unknowns about behavior, scope, file locations, values, interfaces or approach remain
+- [ ] The spec can meet the Cold-Start Completeness Standard: every claim is verified and nothing the Deferral ban forbids would remain
 - [ ] Every entry on Phase 4's Viability List is resolved — none remain `open`
 
 **Viability List resolution:** Phase 6 investigation resolves each Viability List
@@ -329,12 +355,17 @@ entry to one of two states:
     requested, and name the concern in the Phase 12 PM comment so a human sees it on
     the ticket and can descope later, outside this workflow.
 
+**Required edge cases:** an edge case that the story or its acceptance criteria require is built by default. Descoping one is a scope change, so it follows the same confirmation rule as a capability, without re-opening the Viability List (the list holds only significant capabilities):
+- **Interactive mode:** take the candidate descope to the user; if confirmed, record it as a `Viability Descope` callout naming the edge case, the rationale and the confirmation. This extends that callout to required edge cases outside the Viability List.
+- **Relay mode:** send it as a `blocked` reply with `kind: questions` per "Relay Mode", and record the callout only once the `answer` confirms it.
+- **Autonomous mode (not relay mode):** the edge case is always built; the concern may be named in the Phase 12 PM comment, matching the autonomous rule above.
+
 **Multi-repo re-assertion:** for repo 2..N in the per-repo loop (see "Phases 5–10:
 Per-Repo Sequential Loop" above), this criterion is a cheap re-check of the
 already-resolved list, filtered to this repo's capabilities by repo tag — not a
 fresh judgment.
 
-**No open questions in the final spec.** A finished spec must never contain `[Open Question]` items. Every question must be resolved before the spec is written — either automatically through investigation, or, in interactive mode, through back-and-forth with the user. Resolve them; do not defer them.
+**No open questions in the final spec.** A finished spec must never contain `[Open Question]` items. Every question must be resolved before the spec is written — either automatically through investigation, or, in interactive mode, through back-and-forth with the user. Resolve them; do not defer them. The Cold-Start Completeness Standard and its Deferral ban make this absolute: nothing is left for the approver or the developer to settle.
 
 **Decision:**
 - **Interactive mode** — If any criterion cannot be met after research, do not write a partial spec. Take the unresolved gaps back to the user and resolve them in a back-and-forth (re-enter the Phase 4 brainstorm if the gaps are substantial). Only proceed to write the spec once every criterion is met and no open questions remain:
@@ -434,6 +465,7 @@ describe the spec as written unless a `Write` call for it actually executed in t
 - Describe behavior and requirements, not code. No code blocks, pseudocode, or function signatures.
 - File references (e.g., `path/to/file.rs`) are acceptable for pointing developers to the right location. Code excerpts from those files are not.
 - A product manager should be able to read this spec and understand every section.
+- The spec must meet the Cold-Start Completeness Standard, including its Deferral ban: every claim verified before it is written, every decision made and recorded with its rationale.
 
 The spec is a human-readable artifact saved to a local file, so it must be a **standalone HTML document** per the Output Format rules in `skills/shared/standards.md` — not markdown.
 
@@ -457,7 +489,7 @@ Read `spec-template.html` (located in this skill's own directory, next to this S
 6. **Status badges** — small colored pills (Required/Optional, P0/P1) replacing adjective-laden prose in lists and tables.
 7. **Interactive validation checklist** — acceptance-criteria checkboxes the reviewer can tick, with a live progress count, persisted across reloads in the browser's local storage (keyed per spec so different specs never collide).
 8. **Anchor-linked headings** — every section heading individually linkable (hover reveals a link icon), with smooth scrolling and correct scroll offset.
-9. **Scannable text discipline** — bulleted lists, bold keywords, one idea per paragraph, descriptive subheadings; tables or card layouts for structured data (file lists, criteria) instead of paragraphs.
+9. **Scannable text discipline** — bulleted lists, bold keywords, one idea per paragraph, descriptive subheadings; file lists use the nested bullet file map (area → file → detail), and tables or card layouts stay for other structured data, such as criteria, instead of paragraphs.
 10. **Readable typography** — system font stack (no webfonts), comfortable body size and line height, line length capped around 70 characters.
 11. **Light/dark color system** — semantic color tokens defined once and swapped automatically when the reader's system prefers dark; no pure-black backgrounds; form controls follow the active scheme.
 12. **Print stylesheet** — printing (or save-to-PDF) opens all collapsed sections, hides navigation chrome, and renders black-on-white.
@@ -472,7 +504,7 @@ Place the required content sections into the template's structure as follows:
 |---------|-------------------|--------------|
 | TL;DR summary | TL;DR card + key-facts strip | NEVER collapse |
 | Story Summary | `#story-summary` section | NEVER collapse |
-| Technical Context (key files, patterns) | `#technical-context` section, file table | NEVER collapse |
+| Technical Context (key files, patterns) | `#technical-context` section, nested bullet list (area → file → detail) | NEVER collapse |
 | Constraints, risks, gotchas | Callout boxes inside the relevant section | NEVER collapse |
 | Alternatives considered, background, edge-case detail | `<details class="supporting">` blocks | Collapsed by default |
 | Implementation Steps | `#implementation-steps` ordered list | NEVER collapse |
@@ -505,7 +537,12 @@ generic guidance unchanged.
 - Full-width text lines on wide monitors
 - Hiding risks, requirements, steps, or acceptance criteria inside collapsed sections
 - Heading nesting deeper than three levels (`h1` > `h2` > `h3` maximum)
+- A table for the Technical Context file list
 - Any external dependency: CDN scripts, webfonts, frameworks, analytics, or network requests of any kind — the file must remain fully self-contained and offline-capable
+
+Before the `Write` call, run this self-check against the Cold-Start Completeness Standard:
+- Scan the whole draft against the Deferral ban by intent. Quoted mentions are exempt only when cited as an example of the phrase itself. The verification sections may use verify/confirm wording only for checks against the finished change; open decisions and conditional "developer decides" branches there still violate the ban.
+- Re-confirm that every file path and line range in Technical Context matches the repo, except paths the spec explicitly marks as new files to create.
 
 Before writing, re-run the notes adapter's "Resolve spec folder" procedure now — re-derive the spec path fresh at this point in the flow rather than relying on adapter state loaded back in Phase 1. This matters most when `specs_path` is configured (especially templated), since a stale reference to the default `docs/specs` layout can otherwise persist across many intervening phases.
 
@@ -531,12 +568,33 @@ The adversarial agent verifies the spec completely and accurately captures all s
 
 **Viability descopes are not dropped requirements:** if the spec written in Phase 10
 contains a `Viability Descope` callout (per Phase 7's "Viability List resolution")
-for a story-requested capability, that omission was a deliberate, user-confirmed
-scope change — not a missed requirement. Add this instruction alongside the three
-context variables above when spawning the subagent: treat a capability covered by a
+for a story-requested capability or required edge case, that omission was a deliberate,
+user-confirmed scope change — not a missed requirement. Add this instruction alongside the
+context variables above when spawning the subagent: treat a capability or required edge case covered by a
 `Viability Descope` callout as satisfied by that documented, confirmed descope rather
 than as a FAIL for a dropped requirement, while still verifying every other
 requirement normally.
+
+**Cold-start completeness check:** also add an instruction, next to the context
+variables above, telling the review subagent to read `skills/writing-specs/SKILL.md` →
+"Cold-Start Completeness Standard" in full before auditing (or pass the standard's text,
+with its full Deferral ban list and exemption rules, verbatim in the instruction), and to
+apply it. The subagent must check every file path and spot-check line ranges and
+headings against the repo, and records a **FAIL** for each of these:
+- wording the Deferral ban forbids, judged by intent, with a quoted mention exempt only
+  when cited as an example of the phrase itself;
+- an open decision, a conditional "developer decides" branch or an open question inside
+  Test Requirements, Manual Testing or Validation Checklist (those sections may use
+  verify/confirm wording only for checks against the finished change);
+- a file path that does not exist in the repo, unless the spec explicitly marks it as a
+  new file to create;
+- a cited line range or named heading that does not match the file;
+- an implementation step that leaves a choice open about behavior, scope, file
+  locations, values, interfaces or approach (code-level how stays with the developer
+  and is not a FAIL);
+- an out-of-scope item that conflicts with the story or its acceptance criteria, unless covered by a user-confirmed `Viability Descope` callout.
+
+This instruction comes from this skill; the shared review procedure stays generic.
 
 **Relay mode:** if the review exhausts its 5-iteration cap, relay the remaining findings through a `blocked` reply per "Relay Mode" rather than surfacing them with `AskUserQuestion`. Record `spec_written_at` after each spec write, per "Relay Mode".
 

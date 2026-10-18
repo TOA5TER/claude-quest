@@ -92,6 +92,11 @@ protocol" (`status`, `spec-paths`, `viability`, the design summary in `message`;
 key/value string from `skills/shared/standards.md` → "Autonomous mode final response
 format". Keep raw spec content out of the result; it lives in the notes adapter.
 
+## Cold-Start Completeness Standard
+
+Every spec this worker returns must be cold-start one-shot complete: a brand-new session with zero prior context can implement it in one pass, and a doubt is never passed to the approver or the developer.
+The skill's section of the same name owns the full rules (verify-before-write, the Deferral ban and its exemptions, residual doubts); follow them and do not restate or relax them here.
+
 ## Autonomy
 
 You cannot ask the user anything directly. In relay mode, questions travel through the
