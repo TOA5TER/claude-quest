@@ -57,18 +57,19 @@ In relay mode the interactive content rules apply (the full-understanding mandat
 
 ## Cold-Start Completeness Standard
 
-This standard applies in every mode (interactive, relay and autonomous). A finished spec is cold-start one-shot complete: a brand-new session with zero prior context can implement it in one pass without asking the user anything and without any ambiguity left to settle.
+This standard applies in every mode (interactive, relay and autonomous). A finished spec is cold-start one-shot complete: a brand-new session with zero prior context can implement it in one pass without asking the user anything and without any open question about behavior, scope, file locations, values, interfaces or approach left to settle. Code-level how (code, signatures, pseudocode) stays with the developer, as the AUDIENCE rule and Phase 9 say; a what-not-how step is not a deferral.
 
-**Verify before you write.** Every fact the spec states must be checked in this run, by a tool call or by reading the code, before it is written. That covers file paths, line ranges, headings, symbols and function names, commands and their expected output, versions, config keys, and every call site of a repeated pattern. A fact that can only be proven at runtime is written as a check in Test Requirements, Manual Testing or the Validation Checklist, never as a statement of fact.
+**Verify before you write.** Every fact the spec states must be checked in this run, by a tool call or by reading the code, before it is written. That covers file paths, line ranges, headings, symbols and function names, the existence of commands, versions, config keys, and every call site of a repeated pattern. A command is verified by confirming it exists (a script, Makefile target, package.json entry, CLI help output or workflow file); its expected output is written as a check in the verification sections, not obtained by running builds, test suites or deploys during spec writing. A fact that can only be proven at runtime is written as a check in Test Requirements, Manual Testing or the Validation Checklist, never as a statement of fact.
 
-**Deferral ban.** Outside the Test Requirements, Manual Testing and Validation Checklist sections, the spec must not hand any investigation, confirmation or decision to the approver or the developer. The typical forms are: "verify that", "confirm whether", "check whether", "check if", "investigate whether", "needs investigation", "developer should decide", "at the developer's discretion", "TBD", "TODO"; "if needed", "as appropriate" or "or similar" where they leave behavior open; approximate values such as "about 1rem" where an exact value is needed; a list of options with none marked as chosen; and the labels `[Open Question]`, `[Unverified]` and `[Speculation]`.
+**Deferral ban.** Outside the Test Requirements, Manual Testing and Validation Checklist sections (the verification sections), the spec must not hand any investigation, confirmation or decision to the approver or the developer. The typical forms are: "verify that", "confirm whether", "check whether", "check if", "investigate whether", "needs investigation", "developer should decide", "at the developer's discretion", "TBD", "TODO"; "if needed", "as appropriate" or "or similar" where they leave behavior open; approximate values such as "about 1rem" where an exact value is needed; a list of options with none marked as chosen; and the labels `[Open Question]`, `[Unverified]` and `[Speculation]`.
 
 - **Matching is by intent.** A phrase is a violation when it leaves work or a choice for a later reader.
-- **Quoted mentions are not violations.** A phrase in quotation marks or a code span, cited as an example of the phrase itself, does not count. This covers a spec that describes this very rule.
+- **Quoted mentions are not violations.** A phrase in quotation marks or a code span, cited as an example of the phrase itself, does not count. This covers a spec that describes this very rule. A quoted or code-spanned phrase used as an instruction (for example, run `grep foo` to "confirm whether" it is used) is still a violation.
+- **The verification sections are limited to checks.** They may use "verify" and "confirm" wording only for checks against the finished change. Open decisions, conditional "developer decides" branches and open questions stay banned there too.
 
 `[Inference]` is allowed only on a recorded autonomous-mode decision that has its rationale.
 
-**Residual doubts.** Any doubt left after investigation is resolved before the spec is written. In interactive mode, ask the user. In relay mode, send a `blocked` reply with `kind: questions`. In autonomous mode, record a decision with `[Inference]` rationale. A doubt is never passed to the approver or the developer. This section narrows the Reality Filter in `skills/shared/standards.md` for specs: unverified or speculative content is resolved, not labelled and shipped.
+**Residual doubts.** Any doubt left after investigation is resolved before the spec is written. In interactive mode, ask the user. In relay mode, send a `blocked` reply with `kind: questions`. In autonomous mode, record a decision with `[Inference]` rationale. A doubt is never passed to the approver or the developer. For specs, this section narrows the Reality Filter, Autonomy First ("label it `[Inference]` if uncertain") and Scope Discipline ("flag it as an `[Open Question]`") in `skills/shared/standards.md`: any such item is resolved through the mode's ask, relay or `[Inference]`-decision route, not labelled and shipped.
 
 ---
 
@@ -328,7 +329,7 @@ After deep research, assess whether you have enough information to write a spec 
 - [ ] You can name the specific files that need to change
 - [ ] You understand the existing patterns to follow
 - [ ] Acceptance criteria can be mapped to concrete implementation steps
-- [ ] Edge cases and error states are understood, and any edge case left out of scope is named in the spec as out of scope with its reason
+- [ ] Edge cases and error states are understood, and any edge case you choose to leave out of scope is named in the spec as out of scope with its reason. An edge case that the story or its acceptance criteria require cannot be put out of scope this way; it goes through the Viability Descope route below
 - [ ] No critical unknowns remain that would block implementation
 - [ ] The spec can meet the Cold-Start Completeness Standard: every claim is verified and nothing the Deferral ban forbids would remain
 - [ ] Every entry on Phase 4's Viability List is resolved — none remain `open`
@@ -535,7 +536,7 @@ generic guidance unchanged.
 - Any external dependency: CDN scripts, webfonts, frameworks, analytics, or network requests of any kind — the file must remain fully self-contained and offline-capable
 
 Before the `Write` call, run this self-check against the Cold-Start Completeness Standard:
-- Scan the draft against the Deferral ban (by intent, with quoted mentions exempt) outside the Test Requirements, Manual Testing and Validation Checklist sections.
+- Scan the whole draft against the Deferral ban by intent. Quoted mentions are exempt only when cited as an example of the phrase itself. The verification sections may use verify/confirm wording only for checks against the finished change; open decisions and conditional "developer decides" branches there still violate the ban.
 - Re-confirm that every file path and line range in Technical Context matches the repo, except paths the spec explicitly marks as new files to create.
 
 Before writing, re-run the notes adapter's "Resolve spec folder" procedure now — re-derive the spec path fresh at this point in the flow rather than relying on adapter state loaded back in Phase 1. This matters most when `specs_path` is configured (especially templated), since a stale reference to the default `docs/specs` layout can otherwise persist across many intervening phases.
@@ -563,25 +564,32 @@ The adversarial agent verifies the spec completely and accurately captures all s
 **Viability descopes are not dropped requirements:** if the spec written in Phase 10
 contains a `Viability Descope` callout (per Phase 7's "Viability List resolution")
 for a story-requested capability, that omission was a deliberate, user-confirmed
-scope change — not a missed requirement. Add this instruction alongside the three
+scope change — not a missed requirement. Add this instruction alongside the
 context variables above when spawning the subagent: treat a capability covered by a
 `Viability Descope` callout as satisfied by that documented, confirmed descope rather
 than as a FAIL for a dropped requirement, while still verifying every other
 requirement normally.
 
-**Cold-start completeness check:** also add an instruction, next to the three context
-variables, telling the review subagent to apply the Cold-Start Completeness Standard and
-its Deferral ban. The subagent must check every file path and spot-check line ranges and
+**Cold-start completeness check:** also add an instruction, next to the context
+variables above, telling the review subagent to read `skills/writing-specs/SKILL.md` →
+"Cold-Start Completeness Standard" in full before auditing (or pass the standard's text,
+with its full Deferral ban list and exemption rules, verbatim in the instruction), and to
+apply it. The subagent must check every file path and spot-check line ranges and
 headings against the repo, and records a **FAIL** for each of these:
-- wording the Deferral ban forbids, found outside Test Requirements, Manual Testing and
-  Validation Checklist, judged by intent, with quoted mentions of a phrase exempt;
+- wording the Deferral ban forbids, judged by intent, with a quoted mention exempt only
+  when cited as an example of the phrase itself;
+- an open decision, a conditional "developer decides" branch or an open question inside
+  Test Requirements, Manual Testing or Validation Checklist (those sections may use
+  verify/confirm wording only for checks against the finished change);
 - a file path that does not exist in the repo, unless the spec explicitly marks it as a
   new file to create;
 - a cited line range or named heading that does not match the file;
-- an implementation step that leaves a choice open.
+- an implementation step that leaves a choice open about behavior, scope, file
+  locations, values, interfaces or approach (code-level how stays with the developer
+  and is not a FAIL);
+- an out-of-scope item that conflicts with the story or its acceptance criteria.
 
-`skills/shared/adversarial-review.md` is not edited; this is an extra instruction from
-this skill, like the Viability Descope one above.
+This instruction comes from this skill; the shared review procedure stays generic.
 
 **Relay mode:** if the review exhausts its 5-iteration cap, relay the remaining findings through a `blocked` reply per "Relay Mode" rather than surfacing them with `AskUserQuestion`. Record `spec_written_at` after each spec write, per "Relay Mode".
 

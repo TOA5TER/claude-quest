@@ -94,11 +94,8 @@ format". Keep raw spec content out of the result; it lives in the notes adapter.
 
 ## Cold-Start Completeness Standard
 
-Every spec this worker returns must be cold-start one-shot complete: a brand-new session with zero prior context can implement it in one pass.
-Verify every claim by a tool check or a code read before writing it.
-Hedged or deferred wording ("verify that", "confirm whether", "developer should decide", "TBD") is forbidden outside the verification sections.
-Resolve residual doubts by investigation, or relay them to the user as `kind: questions` (autonomous: an `[Inference]` decision); a doubt is never passed to the approver or the developer.
-The full rules are in the skill's section of the same name.
+Every spec this worker returns must be cold-start one-shot complete: a brand-new session with zero prior context can implement it in one pass, and a doubt is never passed to the approver or the developer.
+The skill's section of the same name owns the full rules (verify-before-write, the Deferral ban and its exemptions, residual doubts); follow them and do not restate or relax them here.
 
 ## Autonomy
 

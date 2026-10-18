@@ -68,9 +68,16 @@ forbid "template Technical Context" "$TC_TEXT" "Role in this change"
 # Why: the file map is the replacement structure, and its class is what the styles and any reader key on.
 require "template Technical Context" "$TC_TEXT" 'class="file-map"'
 
-# Why: area -> file -> detail is three nested lists; fewer means the nesting collapsed.
-UL_COUNT="$(printf '%s\n' "$TC_RAW" | grep -o '<ul' | wc -l | tr -d ' ')"
-[ "${UL_COUNT:-0}" -ge 3 ] || fail "template Technical Context: found ${UL_COUNT:-0} <ul openings, need at least 3"
+# Why: area -> file -> detail must be lists nested inside each other; three sibling lists would pass a bare count but not read as a map.
+UL_DEPTH="$(printf '%s\n' "$TC_RAW" | awk '
+  { o = gsub(/<ul/, "&"); c = gsub(/<\/ul/, "&"); depth += o; if (depth > max) max = depth; depth -= c }
+  END { print max + 0 }')"
+[ "${UL_DEPTH:-0}" -ge 3 ] || fail "template Technical Context: <ul> nesting depth is ${UL_DEPTH:-0}, need at least 3"
+
+# Why: the two unstyled list levels lose list semantics in some screen readers without role="list", and the role span carries each file's one-line role.
+require "template Technical Context" "$TC_TEXT" '<ul role="list">'
+require "template Technical Context" "$TC_TEXT" 'class="role"'
+require "template Technical Context" "$TC_TEXT" 'class="area"'
 
 # Why: a long file path in a narrow column overflowed horizontally on phones; the style must wrap it.
 TEMPLATE_TEXT="$(whole "$TEMPLATE")"
@@ -88,12 +95,31 @@ require "SKILL.md" "$SKILL_TEXT" "cold-start one-shot complete"
 require "SKILL.md" "$SKILL_TEXT" "Deferral ban"
 require "SKILL.md" "$SKILL_TEXT" "never passed to the approver or the developer"
 
-# Why: the ban lists its typical forms literally so the writer and the reviewer match against the same phrases.
-require "SKILL.md" "$SKILL_TEXT" "verify that"
-require "SKILL.md" "$SKILL_TEXT" "confirm whether"
-require "SKILL.md" "$SKILL_TEXT" "developer should decide"
-require "SKILL.md" "$SKILL_TEXT" "TBD"
-require "SKILL.md" "$SKILL_TEXT" "Matching is by intent"
+STD_TEXT="$(region "$SKILL" '^## Cold-Start Completeness Standard')"
+
+# Why: the ban lists its typical forms literally inside the standard so the writer and the reviewer match against the same phrases; a mention elsewhere in the file would not define the ban.
+require "standard" "$STD_TEXT" "verify that"
+require "standard" "$STD_TEXT" "confirm whether"
+require "standard" "$STD_TEXT" "developer should decide"
+require "standard" "$STD_TEXT" "TBD"
+require "standard" "$STD_TEXT" "[Open Question]"
+require "standard" "$STD_TEXT" "Matching is by intent"
+
+# Why: the exemption for quoted phrases and the limit on the verification sections must be spelled out in the standard, or a quoted instruction or a hidden decision slips through.
+require "standard" "$STD_TEXT" "cited as an example of the phrase itself"
+require "standard" "$STD_TEXT" "only for checks against the finished change"
+
+# Why: the standard must not demand code-level detail, which the AUDIENCE rule and Phase 9 leave to the developer.
+require "standard" "$STD_TEXT" "Code-level how"
+require "standard" "$STD_TEXT" "not a deferral"
+
+# Why: the standard overrides Autonomy First and Scope Discipline for specs, so it must name them or the rules contradict each other.
+require "standard" "$STD_TEXT" "Autonomy First"
+require "standard" "$STD_TEXT" "Scope Discipline"
+
+# Why: verifying a command must not mean running builds, tests or deploys while writing a spec.
+require "standard" "$STD_TEXT" "confirming it exists"
+require "standard" "$STD_TEXT" "not obtained by running builds, test suites or deploys"
 
 # Why: the mapping row and design requirement must describe the new structure, not the old table.
 require "SKILL.md" "$SKILL_TEXT" "nested bullet list"
@@ -106,11 +132,32 @@ for n in 5 6 7 10 11; do
   require "SKILL.md Phase $n" "$PHASE_TEXT" "Deferral ban"
 done
 
-# Why: the Phase 11 reviewer needs an explicit instruction to FAIL deferred wording and unverifiable references.
-require "SKILL.md Phase 11" "$(region "$SKILL" '^## Phase 11:')" "Cold-start completeness check"
+P11_TEXT="$(region "$SKILL" '^## Phase 11:')"
+
+# Why: the Phase 11 reviewer starts with no context, so it must be told to read the standard and must have each FAIL condition spelled out.
+require "SKILL.md Phase 11" "$P11_TEXT" "Cold-start completeness check"
+require "SKILL.md Phase 11" "$P11_TEXT" "read skills/writing-specs/SKILL.md"
+require "SKILL.md Phase 11" "$P11_TEXT" "before auditing"
+require "SKILL.md Phase 11" "$P11_TEXT" "a file path that does not exist"
+require "SKILL.md Phase 11" "$P11_TEXT" "line range or named heading"
+require "SKILL.md Phase 11" "$P11_TEXT" "leaves a choice open"
+require "SKILL.md Phase 11" "$P11_TEXT" "code-level how stays with the developer"
+require "SKILL.md Phase 11" "$P11_TEXT" "out-of-scope item that conflicts with the story"
+forbid "SKILL.md Phase 11" "$P11_TEXT" "three context"
+
+# Why: both enforcement points (Phase 10 self-check, Phase 11 review) must carry the quoted-mention qualifier and the verification-section limit, or a quoted instruction or a hidden decision passes.
+P10_TEXT="$(region "$SKILL" '^## Phase 10:')"
+for pair in "Phase 10:$P10_TEXT" "Phase 11:$P11_TEXT"; do
+  require "SKILL.md ${pair%%:*}" "${pair#*:}" "cited as an example of the phrase itself"
+  require "SKILL.md ${pair%%:*}" "${pair#*:}" "only for checks against the finished change"
+done
 
 # Why: "clearly deferrable" let edge cases be pushed to a later reader, which the standard forbids.
-forbid "SKILL.md Phase 7" "$(region "$SKILL" '^## Phase 7:')" "clearly deferrable"
+P7_TEXT="$(region "$SKILL" '^## Phase 7:')"
+forbid "SKILL.md Phase 7" "$P7_TEXT" "clearly deferrable"
+
+# Why: an out-of-scope edge case must not bypass the user-confirmed Viability Descope route for required behavior.
+require "SKILL.md Phase 7" "$P7_TEXT" "cannot be put out of scope this way"
 
 # Why: the standard must sit after Relay Mode and before Phase 1 so it applies to every mode without renumbering phases.
 STD_LINE="$(grep -n '^## Cold-Start Completeness Standard' "$SKILL" | head -n1 | cut -d: -f1)"
@@ -122,11 +169,12 @@ elif [ "$STD_LINE" -le "$RELAY_LINE" ] || [ "$STD_LINE" -ge "$PHASE1_LINE" ]; th
   fail "SKILL.md: Cold-Start Completeness Standard is not between Relay Mode and Phase 1"
 fi
 
-# Why: the spec-writer worker never loads the skill's section, so it must carry the standard's core phrases itself.
-AGENT_TEXT="$(whole "$AGENT")"
-require "spec-writer agent" "$AGENT_TEXT" "## Cold-Start Completeness Standard"
+# Why: the story requires the agent definition to state the standard, but the agent loads the skill, so it states the headline phrases and points to the skill rather than restating rules that could drift.
+AGENT_TEXT="$(region "$AGENT" '^## Cold-Start Completeness Standard')"
 require "spec-writer agent" "$AGENT_TEXT" "cold-start one-shot"
 require "spec-writer agent" "$AGENT_TEXT" "never passed to the approver or the developer"
+require "spec-writer agent" "$AGENT_TEXT" "owns the full rules"
+forbid "spec-writer agent" "$AGENT_TEXT" "TBD"
 
 # Why: the version bump must land in both manifests together and not fall below the release that carries these rules.
 PLUGIN_VERSION="$(jq -r '.version' "$PLUGIN_ROOT/.claude-plugin/plugin.json")"
