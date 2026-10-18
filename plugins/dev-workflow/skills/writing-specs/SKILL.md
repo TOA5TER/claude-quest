@@ -329,7 +329,7 @@ After deep research, assess whether you have enough information to write a spec 
 - [ ] You can name the specific files that need to change
 - [ ] You understand the existing patterns to follow
 - [ ] Acceptance criteria can be mapped to concrete implementation steps
-- [ ] Edge cases and error states are understood, and any edge case you choose to leave out of scope is named in the spec as out of scope with its reason. An edge case that the story or its acceptance criteria require cannot be put out of scope this way; it goes through the Viability Descope route below
+- [ ] Edge cases and error states are understood, and any edge case you choose to leave out of scope is named in the spec as out of scope with its reason. An edge case that the story or its acceptance criteria require cannot be put out of scope on your own authority; see "Required edge cases" below
 - [ ] No critical unknowns remain that would block implementation
 - [ ] The spec can meet the Cold-Start Completeness Standard: every claim is verified and nothing the Deferral ban forbids would remain
 - [ ] Every entry on Phase 4's Viability List is resolved — none remain `open`
@@ -354,6 +354,11 @@ entry to one of two states:
     labeled rationale instead (per Phase 6), keep building the capability as
     requested, and name the concern in the Phase 12 PM comment so a human sees it on
     the ticket and can descope later, outside this workflow.
+
+**Required edge cases:** an edge case that the story or its acceptance criteria require is built by default. Descoping one is a scope change, so it follows the same confirmation rule as a capability, without re-opening the Viability List (the list holds only significant capabilities):
+- **Interactive mode:** take the candidate descope to the user; if confirmed, record it as a `Viability Descope` callout naming the edge case, the rationale and the confirmation. This extends that callout to required edge cases outside the Viability List.
+- **Relay mode:** send it as a `blocked` reply with `kind: questions` per "Relay Mode", and record the callout only once the `answer` confirms it.
+- **Autonomous mode (not relay mode):** the edge case is always built; the concern may be named in the Phase 12 PM comment, matching the autonomous rule above.
 
 **Multi-repo re-assertion:** for repo 2..N in the per-repo loop (see "Phases 5–10:
 Per-Repo Sequential Loop" above), this criterion is a cheap re-check of the
@@ -563,9 +568,9 @@ The adversarial agent verifies the spec completely and accurately captures all s
 
 **Viability descopes are not dropped requirements:** if the spec written in Phase 10
 contains a `Viability Descope` callout (per Phase 7's "Viability List resolution")
-for a story-requested capability, that omission was a deliberate, user-confirmed
-scope change — not a missed requirement. Add this instruction alongside the
-context variables above when spawning the subagent: treat a capability covered by a
+for a story-requested capability or required edge case, that omission was a deliberate,
+user-confirmed scope change — not a missed requirement. Add this instruction alongside the
+context variables above when spawning the subagent: treat a capability or required edge case covered by a
 `Viability Descope` callout as satisfied by that documented, confirmed descope rather
 than as a FAIL for a dropped requirement, while still verifying every other
 requirement normally.
@@ -587,7 +592,7 @@ headings against the repo, and records a **FAIL** for each of these:
 - an implementation step that leaves a choice open about behavior, scope, file
   locations, values, interfaces or approach (code-level how stays with the developer
   and is not a FAIL);
-- an out-of-scope item that conflicts with the story or its acceptance criteria.
+- an out-of-scope item that conflicts with the story or its acceptance criteria, unless covered by a user-confirmed `Viability Descope` callout.
 
 This instruction comes from this skill; the shared review procedure stays generic.
 

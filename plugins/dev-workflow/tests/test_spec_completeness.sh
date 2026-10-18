@@ -157,7 +157,16 @@ P7_TEXT="$(region "$SKILL" '^## Phase 7:')"
 forbid "SKILL.md Phase 7" "$P7_TEXT" "clearly deferrable"
 
 # Why: an out-of-scope edge case must not bypass the user-confirmed Viability Descope route for required behavior.
-require "SKILL.md Phase 7" "$P7_TEXT" "cannot be put out of scope this way"
+require "SKILL.md Phase 7" "$P7_TEXT" "cannot be put out of scope on your own authority"
+
+# Why: Viability Descope covers only list capabilities, so Phase 7 must give required edge cases their own confirm-or-build path, including the autonomous always-build rule.
+require "SKILL.md Phase 7" "$P7_TEXT" "Required edge cases"
+require "SKILL.md Phase 7" "$P7_TEXT" "without re-opening the Viability List"
+require "SKILL.md Phase 7" "$P7_TEXT" "the edge case is always built"
+
+# Why: without a carve-out the Phase 11 reviewer would FAIL a user-confirmed descope on every iteration until the cap.
+require "SKILL.md Phase 11" "$P11_TEXT" "unless covered by a user-confirmed"
+require "SKILL.md Phase 11" "$P11_TEXT" "capability or required edge case"
 
 # Why: the standard must sit after Relay Mode and before Phase 1 so it applies to every mode without renumbering phases.
 STD_LINE="$(grep -n '^## Cold-Start Completeness Standard' "$SKILL" | head -n1 | cut -d: -f1)"
