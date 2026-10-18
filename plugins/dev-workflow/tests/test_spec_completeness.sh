@@ -156,6 +156,19 @@ done
 P7_TEXT="$(region "$SKILL" '^## Phase 7:')"
 forbid "SKILL.md Phase 7" "$P7_TEXT" "clearly deferrable"
 
+# Why: Phase 7 names the standard in two places, so each needs its own anchor or deleting one is hidden by the other; the go/no-go checkbox is the point where the standard blocks writing.
+require "SKILL.md Phase 7" "$P7_TEXT" "nothing the Deferral ban forbids would remain"
+require "SKILL.md Phase 7" "$P7_TEXT" "make this absolute"
+
+# Why: Phase 10 lists the standard among its rules in addition to the self-check, and the self-check alone must not mask that bullet's removal.
+require "SKILL.md Phase 10" "$P10_TEXT" "including its Deferral ban: every claim verified before it is written"
+
+# Why: the go/no-go framing must use the same bar as the standard, not a weaker "junior developer" or "critical unknowns" bar.
+forbid "SKILL.md Phase 7" "$P7_TEXT" "significant guesswork"
+forbid "SKILL.md Phase 7" "$P7_TEXT" "critical unknowns"
+require "SKILL.md Phase 7" "$P7_TEXT" "zero prior context could implement in one pass"
+require "SKILL.md Phase 7" "$P7_TEXT" "No unknowns about behavior, scope, file locations, values, interfaces or approach remain"
+
 # Why: an out-of-scope edge case must not bypass the user-confirmed Viability Descope route for required behavior.
 require "SKILL.md Phase 7" "$P7_TEXT" "cannot be put out of scope on your own authority"
 

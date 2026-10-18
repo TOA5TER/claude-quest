@@ -323,14 +323,14 @@ Document decisions using this format:
 
 ## Phase 7: Go/No-Go Spec Decision
 
-After deep research, assess whether you have enough information to write a spec that a junior developer could implement without significant guesswork.
+After deep research, assess whether you have enough information to write a spec that a brand-new session with zero prior context could implement in one pass (see the Cold-Start Completeness Standard).
 
 **Evaluate against these criteria:**
 - [ ] You can name the specific files that need to change
 - [ ] You understand the existing patterns to follow
 - [ ] Acceptance criteria can be mapped to concrete implementation steps
 - [ ] Edge cases and error states are understood, and any edge case you choose to leave out of scope is named in the spec as out of scope with its reason. An edge case that the story or its acceptance criteria require cannot be put out of scope on your own authority; see "Required edge cases" below
-- [ ] No critical unknowns remain that would block implementation
+- [ ] No unknowns about behavior, scope, file locations, values, interfaces or approach remain
 - [ ] The spec can meet the Cold-Start Completeness Standard: every claim is verified and nothing the Deferral ban forbids would remain
 - [ ] Every entry on Phase 4's Viability List is resolved — none remain `open`
 
