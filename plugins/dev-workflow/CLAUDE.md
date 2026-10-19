@@ -108,6 +108,7 @@ Content is mostly Markdown skill definitions, plus a small number of static asse
 - `bash tests/test_role_session_context.sh` — after touching a hook, `hooks/hooks.json` or the role agents
 - `bash tests/test_developer_rules.sh` — after touching the worktree or attribution wording in the developing skill, repo-discovery or the developer agent
 - `bash tests/test_dev_verification_gate.sh` — after touching the dev-verification gate wording in `skills/shared/dev-deploy.md`, the developing, addressing-pr-comments, debugging, reviewing-prs, testing-prs, dev-verify or full-cycle skills, `skills/shared/standards.md`, `skills/shared/role-sessions.md`, `skills/shared/context-compaction.md`, the README, or the agent definitions
+- `bash tests/test_role_session_permission_mode.sh` — after touching the permission-mode, bypass opt-in or auto-mode warning wording in `skills/shared/role-sessions.md` or the README's Role Sessions section
 - `bash tests/test_agent_names.sh` and `bash tests/test_pr_story_resolution.sh` — after any version bump (each pins the exact plugin version)
 
 Changes are made by editing `.md` files (and the occasional asset file) in `skills/` and `commands/`.
