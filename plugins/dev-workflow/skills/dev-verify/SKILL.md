@@ -21,6 +21,10 @@ The PR number. Resolve the PR's head branch and current head SHA, and land on th
 
 The acceptance criteria to verify come from the linked story (resolve it from the branch token or PR description, loading the PM adapter per `skills/shared/adapter-loading.md`), or from the PR description when no story is linked.
 
+## Local Mode
+
+A Local Mode repo (see `skills/shared/local-mode.md`) has no PR: there is no PR number to resolve, no evidence comment to post and no PR to mark ready. The repo is on both exempt lists, so the exempt-form gate result (the literal `jq` exemption command and its output) goes into the develop note, or the fix note for a fix round, instead of a PR comment, and the outcome is `exempt`.
+
 ## Procedure
 
 Run the developer half of `skills/shared/dev-deploy.md` on the PR's current HEAD:

@@ -15,6 +15,8 @@ Either a PR number (e.g., `42`) or a PM ticket ID (e.g., `sc-123`) may be passed
 
 Read `skills/shared/standards.md` — these mandatory rules govern this entire session.
 
+Read `skills/shared/pre-release-pin.md` → "Pre-Release Pin Disclosure" — apply it on every review round.
+
 Read `skills/shared/adapter-loading.md` — adapter loading procedures referenced in Phase 0 and Phase 2.
 
 Read `skills/shared/checkpoint-seeding.md` — checkpoint seeding procedure referenced in Phase 2.

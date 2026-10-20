@@ -175,6 +175,29 @@ Standalone `full-cycle` runs the spec-writer, developer, reviewer, and tester as
 
 **Cost.** Each role session consumes subscription usage like any interactive session. A story holds one spec-writer, one developer per repo, plus a reviewer and a tester per PR, each named with its repo. Sessions are never shut down, stopped, or removed without your explicit permission: at Termination and on every non-success path the orchestrator lists the live sessions, says they remain available for more work, and asks. Sessions you leave running are listed in the final report; remove one with `claude stop <name>` then `claude rm <name>`.
 
+## Local Mode
+
+Local Mode keeps a `full-cycle` run moving on a repo where the agent cannot push, or cannot approve its own PR, and asks you to act once, at the end. The rules live in `skills/shared/local-mode.md`.
+
+| Mode | When | What happens |
+|------|------|--------------|
+| Normal | The repo reads `push=true` | The usual GitHub path: push, PR, reviews, labels. |
+| Local Mode | `push=false` on a repo listed in both `ci_gate_exempt_repos` and `deploy_gate_exempt_repos` | The developer commits to a local worktree branch with no push and no PR. Reviewer and tester decisions, and developer fixes, are written as note files. |
+| Approval-only | Push works but the reviewer or tester cannot approve or request changes on its own PR | Fixes are pushed to the open PR and the CI and deploy gates run normally; only the review and test decisions move to notes. |
+| Backstop | A real push is rejected for permission on a repo listed in both exempt lists | The repo switches to Local Mode from that point, keeping its local commits. |
+
+A `push=false` repo that is not on both exempt lists, or a repo whose push read is `unknown`, stops and asks at entry: the CI, deploy and dev-verify gates need a pushed branch and are never weakened. Under `epic`, a Local Mode, approval-only or unknown-push task is marked blocked.
+
+**Notes.** Round notes (`develop-round-1.md`, `review-round-N.md`, `test-round-N.md`, `fix-review-round-N.md`, `fix-test-round-N.md`, and the one-time `pr-draft.md`) live in the repo's primary checkout under `.scratch/{story-id}/` when that folder is gitignored, otherwise in `$(git rev-parse --git-dir)/dev-workflow/{story-id}/`. Each note's first line carries the branch head it applies to, and a stage refuses to act on a note whose head is not the current branch tip.
+
+**Termination hand-off.** When every Local Mode repo is review- and test-approved, the end-of-run summary gives the branch name, its tip SHA, the worktree path, the exact push command, and a ready-to-paste PR title and body built from `pr-draft.md` plus the fix notes. You push and open the PR yourself. For an approval-only repo the summary gives the PR number and quotes the decisions from the notes.
+
+**Extension contract.** A wrapper plugin declares optional values in a `## Local Mode Extension` section of its own shared standards file: `push-by-rule` (repos that read `push=true` with no probe), `trusted tag owners` (owners whose pre-release tags may be pinned), and the `git network command` and `gh command` forms. A missing key takes its default: every repo is probed, the dependency repo's owner must equal the dependent repo's owner, and plain `git` and `gh` are used. See `skills/shared/local-mode.md` → "Local Mode Extension" for the exact format.
+
+**Base root.** A wrapper plugin's agents replace the base agents by `subagent_type`, so they read base agent sections from `<root>/agents/<role>.md`. Role sessions receive the root from the session-start context line; `full-cycle` and `epic` end every Agent-tool dispatch prompt with a `base-root: <absolute path>` line.
+
+**Pre-release pins.** A dependent repo may pin to a verified pre-release commit of an unmerged dependency instead of blocking on its merge, and is re-pinned to the final tag later. The PR carries a do-not-merge banner and a `pinned-pre-release: {sha}` marker until then. See `skills/shared/pre-release-pin.md`.
+
 ## Adapters
 
 **PM adapters** (`skills/pm-adapter/`): `shortcut`, `jira`, `linear`, `github-issues`, `tasklist`
