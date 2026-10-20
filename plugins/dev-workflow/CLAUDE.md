@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**dev-workflow** is a Claude plugin that provides action-based development workflow orchestration with pluggable PM and notes adapters. It enables specialized workflows (Developing, Writing Specs, Reviewing PRs, Testing PRs, Debugging, Creating Stories, Full Cycle) through structured, quality-gated stages.
+**dev-workflow** is a Claude plugin that provides action-based development workflow orchestration with pluggable PM and notes adapters. It enables specialized workflows (Developing, Writing Specs, Reviewing PRs, Testing PRs, Debugging, Creating Stories, Toiling, Full Cycle) through structured, quality-gated stages.
 
 **Dependency:** Requires the `superpowers` plugin to be installed — it provides core methodology skills (TDD, debugging, brainstorming, subagent orchestration, verification). Also requires `guardrails-git` >= 1.2.0 — every autonomous implement/fix stage now works inside an isolated git worktree (see `skills/shared/standards.md` → "Workspace Isolation"), and older `guardrails-git` versions hard-block `git worktree` commands outright.
 
@@ -23,6 +23,7 @@ Skills are invoked directly by name:
 | `/start debugging` | `dev-workflow:debugging` | Bug investigation |
 | `/start debugging story-id --rework` | `dev-workflow:debugging` (rework mode) | Address review feedback |
 | `/start creating-stories` | `dev-workflow:creating-stories` | Interview user → draft → submit story |
+| `/start toiling [story-id]` | `dev-workflow:toiling` | Operations work, agent-executed or runbook, no branch/PR |
 | `/start full-cycle [story-id\|description]` | `dev-workflow:full-cycle` | End-to-end lifecycle orchestrator looping review/test until pass |
 | `/start epic [summary\|epic-slug]` | `dev-workflow:epic` | Decompose a large initiative into a self-managed tasklist, then autonomously drive each task to a review- and test-approved open PR, pausing for a human to merge |
 
@@ -73,6 +74,7 @@ skills/
   epic/                # Initiative orchestrator: discovery → consensus → self-managed tasklist → autonomous per-task full-cycle drive
   addressing-pr-comments/ # Address review feedback in current session
   dev-verify/          # Developer dev deploy + verification gate on an existing PR (verify mode, deferred gates)
+  toiling/             # Operations work with no branch or PR: agent-executed record or runbook under .scratch/, production never mutated
   pm-adapter/          # PM tool adapters + interface spec (includes file-backed tasklist adapter)
   notes-adapter/       # Notes storage adapters + interface spec
   shared/              # Shared protocol docs (standards, adapter-loading, context-compaction, dev-deploy, ...)
