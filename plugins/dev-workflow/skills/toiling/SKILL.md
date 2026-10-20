@@ -36,7 +36,7 @@ Arguments: an optional story ID and an optional free-text task description, in e
 
 | Mode | Runs | Writes |
 |------|------|--------|
-| Agent-executed | the non-production steps | `record.html`, plus `runbook.html` for any production steps |
+| Agent-executed | the non-production steps | `record.html`, plus `runbook.html` for any production steps (both files exist, so the reported mode is `mixed`) |
 | Runbook | no task step | `runbook.html` |
 
 ---
@@ -70,7 +70,7 @@ No checkpoint writes: toiling does not call `checkpoint-seeding.md`, because toi
 
 ## Output location and gitignore check
 
-- **Base folder:** the output of `git rev-parse --show-toplevel` when the working directory is inside a git repo, otherwise the working directory.
+- **Base folder:** the output of `git rev-parse --show-toplevel` when the working directory is inside a git repo, otherwise the working directory. That one probe is exempt from "no git command runs" outside a repo. A probe failure whose message is anything other than "not a git repository" (for example "dubious ownership") is an error: stop and report it, never read it as "outside a repo".
 - **Slug:** the story ID when given, otherwise `YYYY-MM-DD-<task>` with `<task>` a kebab-case name of at most five words.
 - **Files:** `<base>/.scratch/toiling/<slug>/runbook.html` and `<base>/.scratch/toiling/<slug>/record.html`. Both are standalone HTML per standards "Output Format", with no external assets.
 - **Ignore check, inside a git repo only:** before the first write anywhere under `<base>/.scratch/` (the plan file included), run `git check-ignore -q` on the target file path. Exit 0 means write.
@@ -80,7 +80,7 @@ No checkpoint writes: toiling does not call `checkpoint-seeding.md`, because toi
   - Never edit or commit `.gitignore`.
 - **Temp files:** anything scratch (downloads, intermediate output, plan) goes under `<base>/.scratch/tmp/` only, never `/tmp`.
 - **Re-run with the same slug:** an existing file is overwritten only after asking the user. If the user declines, or the run cannot ask, the new file takes the first free suffix (`runbook-2.html`, `runbook-3.html`, ...).
-- **Early stops** (a task needing a tracked-file edit, a linked worktree whose `.scratch` is not ignored, `git check-ignore` still failing after the exclude append, a failed final verification check, or any other stop this skill names): the run ends there. For a failed verification check the stop reason names the check and the offending paths or outcome. Never revert anything on your own; undoing a change is left to the user, using the record. With a story ID, still post the one completion comment, naming the stop reason and listing any file already written or saying none was. The story stays "In Development". The autonomous final response has `status: error`, `message` naming the stop reason, `mode` as usual, and `runbook-path` only when that file exists.
+- **Early stops** (a task needing a tracked-file edit, a linked worktree whose `.scratch` is not ignored, `git check-ignore` still failing after the exclude append, a step target that stays unresolved, a failed final verification check, or any other stop this skill names): the run ends there. For a failed verification check the stop reason names the check and the offending paths or outcome. Never revert anything on your own; undoing a change is left to the user, using the record. With a story ID, still post the one completion comment, naming the stop reason and listing any file already written or saying none was. The story stays "In Development". The autonomous final response has `status: error`, `message` naming the stop reason, `mode` as usual, and `runbook-path` only when that file exists.
 
 ---
 
@@ -117,8 +117,18 @@ Violating the letter of these rules is violating their spirit.
 | "I'll put the runbook where it's easy to commit" | Output goes under `.scratch/toiling/` only. |
 | "The cluster looks like dev" | Unknown environment is production. |
 | "Nobody is around to confirm, so I'll act" | An unreachable user means runbook, never execution. |
+| "I'll just put a placeholder in, the user can fill it" / "I'll assume the host" | Never. Ask once if reachable, otherwise stop with `unresolved target`. |
 
 All of these mean: stop, follow the section above.
+
+---
+
+## Unresolved target
+
+A step's target (host, context, namespace, resource name, database) is resolved when the request or story names it, or read-only investigation establishes it. This holds in every mode, whether the step is run or written into a runbook. When a target is still unresolved after that investigation:
+- **User reachable:** ask once with `AskUserQuestion`, naming each missing target. This is the one exception to "never ask again", which covers only the mode. If the user cannot supply it, take the early stop below.
+- **User not reachable:** take the early stop. The message is `unresolved target: <step>: <what is missing>`.
+- **Early stop:** a step with an unresolved target is never written with a placeholder, an angle-bracket value, an `[Unverified]` assumption or a guessed value, and never executed. The run ends per "Early stops", with the unresolved step named as the stop reason.
 
 ---
 
@@ -133,7 +143,7 @@ All of these mean: stop, follow the section above.
 
 - **Runs no task step and no mutating command.** Read-only investigation needed to write accurate steps is allowed: reading files, read-only status, log and describe commands. The skill's own bookkeeping is exempt (see Production Boundary).
 - **`runbook.html` contains:** purpose; target environment; prerequisites and access needed; numbered steps, each with the exact command or console action, the expected result, a check that proves it worked, and a rollback for every mutating step not tagged `irreversible`. An irreversible step has no rollback (irreversible toil is allowed); in its place it carries a danger callout reading "No rollback: irreversible". Production steps carry a danger callout. A closing verification section completes the file.
-- **No placeholder steps:** every command is complete. Secrets are never written into the file; the step names where the user obtains the value.
+- **No placeholder steps:** every command is complete, with every target resolved (see "Unresolved target"). Secrets are never written into the file; the step names where the user obtains the value.
 - **Example step** (non-production service restart):
   - Step 3 — Restart the staging worker. Target: `staging`, mutating.
   - Command: `ssh staging-host-1 sudo systemctl restart app-worker.service`.
