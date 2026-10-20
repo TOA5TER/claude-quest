@@ -400,6 +400,8 @@ gh api repos/OWNER/REPO/pulls/NUMBER -X PATCH -f body="..."
 
 When the body is long or multi-line, write it to a file under `./.scratch/tmp/` and pass `-F body=@./.scratch/tmp/<file>` instead of `-f body="..."`.
 
+Fix and rework rounds never write or edit a PR description: the description belongs to story mode and re-pin mode, and a fix round's only PR text is its reply comments and the evidence comment. A request that needs a description edit (removing a pre-release banner, for example) is a re-pin request, not a fix.
+
 ---
 
 ## Review Standards Checklist
@@ -451,7 +453,7 @@ gh api repos/{owner}/{repo}/pulls/{PR_NUMBER}/reviews
 gh api repos/{owner}/{repo}/pulls/{PR_NUMBER}/comments
 ```
 
-**Local Mode and approval-only mode:** the PR holds no review history to read. Count recurrence from the earlier `review-round-N.md` notes under `.scratch/{story-id}/` instead (see `skills/shared/local-mode.md` → "Notes"; round notes are kept per round, so recurrence is observable), applying the same threshold; the root-cause assessment goes in the round's fix note, not a PR reply.
+**Local Mode and approval-only mode:** the PR holds no review history to read. Count recurrence from the earlier `review-round-N.md` notes in the notes folder instead (see `skills/shared/local-mode.md` → "Notes"; round notes are kept per round, so recurrence is observable), applying the same threshold; the root-cause assessment goes in the round's fix note, not a PR reply.
 
 Before implementing a fix for a Kubernetes resource-limit finding, check whether this same category of finding already appears in **two or more earlier review rounds** on this PR; that is, counting this round, it is the third occurrence or later. If so, this round's fix must include a written root-cause architectural assessment in the PR reply, not another number or ratio tweak.
 

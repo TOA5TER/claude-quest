@@ -204,7 +204,7 @@ GitHub holds no review to read for these rounds. Run the head check on the named
 
 A push rejected for permission (a 403 or an auth failure, not a non-fast-forward) is reported as a plain-text result starting `push rejected:` and naming the branch, and makes no further GitHub writes; write the fix note for the local commit before replying. The orchestrator reads `head mismatch:` and `push rejected:` as the only fix results it parses.
 
-Rework mode never writes or edits a PR description (see the output-surface rule in `skills/shared/standards.md`). A request that needs a description edit is re-pin mode, not rework mode.
+Rework mode never writes or edits a PR description (see "PR Description Updates" in `skills/shared/standards.md`). A request that needs a description edit is re-pin mode, not rework mode.
 
 ## Worktrees and attribution
 

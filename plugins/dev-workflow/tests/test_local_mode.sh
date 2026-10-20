@@ -54,7 +54,7 @@ has "$EPIC" 'base-root:' || fail "epic does not add the base-root: line to dispa
 # Why: the probe procedure is the one cross-repo directory change allowed, so its guards must stay intact.
 has "$LOCAL_MODE" 'probe-{story-id}-dryrun' || fail "local-mode.md lost the probe ref name"
 has "$LOCAL_MODE" '900000' || fail "local-mode.md lost the probe timeout"
-has "$PLUGIN_ROOT/skills/shared/standards.md" 'Local Mode' || fail "standards.md does not name the probe exception"
+has "$PLUGIN_ROOT/skills/shared/standards.md" 'three separate Bash calls' || fail "standards.md does not name the probe exception"
 
 # Why: full-cycle must route Local Mode and approval-only repos and read only the two fix prefixes.
 has "$FULL_CYCLE" '## Local Mode and Approval-Only Repos' || fail "full-cycle is missing the Local Mode and Approval-Only Repos section"
@@ -62,8 +62,10 @@ has "$FULL_CYCLE" 'head mismatch:' || fail "full-cycle does not name the head mi
 has "$FULL_CYCLE" 'push rejected:' || fail "full-cycle does not name the push rejected: prefix"
 has "$FULL_CYCLE" 'Draft-PR Resume Routing' || fail "full-cycle does not point the draft row at Draft-PR Resume Routing"
 
-# Why: epic must block Local Mode tasks rather than silently stalling them.
+# Why: epic must use the pre-release readiness override in Phase 6.
 has "$EPIC" 'Epic Phase 6 readiness override' || fail "epic Phase 6 does not use the pre-release readiness override"
+# Why: epic must block Local Mode, approval-only and unknown-push tasks rather than silently stalling them.
+has "$EPIC" 'approval-only' || fail "epic does not block approval-only tasks"
 
 # Why: the developer is the only role that pins, re-pins and writes the develop note.
 has "$DEVELOPER" 'mode: repin' || fail "developer agent does not name mode: repin"
