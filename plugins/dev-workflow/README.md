@@ -23,6 +23,7 @@ The superpowers plugin provides core methodology skills (TDD, systematic debuggi
 | `/start debugging` | debugging | Debug-first workflow (describe bug → investigate → TDD fix) |
 | `/start debugging story-id --rework` | debugging | Read story comments as rework items → fix → new PR |
 | `/start creating-stories` | creating-stories | Interview user → draft story → submit to PM tool |
+| `/start toiling [story-id]` | toiling | Operations work with no branch or PR: unless already told, asks whether the agent carries out the task or writes a runbook under .scratch/ |
 | `dev-workflow:dev-verify PR` | dev-verify | Run the developer's dev deploy and verification gate on an existing PR: deploy to dev, verify each criterion, post evidence, mark ready |
 | `/start full-cycle [story-id\|description]` | full-cycle | Drive the whole lifecycle end to end: creating-stories → writing-specs → developing → reviewing-prs → testing-prs, looping until tests pass |
 
