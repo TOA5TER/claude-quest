@@ -2,6 +2,7 @@
 
 import atexit
 import importlib.util
+import io
 import json
 import shutil
 import subprocess
@@ -335,3 +336,41 @@ def test_new_rules_scan_is_fast_on_escaped_quote_commands():
         outcome = hook_decision_within(command, 8)
         elapsed = time.monotonic() - start
         assert outcome != "timeout" and elapsed < 6, f"{len(command)} bytes took {elapsed:.1f}s ({outcome})"
+
+
+# Why: a crash inside an existing check must not skip the new checks.
+def test_new_checks_run_when_an_existing_check_raises(capsys, monkeypatch):
+    hook = load_hook()
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    for name in ("add_timeout_to_git_commit", "add_timeout_to_git_push", "add_timeout_to_gh_run_watch",
+                 "check_git_commit_branch", "check_git_branch_policy", "check_git_no_verify",
+                 "check_git_commit_boilerplate", "check_pr_create_boilerplate", "check_pr_comment_boilerplate"):
+        monkeypatch.setattr(hook, name, boom)
+    for command in (BAD_WORKTREE, f'git commit -m "x {LINK_URL}"'):
+        monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(
+            {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": repo()})))
+        try:
+            hook.main()
+        except SystemExit:
+            assert json.loads(capsys.readouterr().out)["decision"] == "block", command
+        else:
+            raise AssertionError(f"{command} must still be blocked")
+
+
+# Why: prose that merely mentions a command in an argument of grep, echo or python is not a shell invocation.
+def test_mentions_in_non_shell_arguments_allowed():
+    assert_all_allowed([
+        'grep -rn "git worktree add ../" docs/',
+        'echo "run git worktree add ../x later" > notes.md',
+        "python3 -c 'print(\"git worktree add ../x\")'",
+        f'echo "{LINK_URL} git commit" > notes.md',
+        f'grep -rn "git commit -m {LINK_URL}" docs/',
+    ])
+    assert_all_blocked([
+        'bash -c "git worktree add ../x"',
+        'echo "$(git worktree add ../x)"',
+        'sh -c "echo hi; git worktree add ../x"',
+    ])

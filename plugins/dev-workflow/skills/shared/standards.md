@@ -404,7 +404,7 @@ When the body is long or multi-line, write it to a file under `./.scratch/tmp/` 
 
 ## Review Standards Checklist
 
-`reviewing-prs` and `testing-prs` both run this checklist against a PR's diff, so the two stages cannot drift. Each violation is a Required Change (reviewing-prs) or a failure in the report's `## Failures` section (testing-prs); see each skill for how it applies the checklist in Re-Review.
+`reviewing-prs` and `testing-prs` both run this checklist against a PR's diff, so the two stages cannot drift. Each violation is a Required Change (reviewing-prs) or a failure in the report's `## Failures` section (testing-prs); `reviewing-prs` states how it applies the checklist in Re-Review.
 
 - **Stale counted items** — New or changed comments and documentation embed a count that will drift as items are added or removed (for example "all 8 images", "4 of the 5 pieces").
 - **Ticket or build citations in code comments** — A code comment cites a ticket or story ID, a commit hash, or a CI run ID.

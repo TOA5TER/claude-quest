@@ -828,10 +828,6 @@ def text_runs_publish_command(text):
     return text_matches_command(text, publish_command_at)
 
 
-def has_whitespace(literal):
-    return ' ' in literal or '\n' in literal or '\t' in literal
-
-
 def command_position(tokens):
     for k, token in enumerate(tokens):
         if not ASSIGNMENT_RE.match(token) and token not in RESERVED_WORDS:
@@ -885,8 +881,6 @@ def segments_match(segments, predicate, names, text_predicate, depth):
             for script in shell_script_args(tokens)[0]:
                 if segments_match(ShellParser(script, depth + 1).parse(), predicate, names, text_predicate, depth + 1):
                     return True
-            if any(text_predicate(word) for word in tokens if has_whitespace(word)):
-                return True
         for body, quoted in seg.heredocs:
             if shell_stdin:
                 nested = ShellParser(body, depth + 1).parse()
@@ -961,15 +955,22 @@ def main():
         tool_input = input_data.get('tool_input', {})
         payload_cwd = input_data.get('cwd')
 
-        add_timeout_to_git_commit(tool_name, tool_input, payload_cwd)
-        add_timeout_to_git_push(tool_name, tool_input, payload_cwd)
-        add_timeout_to_gh_run_watch(tool_name, tool_input)
-        check_git_commit_branch(tool_name, tool_input, payload_cwd)
-        check_git_branch_policy(tool_name, tool_input, payload_cwd)
-        check_git_no_verify(tool_name, tool_input, payload_cwd)
-        check_git_commit_boilerplate(tool_name, tool_input, payload_cwd)
-        check_pr_create_boilerplate(tool_name, tool_input)
-        check_pr_comment_boilerplate(tool_name, tool_input)
+        existing_checks = (
+            lambda: add_timeout_to_git_commit(tool_name, tool_input, payload_cwd),
+            lambda: add_timeout_to_git_push(tool_name, tool_input, payload_cwd),
+            lambda: add_timeout_to_gh_run_watch(tool_name, tool_input),
+            lambda: check_git_commit_branch(tool_name, tool_input, payload_cwd),
+            lambda: check_git_branch_policy(tool_name, tool_input, payload_cwd),
+            lambda: check_git_no_verify(tool_name, tool_input, payload_cwd),
+            lambda: check_git_commit_boilerplate(tool_name, tool_input, payload_cwd),
+            lambda: check_pr_create_boilerplate(tool_name, tool_input),
+            lambda: check_pr_comment_boilerplate(tool_name, tool_input),
+        )
+        for run_check in existing_checks:
+            try:
+                run_check()
+            except Exception:
+                pass
         check_worktree_placement(tool_name, tool_input, payload_cwd)
         check_session_link_in_publish(tool_name, tool_input)
 

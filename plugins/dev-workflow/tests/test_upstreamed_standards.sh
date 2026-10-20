@@ -78,7 +78,7 @@ pm_context="$(section "$DEVELOPING" "## PM Context (if story ID provided)")"
 printf '%s' "$pm_context" | grep -F -- 'story_states.in_development' >/dev/null || fail "developing PM Context does not fire story_states.in_development"
 printf '%s' "$pm_context" | grep -F -- 'transition: fired' >/dev/null || fail "developing PM Context does not honour transition: fired"
 
-# Why: the PR2 scratch paths in the Terraform plan check must follow the temp-file rule and the REST PATCH rule.
+# Why: the scratch paths in the Terraform plan check must follow the temp-file rule and the REST PATCH rule.
 if grep -q 'gh-as-app.sh developer pr edit' "$DEVELOPING"; then fail "developing still uses pr edit for the PR body"; fi
 if grep -qE '(^|[^/])\.scratch/(pr-body-updated|terraform-plan)' "$DEVELOPING"; then fail "developing still writes plan files outside ./.scratch/tmp/"; fi
 
