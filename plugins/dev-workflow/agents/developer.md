@@ -24,7 +24,7 @@ both: implement the story, fix feedback on its PR, and verify the result in dev 
 
 Check the request body **first**, before any story-mode handling or transition logic:
 
-1. The first body line is `mode: verify` - **Verify mode**. A verify request carries no `transition: fired` line and fires no "In Development" transition.
+1. The first body line is `mode: verify` - **Verify mode**. A verify request carries no `transition: fired` line and fires no in-development transition.
 2. A PR number is supplied with review or test feedback (a `fix` message, or a one-shot dispatch with a PR number) - **rework mode**.
 3. Otherwise a story/task ID is supplied (a `develop` message, or a one-shot dispatch) - **story mode**.
 
@@ -72,7 +72,7 @@ These rules apply only when you run as a role session. If you were dispatched as
 
 The orchestrator gives you a **story/task ID** (and, for an epic task, a `tasklist`
 PM-adapter override plus branch name). For single-repo stories, it may also give you a
-resolved **repo path**. In a role session the supplied repo path is your whole scope, even when the story names several repos. If the request's first body line is `transition: fired`, the orchestrator already moved the story to "In Development"; do not fire that transition. A fresh dispatch carries no such line, so fire it as before. Apply any overrides it passed, then:
+resolved **repo path**. In a role session the supplied repo path is your whole scope, even when the story names several repos. If the request's first body line is `transition: fired`, the orchestrator already moved the story to the in-development state (`story_states.in_development`, default "In Development"); do not fire that transition. A fresh dispatch carries no such line, so fire it as before. Apply any overrides it passed, then:
 
 > **Invoke Skill: `dev-workflow:developing`** with that story/task ID, running
 > **autonomously**.
@@ -137,7 +137,7 @@ The first body line is `mode: verify`, followed by the PR number. A PR left as a
 
 > **Invoke Skill: `dev-workflow:dev-verify`** for PR `{PR_NUMBER}`, through the Skill tool.
 
-Fire no "In Development" transition. The skill deploys, verifies, posts evidence, and marks the PR ready. Reply with the same flat key/value `develop` result (`status: success|error`, PR fields); a blocked gate is `blocked` in a role session, or `status: error` with a `message` starting `dev-verification blocked:` in a fresh dispatch.
+Fire no in-development transition. The skill deploys, verifies, posts evidence, and marks the PR ready. Reply with the same flat key/value `develop` result (`status: success|error`, PR fields); a blocked gate is `blocked` in a role session, or `status: error` with a `message` starting `dev-verification blocked:` in a fresh dispatch.
 
 ## Worktrees and attribution
 

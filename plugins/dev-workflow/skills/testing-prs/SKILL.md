@@ -274,6 +274,10 @@ For each scenario:
 
 **During execution:** If you encounter any error — unexpected output, exception, wrong behavior, missing data — **stop and investigate it immediately.** Do not move on. Do not assume it is noise. Capture it as a failure with full evidence. The presence of an error means the test fails, even if the "main flow" looked okay.
 
+### Review Standards Checklist
+
+Run the "Review Standards Checklist" in `skills/shared/standards.md` against the PR diff. Each violation is a failure listed in the test report's `## Failures` section, and the verdict is REQUEST_CHANGES, the same as a failed scenario.
+
 ---
 
 ## Phase 5.5: Parallel Failure Investigation (conditional)
@@ -381,3 +385,13 @@ gh pr edit {PR_NUMBER} --add-label "tests-failing" --remove-label "tested-in-dev
 call `skills/shared/checkpoint-seeding.md`'s "Seed or Refresh Stage" once more, advancing
 this repo's entry to stage `"done"`. On a FAIL verdict, make no additional call — stage
 stays at `"reviewing-prs"` from the Phase 2 seed.
+
+### Story State Transition (after test approval)
+
+Runs only after this run submitted `APPROVE`, and only when `story_states.after_test_approval` is set in `~/.claude/dev-workflow/config.json`. With the key unset, fire no transition. A non-APPROVE verdict fires nothing. The tasklist adapter ignores this key; its stage-to-status mapping governs.
+
+1. Read the PR's reviews: `gh api repos/{owner}/{repo}/pulls/{PR_NUMBER}/reviews`.
+2. Never count a review whose body starts with `## Test Report` (the heading this skill puts at the top of every test review) as the reviewer's. Of the remaining reviews, take the reviewer's as follows: when `reviewer_login` is set and that login has at least one review on the PR, the reviewer's reviews are those by that login; otherwise (unset, or set but absent from this PR, as on a repo where a person reviews) they are all of the remaining reviews, so a shared reviewer/tester login still works.
+3. Take the reviewer's latest review (by `submitted_at`) whose state is `APPROVED` or `CHANGES_REQUESTED`. No review ID is needed. Never use the PR-level `reviewDecision`.
+4. If that state is exactly `APPROVED`, resolve the story (from the branch's story token, else the PM adapter's Resolve story from PR) and move it to the `story_states.after_test_approval` state through the PM adapter's Update Story operation. Skip when the story is already in that state.
+5. Otherwise skip, and report the story left unchanged pending review approval.

@@ -401,9 +401,18 @@ After verifying all previous items, evaluate whether any **new** findings meet t
 >
 > If a finding does not satisfy all three criteria, it must be omitted. Do not rationalize marginal findings into this threshold.
 
+The one exception to this threshold is a Review Standards Checklist violation (see below) in code added since the last review: it is a Required Change even though it is not a security, data-loss or correctness finding. Checklist violations in code already reviewed stay omitted, matching the one-review-per-cycle rule.
+
 List qualifying new findings under a **New Critical Findings** section with an explicit per-item justification of why the threshold is met.
 
-Once the verification checklist is complete, skip to Phase 5.5.
+Once the verification checklist is complete, run the Review Standards Checklist below on the code added since the last review, then continue to Phase 5.5.
+
+### Review Standards Checklist (both modes)
+
+Run the "Review Standards Checklist" in `skills/shared/standards.md` against the PR diff:
+
+- **First Review:** run it on the whole diff. Each violation is a Required Change.
+- **Re-Review:** run it only on code added since the last review. Each violation is a Required Change.
 
 ---
 
