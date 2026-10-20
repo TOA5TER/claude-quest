@@ -56,7 +56,7 @@ example_lines="$(section "$STANDARDS" "## Testing Standards" | awk '/^  ```/ { n
 [ "$example_lines" = "1" ] || fail "the why-comment example in Testing Standards has $example_lines lines, expected 1"
 
 # Why: a PR body must be updated through REST so the session-link guard and wrapper rules apply.
-section "$STANDARDS" "## PR Description Updates" | grep -qF -- '-X PATCH' || fail "PR Description Updates does not give the REST PATCH form"
+section "$STANDARDS" "## PR Description Updates" | grep -F -- '-X PATCH' >/dev/null || fail "PR Description Updates does not give the REST PATCH form"
 
 # Why: reviewer and tester must run the same checklist, so each must point at the one shared section.
 has "$REVIEWING" "Review Standards Checklist" || fail "reviewing-prs does not reference the Review Standards Checklist"
@@ -67,16 +67,16 @@ has "$REVIEWING" "The one exception to this threshold is a Review Standards Chec
 
 # Why: the post-test transition must read its config keys and must never use the PR-level decision.
 transition="$(awk '/^### Story State Transition \(after test approval\)/ { on = 1 } on { print }' "$TESTING")"
-printf '%s' "$transition" | grep -qF -- 'story_states.after_test_approval' || fail "testing-prs transition does not name story_states.after_test_approval"
-printf '%s' "$transition" | grep -qF -- 'reviewer_login' || fail "testing-prs transition does not name reviewer_login"
-printf '%s' "$transition" | grep -qF -- '## Test Report' || fail "testing-prs transition does not exclude test-report reviews"
-printf '%s' "$transition" | grep -qF -- 'Never use the PR-level `reviewDecision`' || fail "testing-prs transition does not forbid reviewDecision"
-printf '%s' "$transition" | grep -qF -- 'unset' || fail "testing-prs transition does not define the unset case"
+printf '%s' "$transition" | grep -F -- 'story_states.after_test_approval' >/dev/null || fail "testing-prs transition does not name story_states.after_test_approval"
+printf '%s' "$transition" | grep -F -- 'reviewer_login' >/dev/null || fail "testing-prs transition does not name reviewer_login"
+printf '%s' "$transition" | grep -F -- '## Test Report' >/dev/null || fail "testing-prs transition does not exclude test-report reviews"
+printf '%s' "$transition" | grep -F -- 'Never use the PR-level `reviewDecision`' >/dev/null || fail "testing-prs transition does not forbid reviewDecision"
+printf '%s' "$transition" | grep -F -- 'unset' >/dev/null || fail "testing-prs transition does not define the unset case"
 
 # Why: a story ID given to developing must reach the configured in-development state on the single-repo path too.
 pm_context="$(section "$DEVELOPING" "## PM Context (if story ID provided)")"
-printf '%s' "$pm_context" | grep -qF -- 'story_states.in_development' || fail "developing PM Context does not fire story_states.in_development"
-printf '%s' "$pm_context" | grep -qF -- 'transition: fired' || fail "developing PM Context does not honour transition: fired"
+printf '%s' "$pm_context" | grep -F -- 'story_states.in_development' >/dev/null || fail "developing PM Context does not fire story_states.in_development"
+printf '%s' "$pm_context" | grep -F -- 'transition: fired' >/dev/null || fail "developing PM Context does not honour transition: fired"
 
 # Why: the PR2 scratch paths in the Terraform plan check must follow the temp-file rule and the REST PATCH rule.
 if grep -q 'gh-as-app.sh developer pr edit' "$DEVELOPING"; then fail "developing still uses pr edit for the PR body"; fi
@@ -84,9 +84,9 @@ if grep -qE '(^|[^/])\.scratch/(pr-body-updated|terraform-plan)' "$DEVELOPING"; 
 
 # Why: addressing-pr-comments must resolve a PM story ID to its PR, with the delimited branch-token fallback.
 step1="$(awk '/^## Step 1: Identify the PR/ { on = 1; next } on && /^## / { exit } on { print }' "$ADDRESSING")"
-printf '%s' "$step1" | grep -qF -- 'PM story ID' || fail "addressing-pr-comments Step 1 does not resolve a story ID"
-printf '%s' "$step1" | grep -qF -- 'gh pr list --state all --limit 1000 --json number,headRefName' || fail "addressing-pr-comments Step 1 lacks the branch-token fallback"
-printf '%s' "$step1" | grep -qF -- 'sc-12' || fail "addressing-pr-comments Step 1 lacks the delimited-match example"
+printf '%s' "$step1" | grep -F -- 'PM story ID' >/dev/null || fail "addressing-pr-comments Step 1 does not resolve a story ID"
+printf '%s' "$step1" | grep -F -- 'gh pr list --state all --limit 1000 --json number,headRefName' >/dev/null || fail "addressing-pr-comments Step 1 lacks the branch-token fallback"
+printf '%s' "$step1" | grep -F -- 'sc-12' >/dev/null || fail "addressing-pr-comments Step 1 lacks the delimited-match example"
 
 # Why: users configure the story states in the README, so the keys must be documented there.
 for key in 'story_states.in_development' 'story_states.after_test_approval' 'reviewer_login'; do
