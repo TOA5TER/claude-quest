@@ -962,6 +962,8 @@ def resolve_command(tokens, k, out, names, depth=0, fed=None):
         raise ShellParseError("nesting too deep")
     base = command_base(tokens[k])
     count = len(tokens)
+    if tokens[k][:2] == '$(' or tokens[k][:1] == '`':
+        out.scripts += [' '.join([text] + tokens[k + 1:]) for text in substitution_scripts(tokens[k], depth)]
     if base in WRAPPER_NAMES:
         out.commands.append((tokens, k, fed))
     elif base == 'eval':

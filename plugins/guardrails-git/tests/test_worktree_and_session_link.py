@@ -688,6 +688,41 @@ def test_echoed_substitutions_that_become_scripts():
     ])
 
 
+COMMAND_POSITION_SUBSTITUTIONS = [
+    "$(echo {})",
+    "`echo {}`",
+    "$(printf '{}')",
+    "ls; $(echo {})",
+    "ls && `echo {}`",
+    "x=1 $(echo {})",
+    "echo y | $(echo {})",
+    "$(echo $(echo {}))",
+    "( $(echo {}) )",
+    "if true; then $(echo {}); fi",
+    'bash -c "ls; $(echo {})"',
+    'bash -c "x=1 `echo {}`"',
+    "timeout 5 $(echo {})",
+    "sudo $(echo {})",
+    "$(echo git) worktree add ../x",
+]
+
+
+# Why: bash runs the output of a command-position substitution as the command, so echoed text is the command.
+def test_command_position_echo_substitutions_run_the_echoed_command():
+    assert_all_blocked([form.format(BAD_WORKTREE) for form in COMMAND_POSITION_SUBSTITUTIONS])
+    assert_all_blocked([form.format(f"git commit -m {LINK_URL}") for form in COMMAND_POSITION_SUBSTITUTIONS[:-1]])
+    assert_all_allowed([
+        "$(echo git worktree add .worktrees/x)",
+        "$(echo git status)",
+        "ls; `echo git worktree add .worktrees/x`",
+        'git commit -m "docs: $(echo git worktree add ../x)"',
+        'echo "$(echo git worktree add ../x)"',
+        "echo $(echo git worktree add ../x)",
+        "$(pwd)/script.sh arg",
+        "$(git rev-parse --show-toplevel)/run.sh",
+    ])
+
+
 # Why: -i/-s inside an option cluster (-iu bob) still hands the trailing words to a shell.
 def test_sudo_option_clusters():
     assert_all_blocked([
