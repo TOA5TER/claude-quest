@@ -1072,11 +1072,7 @@ def check_worktree_placement(tool_name, tool_input, payload_cwd=None):
     if not command:
         return
     try:
-        misplaced = (
-            ('<<' not in command and any(
-                sub == 'worktree' and args[:1] == ['add'] and worktree_add_is_misplaced(args, 1)
-                for sub, args, _ in git_invocations(command, payload_cwd)))
-            or runs_misplaced_worktree(command))
+        misplaced = runs_misplaced_worktree(command)
     except Exception:
         misplaced = True
     if misplaced:
