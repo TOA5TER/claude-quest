@@ -517,6 +517,12 @@ EXEC_CALL_RE = re.compile(
     r'passthru|proc_open|child_process|\bqx\b|`|getline|\bshell\b')
 PARALLEL_NAMES = ('parallel', 'sem')
 PARALLEL_INPUT_MARKERS = (':::', '::::', ':::+', '::::+')
+PARALLEL_VALUE_OPTIONS = ('-j', '--jobs', '-S', '--sshlogin', '-a', '--arg-file', '-N', '-n', '--max-args',
+                          '--max-replace-args', '-I', '--halt', '--timeout', '--delay', '-d', '--delimiter', '--colsep',
+                          '-C', '--results', '--joblog', '-L', '-l', '--max-lines', '--retries', '--tagstring', '--shell',
+                          '--load', '--memfree', '-E', '--eof', '--basefile', '--wd', '--workdir', '--sshloginfile',
+                          '--slf', '--limit', '--rpl', '--plus')
+PARALLEL_PLACEHOLDERS = ('{/.}', '{//}', '{/}', '{.}', '{#}', '{}')
 TMUX_COMMAND_NAMES = ('new-session', 'new', 'new-window', 'neww', 'split-window', 'splitw', 'run-shell', 'run', 'send-keys',
                       'send', 'respawn-pane', 'respawnp', 'respawn-window', 'respawnw', 'if-shell', 'if', 'display-popup',
                       'popup', 'pipe-pane', 'pipep', 'set-hook', 'bind-key', 'bind', 'confirm-before', 'confirm',
@@ -969,6 +975,68 @@ def runuser_command_index(tokens, k):
     return j if direct else None
 
 
+def parallel_substitute(token, value, replace):
+    base = value.rstrip('/').rpartition('/')[2]
+    forms = {
+        '{/.}': base.rsplit('.', 1)[0] if '.' in base else base,
+        '{//}': value.rstrip('/').rpartition('/')[0] or '.',
+        '{/}': base,
+        '{.}': value.rsplit('.', 1)[0] if '.' in base else value,
+    }
+    for mark in PARALLEL_PLACEHOLDERS + ((replace,) if replace else ()):
+        token = token.replace(mark, forms.get(mark, value))
+    return token
+
+
+def resolve_parallel(tokens, k, out, names, depth):
+    """GNU parallel and sem: the command template, the ::: inputs substituted into or appended to it, or stdin lines."""
+    count = len(tokens)
+    end = next((i for i in range(k + 1, count) if tokens[i] in PARALLEL_INPUT_MARKERS), count)
+    replace = None
+    j = k + 1
+    while j < end:
+        tok = tokens[j]
+        if tok == '--':
+            j += 1
+            break
+        if tok == '-I' and j + 1 < end:
+            replace = tokens[j + 1]
+        elif tok.startswith('-I') and len(tok) > 2 and not tok.startswith('--'):
+            replace = tok[2:]
+        if not tok.startswith('-') or len(tok) == 1:
+            break
+        j += 2 if tok in PARALLEL_VALUE_OPTIONS else 1
+    template = tokens[j:end]
+    out.texts.extend(tok for tok in template if re.search(r'\s', tok))
+    inputs = []
+    marker = None
+    for tok in tokens[end:]:
+        if tok in PARALLEL_INPUT_MARKERS:
+            marker = tok
+        elif marker in (':::', ':::+'):
+            inputs.append(tok)
+    inputs = inputs[:TEXT_TOKEN_LIMIT]
+    placeholder = any(mark in tok for tok in template for mark in PARALLEL_PLACEHOLDERS + ((replace,) if replace else ()))
+    if end < count:
+        if not template:
+            out.scripts.extend(inputs)
+            return
+        for value in inputs:
+            if placeholder:
+                words = [parallel_substitute(tok, value, replace) for tok in template]
+            else:
+                words = template + [value]
+            if template[0].startswith(PARALLEL_PLACEHOLDERS):
+                out.scripts.append(' '.join(words))
+            resolve_command(tokens[:j] + words, j, out, names, depth + 1)
+        if not inputs:
+            resolve_command(tokens[:end], j, out, names, depth + 1)
+    elif template:
+        resolve_command(tokens, j, out, names, depth + 1, (replace or '{}') if placeholder else '')
+    else:
+        out.reads_stdin = True
+
+
 def resolve_command(tokens, k, out, names, depth=0, fed=None):
     """Follows the command word at tokens[k] through prefixes, shells, ssh and find -exec; `fed` is the xargs placeholder when stdin adds arguments."""
     if k is None or k >= len(tokens):
@@ -1009,10 +1077,7 @@ def resolve_command(tokens, k, out, names, depth=0, fed=None):
         if command_at is not None:
             resolve_command(tokens, command_at, out, names, depth + 1)
     elif base in PARALLEL_NAMES:
-        rest = tokens[k + 1:]
-        end = next((i for i, tok in enumerate(rest) if tok in PARALLEL_INPUT_MARKERS), len(rest))
-        out.texts.append(' '.join(rest[:end]))
-        resolve_command(tokens[:k + 1 + end], k + 1, out, names, depth + 1)
+        resolve_parallel(tokens, k, out, names, depth)
     elif base in ('yarn', 'pnpm', 'npm') and 'exec' in tokens[k + 1:]:
         out.texts.append(' '.join(tokens[tokens.index('exec', k + 1) + 1:]))
     elif base == 'tmux':
@@ -1091,6 +1156,16 @@ def producer_lines(seg):
     return [t for t in args if '%' not in t]
 
 
+def producer_texts(seg):
+    """Texts a pipe producer writes: literal echo or printf lines, or the heredoc and here-string bodies of cat."""
+    lines = producer_lines(seg) or []
+    texts = lines + [' '.join(lines)] if lines else []
+    pos = command_position(seg.words) if seg is not None else None
+    if pos is not None and command_base(seg.words[pos]) == 'cat':
+        texts += [body for body, _ in seg.heredocs]
+    return texts
+
+
 def fed_variants(tokens, repl, producer):
     """Argument lists the xargs-run command may get from the piped lines; $STDIN stands for unknown input."""
     lines = producer_lines(producer)
@@ -1141,8 +1216,11 @@ def segments_match(segments, predicate, names, text_predicate, depth):
                         return True
         scripts = list(out.scripts)
         if out.reads_stdin and seg.producer is not None:
-            lines = producer_lines(seg.producer) or []
-            scripts += lines + [' '.join(lines)]
+            scripts += producer_texts(seg.producer)
+        if out.text_stdin and seg.producer is not None and any(
+                EXEC_CALL_RE.search(text) and carrier_text_matches(text, text_predicate)
+                for text in producer_texts(seg.producer)):
+            return True
         scripts += [text for script in scripts for text in substitution_scripts(script, depth)]
         for script in scripts:
             if segments_match(ShellParser(script, depth + 1).parse(), predicate, names, text_predicate, depth + 1):

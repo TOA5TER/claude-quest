@@ -910,3 +910,68 @@ def test_string_carriers_ignore_prose_and_input_data():
         f"tmux display-message '{LINK_URL}'",
         f"python3 -c 'print(\"{LINK_URL}\")'",
     ])
+
+
+# Why: GNU parallel runs its ::: inputs through the command template, so inputs are arguments or commands.
+def test_parallel_inputs_are_arguments_or_commands():
+    assert_all_blocked([
+        "parallel git worktree add ::: ../x",
+        "parallel git worktree add {} ::: ../x",
+        "parallel git worktree add {/} ::: ../x",
+        "parallel git worktree add {.} ::: ../x.d",
+        "parallel -j2 git worktree add ::: ../x ../y",
+        "parallel git worktree add ::: .worktrees/x ../y",
+        "parallel git worktree add -I@ @ ::: ../x",
+        'parallel ::: "git worktree add ../x"',
+        'parallel {} ::: "git worktree add ../x"',
+        'parallel sh -c {} ::: "git worktree add ../x"',
+        'parallel bash -c "{}" ::: "git worktree add ../x"',
+        'parallel -k sh -c {} :::: f ::: "git worktree add ../x"',
+        'sem git worktree add ::: ../x',
+        "echo ../x | parallel git worktree add",
+        "echo ../x | parallel git worktree add {}",
+        "printf '%s\\n' ../x | parallel -j2 git worktree add {}",
+        "echo 'git worktree add ../x' | parallel",
+        f'parallel git commit -m ::: "x {LINK_URL}"',
+        f'parallel ::: "git commit -m x{LINK_URL}"',
+        f'echo "git commit -m x{LINK_URL}" | parallel',
+    ])
+    assert_all_allowed([
+        "parallel gzip ::: git worktree add ../x",
+        "parallel git worktree add ::: .worktrees/x",
+        "parallel git worktree add {} ::: .worktrees/x .worktrees/y",
+        'parallel ::: "git worktree add .worktrees/x"',
+        'parallel sh -c {} ::: "git worktree add .worktrees/x"',
+        "echo .worktrees/x | parallel git worktree add",
+        "parallel echo {} ::: 'git worktree add ../x'",
+        "parallel git status ::: ../x",
+        "parallel git -C {} status ::: ../x ../y",
+        'parallel ::: "git status"',
+        "echo ../x | parallel gzip",
+        "parallel --jobs 2 echo ::: a b",
+    ])
+
+
+# Why: an interpreter that reads its program from a pipe runs whatever the producer writes.
+def test_interpreter_code_read_from_a_pipe():
+    assert_all_blocked([
+        "cat <<'EOF' | python3\nimport os\nos.system(\"git worktree add ../x\")\nEOF",
+        "cat <<EOF | python3 -\nimport os\nos.system(\"git worktree add ../x\")\nEOF",
+        "echo \"import os; os.system('git worktree add ../x')\" | python3",
+        "printf '%s' \"import os; os.system('git worktree add ../x')\" | python3 -",
+        "cat <<< \"import os; os.system('git worktree add ../x')\" | python3",
+        "echo \"system('git worktree add ../x')\" | ruby",
+        "echo \"system('git worktree add ../x')\" | perl",
+        "cat <<'EOF' | bash\ngit worktree add ../x\nEOF",
+        f"cat <<'EOF' | python3\nimport os\nos.system(\"git commit -m x{LINK_URL}\")\nEOF",
+    ])
+    assert_all_allowed([
+        "cat <<'EOF' | python3\nimport os\nos.system(\"git worktree add .worktrees/x\")\nEOF",
+        "echo \"import os; os.system('git worktree add .worktrees/x')\" | python3",
+        "cat <<'EOF' | python3\nprint(\"git worktree add ../x\")\nEOF",
+        "echo \"print('git worktree add ../x')\" | python3",
+        "cat <<'EOF' | python3\nimport os\nos.system(\"git status\")\nEOF",
+        "cat <<'EOF' | bash\ngit worktree add .worktrees/x\nEOF",
+        "cat f | python3",
+        "cat <<'EOF' | cat\ngit worktree add ../x\nEOF",
+    ])
