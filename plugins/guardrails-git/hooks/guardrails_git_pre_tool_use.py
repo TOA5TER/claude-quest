@@ -480,7 +480,7 @@ def add_timeout_to_gh_run_watch(tool_name, tool_input):
 
 WRAPPER_NAMES = ('git', 'gitp', 'git-as-app.sh', 'gh', 'ghp', 'gh-as-app.sh')
 PERSONA_FRONTENDS = ('git-as-app.sh', 'gh-as-app.sh')
-SHELL_NAMES = ('bash', 'sh', 'zsh', 'dash', 'ksh')
+SHELL_NAMES = ('bash', 'sh', 'zsh', 'dash', 'ksh', 'ash', 'mksh', 'fish', 'csh', 'tcsh')
 PREFIX_SPECS = {
     'env': (('-u', '--unset', '-C', '--chdir'), 0),
     'sudo': (('-u', '--user', '-g', '--group', '-h', '--host', '-p', '--prompt', '-C', '--close-from', '-D', '--chdir',
@@ -501,12 +501,14 @@ PREFIX_SPECS = {
     'setsid': ((), 0),
     'chronic': ((), 0),
     'unbuffer': ((), 0),
+    'busybox': ((), 0),
 }
 ASSIGNMENT_PREFIXES = ('env', 'sudo', 'doas')
 SSH_VALUE_OPTIONS = ('-b', '-c', '-D', '-E', '-e', '-F', '-I', '-i', '-J', '-L', '-l', '-m', '-O', '-o', '-p', '-Q',
                      '-R', '-S', '-W', '-w')
 FIND_EXEC_FLAGS = ('-exec', '-execdir', '-ok', '-okdir')
 USER_SWITCH_NAMES = ('su', 'runuser')
+COMMAND_STRING_NAMES = ('sg', 'script', 'flock')
 RUNUSER_VALUE_OPTIONS = ('-u', '--user', '-g', '--group', '-G', '--supp-group', '-s', '--shell', '-w',
                          '--whitelist-environment', '-c', '--command')
 DATA_COMMANDS = ('echo', 'printf', 'grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack', 'cat', 'sed', 'awk', 'gawk', 'head',
@@ -526,6 +528,8 @@ PULLS_ENDPOINT_RE = re.compile(r'(?:^|/)pulls(?:/\d+)?/?$')
 COMMAND_TEXT_RE = re.compile(r'\b(?:git-as-app\.sh|gh-as-app\.sh|gitp?|ghp?)(?=\s)')
 TEXT_WORD_RE = re.compile(r"""(?:'[^']*'?|"(?:\\.|[^"\\])*"?|\\.|[^\s;&|()'"\\])+|[;&|()\n]""")
 SHELL_C_FLAG_RE = re.compile(r'-[A-Za-z]*c[A-Za-z]*$')
+SHELL_VALUE_OPTIONS = ('-o', '+o', '-O', '+O', '--rcfile', '--init-file')
+SHELL_VALUE_CLUSTER_RE = re.compile(r'[-+][A-Za-z]+[oO]$')
 TEXT_TOKEN_LIMIT = 64
 MAX_NESTING = 8
 
@@ -624,6 +628,10 @@ class ShellParser:
                     return
             elif text.startswith('<<<', self.i):
                 self.i += 3
+                while self.i < self.n and text[self.i] in ' \t':
+                    self.i += 1
+                quoted = self.i < self.n and text[self.i] == "'"
+                seg.heredocs.append((self.read_word(), quoted))
             elif text.startswith('<<', self.i):
                 self.read_heredoc_marker(seg)
             else:
@@ -900,9 +908,12 @@ def skip_prefix_options(tokens, k, out):
         elif base == 'env' and token in ('-S', '--split-string') and j + 1 < count:
             out.scripts.append(tokens[j + 1])
             return None, repl
+        elif base == 'env' and (token.startswith('--split-string=') or (token.startswith('-S') and len(token) > 2)):
+            out.scripts.append(token.split('=', 1)[1] if token.startswith('--') else token[2:])
+            return None, repl
         elif token.startswith('-') and len(token) > 1:
             if base == 'xargs':
-                if token in ('-I', '--replace') and j + 1 < count:
+                if token == '-I' and j + 1 < count:
                     repl = tokens[j + 1]
                 elif token.startswith('-I') and len(token) > 2:
                     repl = token[2:]
@@ -953,10 +964,11 @@ def resolve_command(tokens, k, out, names, depth=0, fed=None):
         out.scripts.append(' '.join(tokens[k + 1:]))
     elif base in SHELL_NAMES:
         j = k + 1
-        while j < count and tokens[j].startswith('-') and not SHELL_C_FLAG_RE.match(tokens[j]):
-            j += 1
+        while j < count and tokens[j][:1] in ('-', '+') and not SHELL_C_FLAG_RE.match(tokens[j]):
+            j += 2 if tokens[j] in SHELL_VALUE_OPTIONS or SHELL_VALUE_CLUSTER_RE.match(tokens[j]) else 1
         if j + 1 < count and SHELL_C_FLAG_RE.match(tokens[j]):
-            out.scripts.append(tokens[j + 1])
+            j += 2 if tokens[j + 1] == '--' and j + 2 < count else 1
+            out.scripts.append(tokens[j])
         else:
             out.reads_stdin = True
     elif base in USER_SWITCH_NAMES:
@@ -981,10 +993,16 @@ def resolve_command(tokens, k, out, names, depth=0, fed=None):
                 resolve_command(tokens[j + 1:end], 0, out, names, depth + 1)
     elif base in PREFIX_SPECS:
         nxt, repl = skip_prefix_options(tokens, k, out)
+        if nxt is not None and (base == 'watch' or (base == 'sudo' and any(
+                tok in ('-s', '--shell', '-i', '--login') for tok in tokens[k + 1:nxt]))):
+            out.scripts.append(' '.join(tokens[nxt:]))
         if base == 'xargs':
             fed = repl or ''
         resolve_command(tokens, nxt, out, names, depth + 1, fed)
     elif base not in DATA_COMMANDS:
+        if base in COMMAND_STRING_NAMES:
+            out.scripts.extend(tokens[j + 1] for j in range(k + 1, count - 1)
+                               if tokens[j] == '--command' or SHELL_C_FLAG_RE.match(tokens[j]))
         cleared = k + 1
         for j in range(k + 1, count):
             if j < cleared:

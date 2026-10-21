@@ -586,6 +586,76 @@ def test_deep_nesting_stays_bounded_and_blocks():
     assert hook_decision_within(nested, 10) == "block"
 
 
+SHELL_OPTION_FORMS = [
+    'bash -o pipefail -c "{}"',
+    'bash -o pipefail -o errexit -c "{}"',
+    'bash +o history -c "{}"',
+    'bash -O extglob -c "{}"',
+    'bash +O nullglob -lc "{}"',
+    'bash -eo pipefail -c "{}"',
+    'sh -eu -c "{}"',
+    'sh -euc "{}"',
+    'bash --norc --noprofile -c "{}"',
+    'bash --rcfile rc -c "{}"',
+    'zsh -o errexit -c "{}"',
+    'timeout 5 bash -o pipefail -c "{}"',
+    'busybox sh -c "{}"',
+    'ash -c "{}"',
+    "env --split-string='{}'",
+    "env -S'{}'",
+    'bash -c -- "{}"',
+    'flock /tmp/l -c "{}"',
+    'script -qc "{}" /dev/null',
+    'sg staff -c "{}"',
+    'sudo -s "{}"',
+    'sudo -i "{}"',
+    'watch -n 1 "{}"',
+    'bash <<< "{}"',
+    "sh <<< '{}'",
+    'timeout 5 bash <<< "{}"',
+]
+
+
+# Why: shell option values (-o pipefail) must be skipped so the -c script is still parsed.
+def test_shell_option_values_do_not_hide_the_c_script():
+    assert_all_blocked([form.format(BAD_WORKTREE) for form in SHELL_OPTION_FORMS])
+    assert_all_blocked([form.format(f"git commit -m {LINK_URL}") for form in SHELL_OPTION_FORMS])
+    assert_all_allowed([
+        'bash -o pipefail -c "git worktree add .worktrees/x"',
+        'bash -O extglob -c "git status"',
+        'sh -eu -c "echo git worktree add ../x"',
+        "bash -o pipefail script.sh",
+        "bash +o history script.sh",
+        'flock /tmp/l -c "git worktree add .worktrees/x"',
+        'sudo -s "git status"',
+        'watch -n 1 "git status"',
+        'cat <<< "git worktree add ../x"',
+        "cat <<< '$(git worktree add ../x)'",
+        'grep -q x <<< "git worktree add ../x"',
+    ])
+
+
+# Why: GNU xargs --replace without = means {}, and must not swallow the command name as its placeholder.
+def test_xargs_replace_forms():
+    assert_all_blocked([
+        "echo ../x | xargs --replace git worktree add {}",
+        "echo ../x | xargs --replace=% git worktree add %",
+        "echo ../x | xargs -i git worktree add {}",
+        "echo ../x | xargs -iX git worktree add X",
+        "echo ../x | xargs -I % git worktree add %",
+        "echo ../x | xargs -I{} git worktree add {}",
+        "echo ../x | xargs --replace git worktree add ../x",
+        f'echo a | xargs --replace git commit -m "x {LINK_URL}"',
+    ])
+    assert_all_allowed([
+        "echo .worktrees/x | xargs --replace git worktree add {}",
+        "echo .worktrees/x | xargs --replace=% git worktree add %",
+        "echo .worktrees/x | xargs -i git worktree add {}",
+        "echo x | xargs --replace git worktree add .worktrees/{}",
+        "echo x | xargs --replace git status",
+    ])
+
+
 # Why: runuser -u USER runs the command directly, so it must resolve like any other prefix.
 def test_runuser_direct_command_forms():
     assert_all_blocked([
