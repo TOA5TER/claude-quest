@@ -85,7 +85,7 @@ Head check: it applies to the note a round acts on: the decision note the stage 
 
 Exempt gate proof: with no PR to comment on, the developer, reviewer and tester each write the exempt-form gate result, with the literal `jq` exemption command and its output, into their own note.
 
-PR draft: the developer writes `pr-draft.md` in the notes folder (location rule above) once, in story mode (or in the backstop round): a PR title line, then a PR body that includes the story ID. The fixer never edits it. The body holds no session links or attribution lines. The API-contract rationale and any proto dependency go in its body.
+PR draft: the developer writes `pr-draft.md` in the notes folder (location rule above) once, in story mode (or in the backstop round): a PR title line, then a PR body built per the developing skill's PR Creation Requirements (the repo's pull request template, else a short Summary and How to Test); the body carries no story reference unless the template asks for one. The fixer never edits it. The body holds no session links or attribution lines. The API-contract rationale and any proto dependency go in its body.
 
 Fixer output in Local Mode: everything the fixer would post to the PR (the Changes Addressed summary, any API-contract rationale, the resource-limit root-cause assessment) goes into that round's fix note instead, and the fixer posts nothing to GitHub.
 

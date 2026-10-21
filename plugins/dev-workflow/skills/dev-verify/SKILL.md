@@ -19,7 +19,7 @@ Read `skills/shared/adapter-loading.md` — adapter loading procedure, used to l
 
 The PR number. Resolve the PR's head branch and current head SHA, and land on the branch in its worktree exactly as rework mode does (look up the live worktree with `git -C <repo root> worktree list --porcelain`, else check the PR out).
 
-The acceptance criteria to verify come from the linked story (resolve it from the branch token or PR description, loading the PM adapter per `skills/shared/adapter-loading.md`), or from the PR description when no story is linked.
+The acceptance criteria to verify come from the linked story (resolve it with the PM adapter's **Resolve story from PR** capability, `skills/pm-adapter/interface.md`: its link lookup first, then the delimited story token in the PR's head branch name, never the PR title or body; load the PM adapter per `skills/shared/adapter-loading.md`), or from the PR description when no story is linked.
 
 ## Local Mode
 

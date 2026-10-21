@@ -480,8 +480,42 @@ def add_timeout_to_gh_run_watch(tool_name, tool_input):
 
 WRAPPER_NAMES = ('git', 'gitp', 'git-as-app.sh', 'gh', 'ghp', 'gh-as-app.sh')
 PERSONA_FRONTENDS = ('git-as-app.sh', 'gh-as-app.sh')
-SHELL_NAMES = ('bash', 'sh', 'zsh', 'dash', 'ksh')
-PREFIX_COMMANDS = ('env', 'sudo', 'exec', 'nohup', 'command', 'time', 'xargs', 'nice')
+SHELL_NAMES = ('bash', 'sh', 'zsh', 'dash', 'ksh', 'ash', 'mksh', 'fish', 'csh', 'tcsh')
+PREFIX_SPECS = {
+    'env': (('-u', '--unset', '-C', '--chdir'), 0),
+    'sudo': (('-u', '--user', '-g', '--group', '-h', '--host', '-p', '--prompt', '-C', '--close-from', '-D', '--chdir',
+              '-R', '--chroot', '-T', '--command-timeout', '-U', '--other-user', '-r', '--role', '-t', '--type'), 0),
+    'doas': (('-u', '-C'), 0),
+    'timeout': (('-s', '--signal', '-k', '--kill-after'), 1),
+    'nice': (('-n', '--adjustment'), 0),
+    'ionice': (('-c', '--class', '-n', '--classdata', '-p', '-P', '-u'), 0),
+    'stdbuf': (('-i', '-o', '-e', '--input', '--output', '--error'), 0),
+    'watch': (('-n', '--interval'), 0),
+    'xargs': (('-a', '--arg-file', '-d', '--delimiter', '-E', '-I', '-L', '-n', '--max-args', '-P', '--max-procs',
+               '-s', '--max-chars', '--max-lines', '--process-slot-var'), 0),
+    'exec': (('-a',), 0),
+    'nohup': ((), 0),
+    'command': ((), 0),
+    'builtin': ((), 0),
+    'time': ((), 0),
+    'setsid': ((), 0),
+    'chronic': ((), 0),
+    'unbuffer': ((), 0),
+    'busybox': ((), 0),
+}
+ASSIGNMENT_PREFIXES = ('env', 'sudo', 'doas')
+SSH_VALUE_OPTIONS = ('-b', '-c', '-D', '-E', '-e', '-F', '-I', '-i', '-J', '-L', '-l', '-m', '-O', '-o', '-p', '-Q',
+                     '-R', '-S', '-W', '-w')
+FIND_EXEC_FLAGS = ('-exec', '-execdir', '-ok', '-okdir')
+USER_SWITCH_NAMES = ('su', 'runuser')
+COMMAND_STRING_NAMES = ('sg', 'script', 'flock')
+RUNUSER_VALUE_OPTIONS = ('-u', '--user', '-g', '--group', '-G', '--supp-group', '-s', '--shell', '-w',
+                         '--whitelist-environment', '-c', '--command')
+DATA_COMMANDS = ('echo', 'printf', 'grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack', 'cat', 'sed', 'awk', 'gawk', 'head',
+                 'tail', 'wc', 'sort', 'uniq', 'tee', 'less', 'more', 'man', 'which', 'type', 'ls', 'cut', 'tr',
+                 'diff', 'cmp', 'test', '[', 'python', 'python3', 'node', 'ruby', 'perl', 'jq', 'yq', 'touch',
+                 'mkdir', 'rm', 'cp', 'mv', 'cd', 'true', 'false', ':', 'export', 'set', 'unset', 'alias', 'read')
+STDIN_UNKNOWN = '$STDIN'
 RESERVED_WORDS = ('if', 'elif', 'while', 'until', 'then', 'do', 'else', '!', '{', '}', 'fi', 'done', 'time')
 ASSIGNMENT_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*\+?=')
 GIT_VALUE_OPTIONS = ('-C', '-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--config-env')
@@ -494,6 +528,8 @@ PULLS_ENDPOINT_RE = re.compile(r'(?:^|/)pulls(?:/\d+)?/?$')
 COMMAND_TEXT_RE = re.compile(r'\b(?:git-as-app\.sh|gh-as-app\.sh|gitp?|ghp?)(?=\s)')
 TEXT_WORD_RE = re.compile(r"""(?:'[^']*'?|"(?:\\.|[^"\\])*"?|\\.|[^\s;&|()'"\\])+|[;&|()\n]""")
 SHELL_C_FLAG_RE = re.compile(r'-[A-Za-z]*c[A-Za-z]*$')
+SHELL_VALUE_OPTIONS = ('-o', '+o', '-O', '+O', '--rcfile', '--init-file')
+SHELL_VALUE_CLUSTER_RE = re.compile(r'[-+][A-Za-z]+[oO]$')
 TEXT_TOKEN_LIMIT = 64
 MAX_NESTING = 8
 
@@ -520,6 +556,7 @@ class Segment:
     def __init__(self):
         self.words = []
         self.heredocs = []
+        self.producer = None
 
 
 class ShellParser:
@@ -546,7 +583,7 @@ class ShellParser:
             c = text[self.i]
             if c == '\\':
                 self.i += 2
-            elif c == '$' and text.startswith('$(', self.i):
+            elif text.startswith(('$(', '<(', '>('), self.i):
                 self.read_substitution()
             elif c == '`':
                 self.read_backtick()
@@ -575,6 +612,12 @@ class ShellParser:
             elif c == '#':
                 end = text.find('\n', self.i)
                 self.i = n if end < 0 else end
+            elif c == '|':
+                piped = not text.startswith('||', self.i)
+                self.i += 2 if text.startswith(('||', '|&'), self.i) else 1
+                producer = seg if piped and seg.words else None
+                flush()
+                seg.producer = producer
             elif c in ';&|(':
                 self.i += 1
                 flush()
@@ -583,8 +626,14 @@ class ShellParser:
                 flush()
                 if closer == ')':
                     return
+            elif text.startswith(('<(', '>('), self.i):
+                seg.words.append(self.read_substitution())
             elif text.startswith('<<<', self.i):
                 self.i += 3
+                while self.i < self.n and text[self.i] in ' \t':
+                    self.i += 1
+                quoted = self.i < self.n and text[self.i] == "'"
+                seg.heredocs.append((self.read_word(), quoted))
             elif text.startswith('<<', self.i):
                 self.read_heredoc_marker(seg)
             else:
@@ -835,52 +884,222 @@ def command_position(tokens):
     return None
 
 
-def shell_script_args(tokens):
-    """Scripts handed to `<shell> -c` or `eval` in the segment, and whether a shell here reads its script from stdin."""
-    scripts, reads_stdin = [], False
-    pos = command_position(tokens)
-    for k, token in enumerate(tokens):
-        base = command_base(token)
-        at_command = k == pos or (k > 0 and command_base(tokens[k - 1]) in PREFIX_COMMANDS)
-        if not at_command:
-            continue
-        if base == 'eval':
-            scripts.append(' '.join(tokens[k + 1:]))
-        elif base in SHELL_NAMES:
-            j = k + 1
-            while j < len(tokens) and tokens[j].startswith('-') and not SHELL_C_FLAG_RE.match(tokens[j]):
-                j += 1
-            if j + 1 < len(tokens) and SHELL_C_FLAG_RE.match(tokens[j]):
-                scripts.append(tokens[j + 1])
-            else:
-                reads_stdin = True
-    return scripts, reads_stdin
+class Resolved:
+    """What one segment runs: command words to test, nested scripts to parse, and whether a shell reads stdin."""
+
+    def __init__(self):
+        self.commands = []
+        self.scripts = []
+        self.reads_stdin = False
+
+
+def skip_prefix_options(tokens, k, out):
+    """Index of the command word after the prefix command at tokens[k]; also reports the xargs placeholder."""
+    base = command_base(tokens[k])
+    value_options, positionals = PREFIX_SPECS[base]
+    count = len(tokens)
+    j = k + 1
+    repl = None
+    while j < count:
+        token = tokens[j]
+        if token == '--':
+            j += 1
+            break
+        if base in ASSIGNMENT_PREFIXES and ASSIGNMENT_RE.match(token):
+            j += 1
+        elif base == 'env' and token in ('-S', '--split-string') and j + 1 < count:
+            out.scripts.append(tokens[j + 1])
+            return None, repl
+        elif base == 'env' and (token.startswith('--split-string=') or (token.startswith('-S') and len(token) > 2)):
+            out.scripts.append(token.split('=', 1)[1] if token.startswith('--') else token[2:])
+            return None, repl
+        elif token.startswith('-') and len(token) > 1:
+            if base == 'xargs':
+                if token == '-I' and j + 1 < count:
+                    repl = tokens[j + 1]
+                elif token.startswith('-I') and len(token) > 2:
+                    repl = token[2:]
+                elif token.startswith('--replace='):
+                    repl = token.split('=', 1)[1]
+                elif token in ('-i', '--replace'):
+                    repl = '{}'
+                elif token.startswith('-i') and len(token) > 2 and not token.startswith('--'):
+                    repl = token[2:]
+            cluster_value = (base in ASSIGNMENT_PREFIXES and len(token) > 2 and token[1] != '-'
+                             and '-' + token[-1] in value_options)
+            j += 2 if token in value_options or cluster_value else 1
+        else:
+            break
+    j += positionals
+    return (j if j < count else None), repl
+
+
+def runuser_command_index(tokens, k):
+    """Index of the command `runuser -u USER` runs, or None when it uses the user-then-arguments form."""
+    j = k + 1
+    direct = False
+    while j < len(tokens):
+        tok = tokens[j]
+        if tok == '--':
+            j += 1
+            break
+        if tok in RUNUSER_VALUE_OPTIONS:
+            direct = direct or tok in ('-u', '--user')
+            j += 2
+        elif tok.startswith('-') and len(tok) > 1:
+            direct = direct or tok.startswith('--user=') or (tok.startswith('-u') and not tok.startswith('--'))
+            j += 1
+        else:
+            break
+    return j if direct else None
+
+
+def resolve_command(tokens, k, out, names, depth=0, fed=None):
+    """Follows the command word at tokens[k] through prefixes, shells, ssh and find -exec; `fed` is the xargs placeholder when stdin adds arguments."""
+    if k is None or k >= len(tokens):
+        return
+    if depth > MAX_NESTING:
+        raise ShellParseError("nesting too deep")
+    base = command_base(tokens[k])
+    count = len(tokens)
+    if tokens[k][:2] == '$(' or tokens[k][:1] == '`':
+        out.scripts += [' '.join([text] + tokens[k + 1:]) for text in substitution_scripts(tokens[k], depth)]
+    if base in WRAPPER_NAMES:
+        out.commands.append((tokens, k, fed))
+    elif base == 'eval':
+        out.scripts.append(' '.join(tokens[k + 1:]))
+    elif base in SHELL_NAMES:
+        j = k + 1
+        while j < count and tokens[j][:1] in ('-', '+') and not SHELL_C_FLAG_RE.match(tokens[j]):
+            j += 2 if tokens[j] in SHELL_VALUE_OPTIONS or SHELL_VALUE_CLUSTER_RE.match(tokens[j]) else 1
+        if j + 1 < count and SHELL_C_FLAG_RE.match(tokens[j]):
+            j += 2 if tokens[j + 1] == '--' and j + 2 < count else 1
+            out.scripts.append(tokens[j])
+        else:
+            out.reads_stdin = True
+            out.scripts.extend(tok for tok in tokens[j:] if tok.startswith('<('))
+    elif base in ('source', '.'):
+        out.scripts.extend(tok for tok in tokens[k + 1:] if tok.startswith('<('))
+    elif base in ('at', 'batch'):
+        out.reads_stdin = True
+    elif base in USER_SWITCH_NAMES:
+        command_at = runuser_command_index(tokens, k) if base == 'runuser' else None
+        scan_end = count if command_at is None else command_at
+        for j in range(k + 1, scan_end - 1):
+            if tokens[j] == '--command' or SHELL_C_FLAG_RE.match(tokens[j]):
+                out.scripts.append(tokens[j + 1])
+        if command_at is not None:
+            resolve_command(tokens, command_at, out, names, depth + 1)
+    elif base == 'ssh':
+        j = k + 1
+        while j < count and tokens[j].startswith('-'):
+            j += 2 if tokens[j] in SSH_VALUE_OPTIONS else 1
+        if j + 1 < count:
+            out.scripts.append(' '.join(tokens[j + 1:]))
+            resolve_command(tokens, j + 1, out, names, depth + 1)
+        else:
+            out.reads_stdin = True
+    elif base == 'find':
+        for j in range(k + 1, count):
+            if tokens[j] in FIND_EXEC_FLAGS:
+                end = next((e for e in range(j + 1, count) if tokens[e] in (';', '+')), count)
+                resolve_command(tokens[j + 1:end], 0, out, names, depth + 1)
+    elif base in PREFIX_SPECS:
+        nxt, repl = skip_prefix_options(tokens, k, out)
+        if nxt is not None and (base == 'watch' or (base == 'sudo' and any(
+                tok in ('--shell', '--login') or (tok[:1] == '-' and tok[1:2] != '-' and set(tok[1:]) & set('is'))
+                for tok in tokens[k + 1:nxt]))):
+            out.scripts.append(' '.join(tokens[nxt:]))
+        if base == 'xargs':
+            fed = repl or ''
+        resolve_command(tokens, nxt, out, names, depth + 1, fed)
+    elif base not in DATA_COMMANDS:
+        if base in COMMAND_STRING_NAMES:
+            out.scripts.extend(tokens[j + 1] for j in range(k + 1, count - 1)
+                               if tokens[j] == '--command' or SHELL_C_FLAG_RE.match(tokens[j]))
+        cleared = k + 1
+        for j in range(k + 1, count):
+            if j < cleared:
+                continue
+            if command_base(tokens[j]) in names:
+                out.commands.append((tokens, j, fed))
+                cleared = j + 1
+                while cleared < count and tokens[cleared].startswith('-'):
+                    cleared += 1
+            elif command_base(tokens[j]) in SHELL_NAMES:
+                resolve_command(tokens, j, out, names, depth + 1)
+
+
+def resolve_segment(seg, names):
+    out = Resolved()
+    resolve_command(seg.words, command_position(seg.words), out, names)
+    return out
+
+
+def producer_lines(seg):
+    """Literal lines an echo or printf producer writes to a pipe; None when the producer is anything else."""
+    if seg is None or seg.heredocs:
+        return None
+    pos = command_position(seg.words)
+    if pos is None or command_base(seg.words[pos]) not in ('echo', 'printf'):
+        return None
+    args = [t for t in seg.words[pos + 1:] if not (t.startswith('-') and len(t) > 1)]
+    if command_base(seg.words[pos]) == 'echo':
+        return [' '.join(args)]
+    return [t for t in args if '%' not in t]
+
+
+def fed_variants(tokens, repl, producer):
+    """Argument lists the xargs-run command may get from the piped lines; $STDIN stands for unknown input."""
+    lines = producer_lines(producer)
+    if lines is None:
+        lines = [STDIN_UNKNOWN]
+    lines = lines[:TEXT_TOKEN_LIMIT]
+    if repl:
+        return [[tok.replace(repl, line) for tok in tokens] for line in lines]
+    words = ' '.join(lines).split()
+    variants = [tokens + words]
+    if any(re.match(r'-[nLl]|--max-(?:args|lines)', tok) for tok in tokens):
+        variants += [tokens + [word] for word in words]
+    return variants
+
+
+def substitution_scripts(script, depth):
+    """Texts that echo or printf substitutions inside `script` hand to the command that consumes them."""
+    if not any(mark in script for mark in ('$(', '`', '<(', '>(')):
+        return []
+    texts = []
+    for seg in ShellParser(script, depth + 1).scan_substitutions():
+        lines = producer_lines(seg)
+        if lines:
+            texts += lines + [' '.join(lines)]
+    return texts
 
 
 def segments_match(segments, predicate, names, text_predicate, depth):
     if depth > MAX_NESTING:
         raise ShellParseError("nesting too deep")
-    shell_stdin = any(shell_script_args(seg.words)[1] for seg in segments)
-    for seg in segments:
-        tokens = seg.words
-        pos = command_position(tokens)
-        wrapper = pos is not None and command_base(tokens[pos]) in WRAPPER_NAMES
-        if wrapper:
-            if predicate(tokens, pos):
-                return True
-        else:
-            cleared = 0
-            for k in range(len(tokens)):
-                if k < cleared or command_base(tokens[k]) not in names:
-                    continue
+    resolved = [resolve_segment(seg, names) for seg in segments]
+    shell_stdin = any(out.reads_stdin for out in resolved)
+    for seg, out in zip(segments, resolved):
+        for tokens, k, fed in out.commands:
+            if fed is None:
                 if predicate(tokens, k):
                     return True
-                cleared = k + 1
-                while cleared < len(tokens) and tokens[cleared].startswith('-'):
-                    cleared += 1
-            for script in shell_script_args(tokens)[0]:
-                if segments_match(ShellParser(script, depth + 1).parse(), predicate, names, text_predicate, depth + 1):
-                    return True
+            else:
+                head = tokens[:k + 1]
+                rest = tokens[k + 1:]
+                for variant in fed_variants(rest, fed, seg.producer):
+                    if predicate(head + variant, k):
+                        return True
+        scripts = list(out.scripts)
+        if out.reads_stdin and seg.producer is not None:
+            lines = producer_lines(seg.producer) or []
+            scripts += lines + [' '.join(lines)]
+        scripts += [text for script in scripts for text in substitution_scripts(script, depth)]
+        for script in scripts:
+            if segments_match(ShellParser(script, depth + 1).parse(), predicate, names, text_predicate, depth + 1):
+                return True
         for body, quoted in seg.heredocs:
             if shell_stdin:
                 nested = ShellParser(body, depth + 1).parse()
@@ -920,11 +1139,7 @@ def check_worktree_placement(tool_name, tool_input, payload_cwd=None):
     if not command:
         return
     try:
-        misplaced = (
-            ('<<' not in command and any(
-                sub == 'worktree' and args[:1] == ['add'] and worktree_add_is_misplaced(args, 1)
-                for sub, args, _ in git_invocations(command, payload_cwd)))
-            or runs_misplaced_worktree(command))
+        misplaced = runs_misplaced_worktree(command)
     except Exception:
         misplaced = True
     if misplaced:
