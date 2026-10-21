@@ -35,7 +35,7 @@
       "name": "guardrails-git",
       "source": "./plugins/guardrails-git",
       "description": "Git and GitHub safety guards: branch protection, commit boilerplate blocking, PR boilerplate blocking, timeout enforcement for git/gh commands",
-      "version": "1.4.0"
+      "version": "1.5.0"
     },
     {
       "name": "guardrails-bash",

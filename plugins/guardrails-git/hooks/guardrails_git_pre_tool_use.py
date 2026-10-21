@@ -509,6 +509,32 @@ SSH_VALUE_OPTIONS = ('-b', '-c', '-D', '-E', '-e', '-F', '-I', '-i', '-J', '-L',
 FIND_EXEC_FLAGS = ('-exec', '-execdir', '-ok', '-okdir')
 USER_SWITCH_NAMES = ('su', 'runuser')
 COMMAND_STRING_NAMES = ('sg', 'script', 'flock')
+INTERPRETER_RE = re.compile(r'(?:python|pypy|perl|ruby|node|nodejs|php|lua|luajit|expect|osascript|tclsh|deno|bun)[0-9.\-]*$')
+AWK_RE = re.compile(r'[gm]?awk$')
+INTERPRETER_CODE_FLAG_RE = re.compile(r'-[A-Za-z]*[ceErp][A-Za-z]*$|--(?:eval|print)$')
+EXEC_CALL_RE = re.compile(
+    r'system|popen|exec|spawn|\bcall\b|\brun\b|Popen|check_(?:call|output)|getoutput|getstatusoutput|eval\b|shell_exec|'
+    r'passthru|proc_open|child_process|\bqx\b|`|getline|\bshell\b')
+PARALLEL_NAMES = ('parallel', 'sem')
+PARALLEL_INPUT_MARKERS = (':::', '::::', ':::+', '::::+')
+PARALLEL_VALUE_OPTIONS = ('-j', '--jobs', '-S', '--sshlogin', '-a', '--arg-file', '-N', '-n', '--max-args',
+                          '--max-replace-args', '-I', '--halt', '--timeout', '--delay', '-d', '--delimiter', '--colsep',
+                          '-C', '--results', '--joblog', '-L', '-l', '--max-lines', '--retries', '--tagstring', '--shell',
+                          '--load', '--memfree', '-E', '--eof', '--basefile', '--wd', '--workdir', '--sshloginfile',
+                          '--slf', '--limit', '--rpl', '--plus')
+PARALLEL_PLACEHOLDERS = ('{/.}', '{//}', '{/}', '{.}', '{#}', '{}')
+PARALLEL_POSITIONAL_RE = re.compile(r'\{-?[0-9]+(?:/|//|\.|/\.)?\}')
+PARALLEL_FILE_INPUT_OPTIONS = ('-a', '--arg-file', '--arg-file-sep')
+TMUX_COMMAND_NAMES = ('new-session', 'new', 'new-window', 'neww', 'split-window', 'splitw', 'run-shell', 'run', 'send-keys',
+                      'send', 'respawn-pane', 'respawnp', 'respawn-window', 'respawnw', 'if-shell', 'if', 'display-popup',
+                      'popup', 'pipe-pane', 'pipep', 'set-hook', 'bind-key', 'bind', 'confirm-before', 'confirm',
+                      'command-prompt', 'source-file', 'source')
+PACKAGE_EXEC_SUBCOMMANDS = {
+    'npm': ('exec', 'x'), 'pnpm': ('exec', 'dlx'), 'yarn': ('exec', 'dlx'), 'bun': ('x',), 'cnpm': ('exec', 'x'),
+}
+PACKAGE_RUNNER_NAMES = ('npx', 'pnpx', 'bunx')
+PACKAGE_CALL_FLAG_RE = re.compile(r'-[A-Za-z]*c$|--call(?:=|$)')
+GIT_EXEC_SUBCOMMANDS = ('rebase', 'submodule', 'bisect', 'filter-branch')
 RUNUSER_VALUE_OPTIONS = ('-u', '--user', '-g', '--group', '-G', '--supp-group', '-s', '--shell', '-w',
                          '--whitelist-environment', '-c', '--command')
 DATA_COMMANDS = ('echo', 'printf', 'grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack', 'cat', 'sed', 'awk', 'gawk', 'head',
@@ -891,6 +917,8 @@ class Resolved:
         self.commands = []
         self.scripts = []
         self.reads_stdin = False
+        self.texts = []
+        self.text_stdin = False
 
 
 def skip_prefix_options(tokens, k, out):
@@ -954,6 +982,75 @@ def runuser_command_index(tokens, k):
     return j if direct else None
 
 
+def parallel_substitute(token, value, replace):
+    base = value.rstrip('/').rpartition('/')[2]
+    forms = {
+        '{/.}': base.rsplit('.', 1)[0] if '.' in base else base,
+        '{//}': value.rstrip('/').rpartition('/')[0] or '.',
+        '{/}': base,
+        '{.}': value.rsplit('.', 1)[0] if '.' in base else value,
+    }
+    for mark in PARALLEL_PLACEHOLDERS + ((replace,) if replace else ()):
+        token = token.replace(mark, forms.get(mark, value))
+    return PARALLEL_POSITIONAL_RE.sub(lambda match: value, token)
+
+
+def resolve_parallel(tokens, k, out, names, depth):
+    """GNU parallel and sem: the command template, the ::: inputs substituted into or appended to it, or stdin lines."""
+    count = len(tokens)
+    end = next((i for i in range(k + 1, count) if tokens[i] in PARALLEL_INPUT_MARKERS), count)
+    replace = None
+    j = k + 1
+    while j < end:
+        tok = tokens[j]
+        if tok == '--':
+            j += 1
+            break
+        if tok == '-I' and j + 1 < end:
+            replace = tokens[j + 1]
+        elif tok.startswith('-I') and len(tok) > 2 and not tok.startswith('--'):
+            replace = tok[2:]
+        if not tok.startswith('-') or len(tok) == 1:
+            break
+        j += 2 if tok in PARALLEL_VALUE_OPTIONS else 1
+    template = tokens[j:end]
+    out.texts.extend(tok for tok in template if re.search(r'\s', tok))
+    inputs = []
+    marker = None
+    file_inputs = any(tok in PARALLEL_FILE_INPUT_OPTIONS for tok in tokens[k + 1:j])
+    for tok in tokens[end:]:
+        if tok in PARALLEL_INPUT_MARKERS:
+            marker = tok
+            file_inputs = file_inputs or tok in ('::::', '::::+')
+        elif marker in (':::', ':::+'):
+            inputs.append(tok)
+    inputs = inputs[:TEXT_TOKEN_LIMIT]
+    placeholder = any(
+        mark in tok or PARALLEL_POSITIONAL_RE.search(tok)
+        for tok in template for mark in PARALLEL_PLACEHOLDERS + ((replace,) if replace else ()))
+    unknown_fed = None if '--pipe' in tokens[k + 1:j] or '--pipepart' in tokens[k + 1:j] else (
+        (replace or '{}') if placeholder else '')
+    if end < count:
+        if not template:
+            out.scripts.extend(inputs)
+            out.reads_stdin = out.reads_stdin or file_inputs
+            return
+        for value in inputs:
+            if placeholder:
+                words = [parallel_substitute(tok, value, replace) for tok in template]
+            else:
+                words = template + [value]
+            if template[0].startswith(PARALLEL_PLACEHOLDERS):
+                out.scripts.append(' '.join(words))
+            resolve_command(tokens[:j] + words, j, out, names, depth + 1)
+        if not inputs or file_inputs:
+            resolve_command(tokens[:end], j, out, names, depth + 1, unknown_fed if file_inputs else None)
+    elif template:
+        resolve_command(tokens, j, out, names, depth + 1, unknown_fed)
+    else:
+        out.reads_stdin = True
+
+
 def resolve_command(tokens, k, out, names, depth=0, fed=None):
     """Follows the command word at tokens[k] through prefixes, shells, ssh and find -exec; `fed` is the xargs placeholder when stdin adds arguments."""
     if k is None or k >= len(tokens):
@@ -966,6 +1063,9 @@ def resolve_command(tokens, k, out, names, depth=0, fed=None):
         out.scripts += [' '.join([text] + tokens[k + 1:]) for text in substitution_scripts(tokens[k], depth)]
     if base in WRAPPER_NAMES:
         out.commands.append((tokens, k, fed))
+        rest = tokens[k + 1:]
+        if any(tok in GIT_EXEC_SUBCOMMANDS or tok.startswith(('alias.', '--exec')) for tok in rest):
+            out.texts.append(' '.join(rest))
     elif base == 'eval':
         out.scripts.append(' '.join(tokens[k + 1:]))
     elif base in SHELL_NAMES:
@@ -990,6 +1090,33 @@ def resolve_command(tokens, k, out, names, depth=0, fed=None):
                 out.scripts.append(tokens[j + 1])
         if command_at is not None:
             resolve_command(tokens, command_at, out, names, depth + 1)
+    elif base in PARALLEL_NAMES:
+        resolve_parallel(tokens, k, out, names, depth)
+    elif base in PACKAGE_EXEC_SUBCOMMANDS and any(tok in PACKAGE_EXEC_SUBCOMMANDS[base] for tok in tokens[k + 1:]):
+        sub = next(j for j in range(k + 1, count) if tokens[j] in PACKAGE_EXEC_SUBCOMMANDS[base])
+        out.texts.append(' '.join(tokens[sub + 1:]))
+    elif base in PACKAGE_RUNNER_NAMES:
+        if any(PACKAGE_CALL_FLAG_RE.match(tok) for tok in tokens[k + 1:]):
+            out.texts.append(' '.join(tokens[k + 1:]))
+    elif base == 'corepack' and k + 1 < count:
+        resolve_command(tokens, k + 1, out, names, depth + 1)
+    elif base == 'tmux':
+        if any(tok in TMUX_COMMAND_NAMES for tok in tokens[k + 1:]):
+            out.texts.append(' '.join(tokens[k + 1:]))
+    elif base == 'screen':
+        out.texts.append(' '.join(tokens[k + 1:]))
+    elif AWK_RE.match(base):
+        text = ' '.join(tokens[k + 1:])
+        if EXEC_CALL_RE.search(text):
+            out.texts.append(text)
+    elif INTERPRETER_RE.match(base):
+        flag = next((j for j in range(k + 1, count) if INTERPRETER_CODE_FLAG_RE.match(tokens[j])), None)
+        if flag is not None:
+            text = ' '.join(tokens[flag + 1:])
+            if EXEC_CALL_RE.search(text):
+                out.texts.append(text)
+        elif all(tok.startswith('-') for tok in tokens[k + 1:]):
+            out.text_stdin = True
     elif base == 'ssh':
         j = k + 1
         while j < count and tokens[j].startswith('-'):
@@ -1049,6 +1176,16 @@ def producer_lines(seg):
     return [t for t in args if '%' not in t]
 
 
+def producer_texts(seg):
+    """Texts a pipe producer writes: literal echo or printf lines, or the heredoc and here-string bodies of cat."""
+    lines = producer_lines(seg) or []
+    texts = lines + [' '.join(lines)] if lines else []
+    pos = command_position(seg.words) if seg is not None else None
+    if pos is not None and command_base(seg.words[pos]) == 'cat':
+        texts += [body for body, _ in seg.heredocs]
+    return texts
+
+
 def fed_variants(tokens, repl, producer):
     """Argument lists the xargs-run command may get from the piped lines; $STDIN stands for unknown input."""
     lines = producer_lines(producer)
@@ -1076,6 +1213,11 @@ def substitution_scripts(script, depth):
     return texts
 
 
+def carrier_text_matches(text, text_predicate):
+    """True when text handed to a launcher or interpreter spells a blocked command, also as a quoted argv list."""
+    return text_predicate(text) or text_predicate(re.sub(r'["\',\[\]]', ' ', text))
+
+
 def segments_match(segments, predicate, names, text_predicate, depth):
     if depth > MAX_NESTING:
         raise ShellParseError("nesting too deep")
@@ -1094,13 +1236,21 @@ def segments_match(segments, predicate, names, text_predicate, depth):
                         return True
         scripts = list(out.scripts)
         if out.reads_stdin and seg.producer is not None:
-            lines = producer_lines(seg.producer) or []
-            scripts += lines + [' '.join(lines)]
+            scripts += producer_texts(seg.producer)
+        if out.text_stdin and seg.producer is not None and any(
+                EXEC_CALL_RE.search(text) and carrier_text_matches(text, text_predicate)
+                for text in producer_texts(seg.producer)):
+            return True
         scripts += [text for script in scripts for text in substitution_scripts(script, depth)]
         for script in scripts:
             if segments_match(ShellParser(script, depth + 1).parse(), predicate, names, text_predicate, depth + 1):
                 return True
+        for text in out.texts:
+            if carrier_text_matches(text, text_predicate):
+                return True
         for body, quoted in seg.heredocs:
+            if out.text_stdin and EXEC_CALL_RE.search(body) and carrier_text_matches(body, text_predicate):
+                return True
             if shell_stdin:
                 nested = ShellParser(body, depth + 1).parse()
             elif not quoted:
