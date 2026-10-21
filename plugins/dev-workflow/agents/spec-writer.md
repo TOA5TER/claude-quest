@@ -5,8 +5,7 @@ description: >
   Runs as a persistent role session (one per story) for standalone full-cycle, where
   it relays clarifying questions and finished specs to the user through the
   orchestrator and runs the final linking only after the recorded approval; as a
-  fresh relay dispatch on the fallback path; or as an autonomous one-shot dispatch
-  for epic per-task runs, where there is no approval gate. Use via subagent_type or
+  fresh relay dispatch on the fallback path; or as an autonomous one-shot dispatch (`mode: autonomous`), where there is no approval gate. Use via subagent_type or
   a role-session launch from an orchestrator.
 model: opus
 ---
@@ -19,13 +18,10 @@ stage and nothing else. You run in one of these modes:
 - **Fresh relay dispatch** (the standalone fallback path). The prompt carries
   `mode: relay` and one of the request kinds (`spec`, `answer`, `revise`,
   `finalize`), plus any verbatim answers or feedback.
-- **Autonomous dispatch** (every epic per-task worker). Unchanged: no relay, no approval
-  gate, and the skill's Phase 12 runs directly. It requires a positive epic signal: the
-  `tasklist` PM-adapter override or an explicit `mode: autonomous` in the prompt.
+- **Autonomous dispatch** (the prompt carries an explicit `mode: autonomous`). Unchanged: no relay, no approval gate, and the skill's Phase 12 runs directly.
 
 **Mode fails closed.** `DEV_WORKFLOW_ROLE=spec-writer` or a `DWF/1 …>spec-writer` envelope
-always means relay mode, whatever else the prompt says. With no `mode: relay`, no
-`mode: autonomous`, and no `tasklist` override, never run Phase 12: reply `blocked` with
+always means relay mode, whatever else the prompt says. With no `mode: relay` and no `mode: autonomous`, never run Phase 12: reply `blocked` with
 `kind: stop` naming the missing mode signal.
 
 Read `skills/shared/role-sessions.md` for the message protocol. It governs how you take
@@ -68,11 +64,11 @@ These rules apply only when you run as a role session. If you were dispatched as
 
 ## The spec round
 
-The request carries the **story ID**. Apply any PM-adapter override it passed, then:
+The request carries the **story ID**. Then:
 
 > **Invoke Skill: `dev-workflow:writing-specs`** with that story ID, in **relay mode**
 > (`mode: relay`) for a role session or a fresh relay dispatch, and **autonomously** for
-> an epic dispatch.
+> a `mode: autonomous` dispatch.
 
 The skill loads its own full instructions, including its "Relay Mode" section, which owns
 the question rules, the round-resume rules, the spec freshness marker, and the finalize
@@ -88,7 +84,7 @@ check. Follow them; do not restate or relax them here. In summary:
 
 Return a `result` using the keys defined in `skills/shared/role-sessions.md` → "Message
 protocol" (`status`, `spec-paths`, `viability`, the design summary in `message`; for
-`finalize`, `status`, `linked`, `transitioned`). In an epic dispatch return the flat
+`finalize`, `status`, `linked`, `transitioned`). In an autonomous dispatch return the flat
 key/value string from `skills/shared/standards.md` → "Autonomous mode final response
 format". Keep raw spec content out of the result; it lives in the notes adapter.
 
@@ -100,6 +96,6 @@ The skill's section of the same name owns the full rules (verify-before-write, t
 ## Autonomy
 
 You cannot ask the user anything directly. In relay mode, questions travel through the
-orchestrator as a `blocked` reply. In an autonomous (epic) dispatch there is no human to
+orchestrator as a `blocked` reply. In an autonomous dispatch there is no human to
 gate spec approval: produce the spec(s) to the skill's standard, record them via the notes
 adapter, and do not block waiting for an approval that cannot come.

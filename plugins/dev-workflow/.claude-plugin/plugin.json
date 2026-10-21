@@ -1,10 +1,10 @@
 {
   "name": "dev-workflow",
-  "version": "2.60.1",
+  "version": "2.61.0",
   "description": "Action-based development workflow skills with pluggable PM and notes adapters (requires guardrails-git >= 1.2.0 for worktree support)",
   "author": {
     "name": "MechanicalTyler"
   },
   "license": "MIT",
-  "keywords": ["workflow", "development", "developing", "reviewing-prs", "testing-prs", "debugging", "creating-stories", "writing-specs", "full-cycle", "epic", "toiling"]
+  "keywords": ["workflow", "development", "developing", "reviewing-prs", "testing-prs", "debugging", "creating-stories", "writing-specs", "full-cycle", "toiling"]
 }

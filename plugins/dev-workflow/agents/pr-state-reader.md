@@ -5,7 +5,7 @@ description: >
   entry/resume detection, resolving PR numbers linked to a story, and reading
   the authoritative review/test decision (from GitHub, or from the Local Mode
   round notes), the pre-send hand-off check (draft state plus dev-verification
-  evidence), a version-bump read, and the per-repo push read, keeping raw
+  evidence), and the per-repo push read, keeping raw
   PM/GitHub JSON out of the orchestrator context. It reads and returns exactly one line
   — it never edits, branches, or reviews. Use via subagent_type from an
   orchestrator. (Job 1 adds a `local=` line for Local Mode repos.)
@@ -23,8 +23,7 @@ Use the gh command form from `skills/shared/local-mode.md` -> "Local Mode Extens
 
 The dispatching orchestrator tells you which read to perform. The jobs:
 
-**1. Entry / resume detection.** Given a story/task ID, fetch the story (PM adapter / MCP
-or the `tasklist` file when overridden) and read its workflow state, find any linked PRs
+**1. Entry / resume detection.** Given a story ID, fetch the story (PM adapter / MCP) and read its workflow state, find any linked PRs
 (PM adapter's "Finding PRs linked to a story" instructions; fall back to
 a branch-name match: `gh pr list --state all --limit 1000 --json number,url,state,headRefName`, keeping PRs whose head branch contains the delimited story token), and for each linked PR resolve its
 repo/service name from its GitHub owner/repo (matching `repo-discovery.md`'s naming
@@ -57,7 +56,7 @@ convention) and read its `reviewDecision`, whether it is a draft (`isDraft`), an
 
 For a Local Mode or approval-only repo: do not call the reviews API. Given the requested stage (`review` or `test`), read the latest note of that kind (highest N, or the round the dispatcher names) and translate it into the same line: `decision=` from the note's `decision=` (`APPROVED`/`CHANGES_REQUESTED`) and `submitted_at=` from the note file's modification time as ISO 8601 UTC. Apply the head check to this note: when its `head=` differs from the branch tip, return `decision=head-mismatch submitted_at=<ISO>`, a distinct outcome the orchestrator handles. If no note exists, return `decision=none submitted_at=none`.
 
-**3. PR-number resolution.** Given a story/task ID (dispatched right after
+**3. PR-number resolution.** Given a story ID (dispatched right after
 `developing` returns, before the resulting PR is reviewed), find any linked PRs via
 the PM adapter's "Finding PRs linked to a story" instructions, falling back to
 a branch-name match: `gh pr list --state all --limit 1000 --json number,url,state,headRefName`, keeping PRs whose head branch contains the delimited story token. For each linked PR, resolve its
@@ -80,10 +79,6 @@ working directory. For a Local Mode repo (no PR) skip the PR read: `draft=false`
 config, never inferred), or, for a Local Mode repo, that its note carries the exempt gate proof. `not-applicable` is an extension point for a wrapper plugin's own
 pr-state-reader, which may return it for a repo where its rules make evidence impossible
 (for example a repo where bot writes are rejected); the base reader never returns it.
-
-**5. Version-bump read.** Given a PR, read the version-bump file named in `skills/shared/pre-release-pin.md` -> "Cross-Repo In-Flight Dependency" step 1 (for a Claude Code plugin repo, `.claude-plugin/plugin.json`'s `version` field in the PR's diff; the equivalent manifest field for other repo types). Return **one line**:
-
-> `version=<value or none>`
 
 **6. Push read.** Given the repos in scope, return whether each can push, as **one line**:
 

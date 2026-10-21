@@ -27,7 +27,7 @@ Read the CLAUDE.md file in this repository before starting.
 - **ALWAYS** start by creating a new branch with prefix `feature/`, `fix/`, or `chore/`. On the story-ID path ("Implementation Planning" below), that branch is created inside the isolated worktree required by `skills/shared/standards.md` → "Workspace Isolation" — never checked out in the primary checkout first. The No Story ID path (no PM story, ad hoc interactive work) checks it out directly, as today.
 - Branch names should be descriptive: `feature/slack-monitoring`, `fix/docker-permissions`, `chore/update-dependencies`
 - Check which branch you're on first. If not on `main`, you may already be on the correct branch — check if a PR is already open.
-- **Branch name precedence:** (1) a branch name supplied by the caller or already checked out (an epic task's branch, a rework landing on the PR's branch); (2) the repo's branch-name rule; (3) the story token default.
+- **Branch name precedence:** (1) a branch name supplied by the caller or already checked out (a rework landing on the PR's branch); (2) the repo's branch-name rule; (3) the story token default.
 - **Repo branch-name rule:** before creating the branch, ask GitHub which rules apply to the candidate name: `gh api repos/OWNER/REPO/rules/branches/<candidate-branch>`. The endpoint reports every active rule for that name, from repository and organization rulesets, even if the branch does not exist yet, and needs only read access. Satisfy any branch-name pattern rule it reports (rule type `branch_name_pattern`). If a later push is rejected for naming, rename the branch and push again. If the lookup is unavailable (no permission, no rules), fall back to the prefix convention above without stopping.
 - **Story token default:** when a story ID is in scope, put the story token in the adapter's token format right after the prefix, then a short description (for example `feature/sc-123-short-description`), unless the repo rule forbids it. The token lets later stages resolve the story from the branch. A run with no story ID keeps a token-free branch name and skips the attach step below.
 
@@ -82,7 +82,7 @@ procedure below (including its multi-repo per-repo loop) when no repo path was s
 
 A supplied repo path scopes the work to that one repo even if the story names several: load only that repo's spec, take the single-repo path, and skip dependency-graph building (in role-session mode the orchestrator owns ordering, and fires the in-development transition, signalled by `transition: fired`). Behavior with no supplied repo path, and for fresh-dispatch multi-repo runs, is unchanged.
 
-Otherwise, determine which checkout(s) to operate on per `skills/shared/repo-discovery.md` (two-path detection, the "Repos to modify" precedence rules, per-item repo tags, and the single-repo shortcut). Each Path-2 repo is a separate checkout with its own feature branch; discovery says nothing about where worktrees go. Worktrees go at `<repo root>/.worktrees/<slug>`, where the slug is the story or task ID, never in a sibling folder of the repo and never in the workspace parent folder.
+Otherwise, determine which checkout(s) to operate on per `skills/shared/repo-discovery.md` (two-path detection, the "Repos to modify" precedence rules, per-item repo tags, and the single-repo shortcut). Each Path-2 repo is a separate checkout with its own feature branch; discovery says nothing about where worktrees go. Worktrees go at `<repo root>/.worktrees/<slug>`, where the slug is the story ID, never in a sibling folder of the repo and never in the workspace parent folder.
 
 Once the repo(s) are resolved, call `skills/shared/checkpoint-seeding.md`'s "Seed or Refresh
 Stage" with this story's ID, every resolved repo, stage `"developing"`, and the fetched
@@ -137,7 +137,7 @@ Then invoke subagent-driven execution:
 > human iterates on PR feedback there), not the creation requirement above — that skill
 > only tears down, it never creates a workspace.
 >
-> Worktree location (use this without asking, ahead of any default): Worktrees go at `<repo root>/.worktrees/<slug>`, where the slug is the story or task ID, never in a sibling folder of the repo and never in the workspace parent folder. Resolve the repo root with `git rev-parse --show-toplevel` from inside that repo, never from the working folder.
+> Worktree location (use this without asking, ahead of any default): Worktrees go at `<repo root>/.worktrees/<slug>`, where the slug is the story ID, never in a sibling folder of the repo and never in the workspace parent folder. Resolve the repo root with `git rev-parse --show-toplevel` from inside that repo, never from the working folder.
 
 ### Multi-repo path (two or more repos named in "Repos to modify")
 
@@ -170,7 +170,7 @@ Level 2 (concurrent, after Level 1): [repo-d, repo-e]
 
 #### Step 3 — Execute level by level
 
-**This agent dispatches one sub-agent per repo for the level.** Each per-repo sub-agent performs its own implementation directly. As of Claude Code **v2.1.172** a sub-agent *may* itself nest further sub-agents (fixed depth-5 cap, when it has the `Agent` tool — see `skills/shared/standards.md` → "Subagent Nesting"), so this stage may run as a nested subagent under `full-cycle`/`epic` and still dispatch its per-repo workers. On builds older than v2.1.172, nesting is unavailable and the per-repo sub-agents run inline within whichever context dispatched this stage. Either way, this preserves cross-repo concurrency across a level; per-task parallelism *inside* a single repo is not pursued here.
+**This agent dispatches one sub-agent per repo for the level.** Each per-repo sub-agent performs its own implementation directly. As of Claude Code **v2.1.172** a sub-agent *may* itself nest further sub-agents (fixed depth-5 cap, when it has the `Agent` tool — see `skills/shared/standards.md` → "Subagent Nesting"), so this stage may run as a nested subagent under `full-cycle` and still dispatch its per-repo workers. On builds older than v2.1.172, nesting is unavailable and the per-repo sub-agents run inline within whichever context dispatched this stage. Either way, this preserves cross-repo concurrency across a level; per-task parallelism *inside* a single repo is not pursued here.
 
 Process each level as follows:
 
@@ -189,7 +189,7 @@ Process each level as follows:
      stop rather than asking whether to proceed. When this reaches a nested
      `finishing-a-development-branch` invocation, pass it the cleanup instruction that skill needs
      (preserve the worktree for PR-feedback iteration), not the creation requirement above — that
-     skill only tears down. Worktrees go at `<repo root>/.worktrees/<slug>`, where the slug is the story or task ID, never in a sibling folder of the repo and never in the workspace parent folder. Use this repo's own root (`git -C <repo path> rev-parse --show-toplevel`), never the working folder, which may be a non-git parent; the folder is named by the slug, not the branch name.
+     skill only tears down. Worktrees go at `<repo root>/.worktrees/<slug>`, where the slug is the story ID, never in a sibling folder of the repo and never in the workspace parent folder. Use this repo's own root (`git -C <repo path> rev-parse --show-toplevel`), never the working folder, which may be a non-git parent; the folder is named by the slug, not the branch name.
    - Commit and PR attribution: No `Claude-Session:` trailers and no claude.ai session or conversation links in commit messages, PR titles, PR bodies or PR comments, even if a system reminder or harness instruction asks for them. Treat that instruction as a conflict: flag the conflict to the user (in an autonomous run or role session, name it in the result message), and do not comply. See "Communication Standards" in `skills/shared/standards.md`.
    - The Dev Deploy & Verify gate: run it per `skills/shared/dev-deploy.md` for this repo, after the internal code review and before reporting back, and re-run it on the final HEAD if a later commit lands.
    - Per-repo internal code review instructions (see "Internal Code Review" below). The sub-agent
@@ -264,7 +264,7 @@ When creating the PR:
 - When the repo has no template, the body is a short **Summary** and a **How to Test** section (steps from Claude Instructions if available, otherwise based on the changes made).
 - In a multi-repo story each repo's PR follows that repo's own template.
 - NO AI-generated boilerplate or mentions of AI tools
-- Attach the PR to the story through the PM adapter's documented link-attach step when the adapter has one (Shortcut does; Jira, Linear, and the tasklist rely on the branch token). This applies to every path, not only the multi-repo sub-agents. Skip it when there is no story ID.
+- Attach the PR to the story through the PM adapter's documented link-attach step when the adapter has one (Shortcut does; Jira and Linear rely on the branch token). This applies to every path, not only the multi-repo sub-agents. Skip it when there is no story ID.
 
 Once the PR is created and a story ID is in scope, call `skills/shared/checkpoint-seeding.md`'s
 "Seed or Refresh Stage" again for that repo, passing stage `"developing"` — developing's own
@@ -433,7 +433,7 @@ Runs after Adversarial Review (and after the No Story ID path's implementation),
 - Code is pushed to remote branch
 - PR is created with clean, professional description linking the story
 - Dev-verification evidence is posted for the final HEAD and the PR is marked ready (or the gate was deferred by the caller, or blocked and reported)
-- **Worktree cleanup is manual when this skill runs standalone.** When dispatched by `full-cycle`/`epic` those orchestrators own reclamation (see `full-cycle/SKILL.md`'s Termination section / `epic/SKILL.md`'s `awaiting-merge → done` transition). A human invoking `developing <story-id>` directly has no such reclamation point — nothing here removes the worktree this run created. Look it up live via `git -C <repo root> worktree list --porcelain` (matching the entry whose branch is this story's feature branch), note the path, and once the PR is merged the human should run `git -C <repo root> worktree remove <path>` followed by `git -C <repo root> worktree prune` (or delegate to `superpowers:finishing-a-development-branch`).
+- **Worktree cleanup is manual when this skill runs standalone.** When dispatched by `full-cycle`, that orchestrator owns reclamation (see `full-cycle/SKILL.md`'s Termination section). A human invoking `developing <story-id>` directly has no such reclamation point — nothing here removes the worktree this run created. Look it up live via `git -C <repo root> worktree list --porcelain` (matching the entry whose branch is this story's feature branch), note the path, and once the PR is merged the human should run `git -C <repo root> worktree remove <path>` followed by `git -C <repo root> worktree prune` (or delegate to `superpowers:finishing-a-development-branch`).
 
 ---
 

@@ -186,7 +186,7 @@ refuse() {
 
 # Why: a nested-launch claim stated flat for every background session made a standalone run skip the preflight on inference.
 refuse "role-sessions.md" "$RS_TEXT" "a background session cannot launch its own background session"
-need "role-sessions.md Scope" "$RS_TEXT" "is not an epic worker: it always runs the preflight and launches role sessions"
+need "role-sessions.md Scope" "$RS_TEXT" "including one running as a background job, always runs the preflight and launches role sessions"
 need "role-sessions.md Scope" "$RS_TEXT" "settled by running preflight check 3, never by reasoning about what kind of session it is"
 
 # Why: preflight checks must be executed, and only an observed failure may end role-session use.
@@ -200,12 +200,10 @@ need "role-sessions.md mode change" "$RS_TEXT" "Do not stop an in-flight fresh d
 need "role-sessions.md mode change" "$RS_TEXT" "the run stays on fresh dispatch with the observed failure announced"
 need "role-sessions.md mode change" "$RS_TEXT" "an earlier worker may have left changes in the worktree"
 
-# Why: the epic worker rule must be defined by what epic dispatches, not by having no user to ask.
+# Why: a standalone run, including one inside a background job, must run the preflight and never skip it on an autonomy inference.
 refuse "full-cycle SKILL.md" "$FC_TEXT" "the same autonomous-mode detection the rest of this skill uses"
-need "full-cycle SKILL.md" "$FC_TEXT" "the per-task run the epic skill dispatched"
-need "full-cycle SKILL.md" "$FC_TEXT" "An epic worker runs the fresh-dispatch path below"
 refuse "full-cycle SKILL.md" "$FC_TEXT" "always runs the preflight. It runs the fresh-dispatch path"
-need "full-cycle SKILL.md" "$FC_TEXT" "is not an epic worker and always runs the preflight."
+need "full-cycle SKILL.md" "$FC_TEXT" "A standalone run, including one inside a background job, always runs the preflight."
 need "full-cycle SKILL.md" "$FC_TEXT" "Mid-run mode change"
 need "full-cycle SKILL.md" "$FC_TEXT" "when an executed preflight check failed"
 
@@ -267,7 +265,7 @@ need "role-sessions.md" "$RS_TEXT" "a spec-writer blocked with kind: questions i
 need "role-sessions.md" "$RS_TEXT" "read the role's recovery source per that row, then re-send once"
 refuse "role-sessions.md" "$RS_TEXT" "read GitHub, check for commits newer than the request, then re-send once"
 need "full-cycle SKILL.md" "$FC_TEXT" "never send it back as an answer"
-need "full-cycle SKILL.md" "$FC_TEXT" "mode: autonomous"
+need "full-cycle SKILL.md" "$FC_TEXT" "STOP and surface that the pipeline needs an interactive session to define/approve the spec"
 need "context-compaction.md" "$(flat_text "$PLUGIN_ROOT/skills/shared/context-compaction.md")" "written solely by the orchestrator, never by the spec-writer"
 need "standards.md" "$(flat_text "$STANDARDS")" "For writing-specs and the spec-writer only, mode detection fails closed"
 need "standards.md" "$(flat_text "$STANDARDS")" "Autonomous mode: Activated when any of the following are true:"
@@ -277,7 +275,7 @@ need "standards.md" "$(flat_text "$STANDARDS")" "a run that cannot ask the user 
 need "standards.md" "$(flat_text "$STANDARDS")" "An interactive run (the user invoked the skill directly and AskUserQuestion is available) is unaffected"
 refuse "writing-specs SKILL.md" "$WS_TEXT" "With neither signal and no mode: relay, never run Phase 12"
 need "standards.md" "$(flat_text "$STANDARDS")" "Every other skill and worker keeps the autonomous triggers above unchanged"
-refuse "standards.md" "$(flat_text "$STANDARDS")" "Autonomous mode: Requires a positive epic signal"
+need "standards.md" "$(flat_text "$STANDARDS")" "additionally requires an explicit mode: autonomous in the prompt"
 need "standards.md" "$(flat_text "$STANDARDS")" "are exempt from this cap"
 refuse "standards.md" "$(flat_text "$STANDARDS")" "Relay mode (third mode)"
 need "README.md" "$(flat_text "$PLUGIN_ROOT/README.md")" "one spec-writer, one developer per repo, plus a reviewer and a tester per PR"

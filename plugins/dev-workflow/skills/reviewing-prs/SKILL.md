@@ -140,7 +140,7 @@ Read `skills/shared/dev-deploy.md` — it owns the evidence format, the validati
 
 ### Mandatory Dev Build CI Gate
 
-> **NON-SKIPPABLE — DEV BUILD CI.** Every review — including reviews dispatched autonomously by `epic` or `full-cycle` — MUST satisfy the dev build CI gate on the PR's current HEAD and reach a terminal CI state before any code review begins. The gate is satisfied by exactly one of two paths:
+> **NON-SKIPPABLE — DEV BUILD CI.** Every review — including reviews dispatched autonomously by `full-cycle` — MUST satisfy the dev build CI gate on the PR's current HEAD and reach a terminal CI state before any code review begins. The gate is satisfied by exactly one of two paths:
 >
 > - **(a) Reuse the validated developer deploy run.** When the Developer Evidence Gate returned `valid` and the coverage check in `skills/shared/dev-deploy.md` passes (every job of the dev build CI workflow has a successful counterpart in the deploy run, and the PR's diff does not touch the build or deploy workflow files or the local reusable workflows they call), read that run's build, plan, and apply logs as the CI evidence instead of triggering a new run.
 > - **(b) Fresh dev build CI.** Otherwise trigger a new dev build CI run against the PR branch's latest commit and wait for it, as below. Do not reuse, point at, or "count" any other pre-existing run — only the validated developer deploy run under (a) may be reused.

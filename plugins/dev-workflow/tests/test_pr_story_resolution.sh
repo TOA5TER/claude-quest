@@ -68,7 +68,6 @@ TREE_PHRASES=(
   "no sc- id"
   "carries no sc-"
   "sc-xxxxx in every pr"
-  "epic prs have none"
 )
 
 ADAPTER_ONLY_PHRASES=(
@@ -107,7 +106,7 @@ for skill in "$DEVELOPING" "$DEBUGGING"; do
 done
 
 has "$(whole "$ADAPTERS/interface.md")" "resolve story from pr" || fail "interface.md: Resolve story from PR capability missing"
-for adapter in shortcut jira linear github-issues tasklist; do
+for adapter in shortcut jira linear github-issues; do
   has "$(whole "$ADAPTERS/$adapter.md")" "resolving the story from a pr" || fail "$adapter.md: no Resolving the story from a PR section"
 done
 
@@ -130,7 +129,7 @@ has "$SHORTCUT_TEXT" "treat the story type as unknown and never assert it" || fa
 has "$(whole "$PLUGIN_ROOT/skills/writing-specs/spec-template.html")" "feature | bug | chore | unknown" || fail "spec-template.html: story type placeholder does not allow unknown"
 
 PLUGIN_VERSION="$(jq -r '.version' "$PLUGIN_ROOT/.claude-plugin/plugin.json")"
-[ "$PLUGIN_VERSION" = "2.60.1" ] || fail "plugin version $PLUGIN_VERSION is not 2.60.1"
+[ "$PLUGIN_VERSION" = "2.61.0" ] || fail "plugin version $PLUGIN_VERSION is not 2.61.0"
 
 if [ "$FAILURES" -eq 0 ]; then
   echo "PASS"

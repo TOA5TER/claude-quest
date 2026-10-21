@@ -156,7 +156,7 @@ repo: at `verify` while the PR is still a draft (row 4), at `reviewing-prs` once
 developer's gate has marked it ready, not `developing`.
 
 **Self-seeding.** Every stage skill also writes/refreshes this same checkpoint at its own
-stage boundary, independent of whether `full-cycle`/`epic` is driving the pipeline — see
+stage boundary, independent of whether `full-cycle` is driving the pipeline — see
 "Write points" above for what full-cycle's own writes still cover; every other stage
 boundary's `stage` value is written solely by that stage's own self-seed, per
 `checkpoint-seeding.md`'s "Seed or Refresh Stage" procedure. Most stages call it once, at

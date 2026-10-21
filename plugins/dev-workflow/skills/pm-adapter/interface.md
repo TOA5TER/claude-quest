@@ -18,7 +18,7 @@ Read `~/.claude/dev-workflow/config.json`. The `pm_adapter` field names which ad
 1. The tool's own link lookup, where one exists (for example a story found by the PR URL attached to it).
 2. A story token in the head branch name, using the adapter's token format. A token matches only as a delimited unit: preceded by the start of the name or a non-alphanumeric character, and followed by a non-digit or the end of the name, so `sc-12` never matches `sc-123`.
 
-A branch name supplied by the caller (an epic task's branch, or a branch already checked out) always wins over the token default. Adapters that have no link lookup rely on the branch token alone.
+A branch name supplied by the caller (for example a branch already checked out) always wins over the token default. Adapters that have no link lookup rely on the branch token alone.
 
 **5. Create story** — given a story draft (title, description, story_type, reposToModify, reposToReference, acceptanceCriteria, testingInstructions, originalRequest), create a new story in the PM tool and return its ID and URL. `reposToModify` is a list of strings (one per repo/service). Adapters must follow the Multi-repo story contract below. This operation may only be executed under the Story Creation Gate in `skills/shared/standards.md` — adapters must not present Create Story as an available operation outside that gate.
 
