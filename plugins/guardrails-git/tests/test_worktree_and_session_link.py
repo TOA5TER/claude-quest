@@ -584,3 +584,22 @@ def test_deep_nesting_stays_bounded_and_blocks():
     nested = "echo " + "$(echo " * 12 + BAD_WORKTREE + ")" * 12
     assert hook_decision_within(deep, 10) == "block"
     assert hook_decision_within(nested, 10) == "block"
+
+
+# Why: runuser -u USER runs the command directly, so it must resolve like any other prefix.
+def test_runuser_direct_command_forms():
+    assert_all_blocked([
+        "runuser -u bob -- git worktree add ../x",
+        "runuser -u bob git worktree add ../x",
+        "sudo runuser -u bob -- git worktree add ../x",
+        "timeout 5 runuser -u bob -- git worktree add ../x",
+        "runuser -u bob -g staff -- git worktree add ../x",
+        "runuser --user=bob -- git worktree add ../x",
+        "runuser -ubob -- git worktree add ../x",
+        f'runuser -u bob -- git commit -m "x {LINK_URL}"',
+    ])
+    assert_all_allowed([
+        "runuser -u bob -- git worktree add .worktrees/x",
+        "runuser -u bob -- git status",
+        "runuser -u bob -- echo git worktree add ../x",
+    ])

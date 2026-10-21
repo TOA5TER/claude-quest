@@ -507,6 +507,8 @@ SSH_VALUE_OPTIONS = ('-b', '-c', '-D', '-E', '-e', '-F', '-I', '-i', '-J', '-L',
                      '-R', '-S', '-W', '-w')
 FIND_EXEC_FLAGS = ('-exec', '-execdir', '-ok', '-okdir')
 USER_SWITCH_NAMES = ('su', 'runuser')
+RUNUSER_VALUE_OPTIONS = ('-u', '--user', '-g', '--group', '-G', '--supp-group', '-s', '--shell', '-w',
+                         '--whitelist-environment', '-c', '--command')
 DATA_COMMANDS = ('echo', 'printf', 'grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack', 'cat', 'sed', 'awk', 'gawk', 'head',
                  'tail', 'wc', 'sort', 'uniq', 'tee', 'less', 'more', 'man', 'which', 'type', 'ls', 'cut', 'tr',
                  'diff', 'cmp', 'test', '[', 'python', 'python3', 'node', 'ruby', 'perl', 'jq', 'yq', 'touch',
@@ -917,10 +919,28 @@ def skip_prefix_options(tokens, k, out):
     return (j if j < count else None), repl
 
 
-def resolve_command(tokens, k, out, names, depth=0, fed=None):
-    """Follows the command word at tokens[k] through prefixes, shells, ssh and find -exec to the commands it runs.
+def resolve_runuser_command(tokens, k, out, names, depth):
+    j = k + 1
+    direct = False
+    while j < len(tokens):
+        tok = tokens[j]
+        if tok == '--':
+            j += 1
+            break
+        if tok in RUNUSER_VALUE_OPTIONS:
+            direct = direct or tok in ('-u', '--user')
+            j += 2
+        elif tok.startswith('-') and len(tok) > 1:
+            direct = direct or tok.startswith('--user=') or (tok.startswith('-u') and not tok.startswith('--'))
+            j += 1
+        else:
+            break
+    if direct:
+        resolve_command(tokens, j, out, names, depth + 1)
 
-    `fed` is None, or the xargs placeholder ('' when none) when stdin supplies extra arguments."""
+
+def resolve_command(tokens, k, out, names, depth=0, fed=None):
+    """Follows the command word at tokens[k] through prefixes, shells, ssh and find -exec; `fed` is the xargs placeholder when stdin adds arguments."""
     if k is None or k >= len(tokens):
         return
     if depth > MAX_NESTING:
@@ -943,6 +963,8 @@ def resolve_command(tokens, k, out, names, depth=0, fed=None):
         for j in range(k + 1, count - 1):
             if tokens[j] == '--command' or SHELL_C_FLAG_RE.match(tokens[j]):
                 out.scripts.append(tokens[j + 1])
+        if base == 'runuser':
+            resolve_runuser_command(tokens, k, out, names, depth)
     elif base == 'ssh':
         j = k + 1
         while j < count and tokens[j].startswith('-'):
