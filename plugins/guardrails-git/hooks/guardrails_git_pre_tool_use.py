@@ -583,7 +583,7 @@ class ShellParser:
             c = text[self.i]
             if c == '\\':
                 self.i += 2
-            elif c == '$' and text.startswith('$(', self.i):
+            elif text.startswith(('$(', '<(', '>('), self.i):
                 self.read_substitution()
             elif c == '`':
                 self.read_backtick()
@@ -626,6 +626,8 @@ class ShellParser:
                 flush()
                 if closer == ')':
                     return
+            elif text.startswith(('<(', '>('), self.i):
+                seg.words.append(self.read_substitution())
             elif text.startswith('<<<', self.i):
                 self.i += 3
                 while self.i < self.n and text[self.i] in ' \t':
@@ -923,14 +925,17 @@ def skip_prefix_options(tokens, k, out):
                     repl = '{}'
                 elif token.startswith('-i') and len(token) > 2 and not token.startswith('--'):
                     repl = token[2:]
-            j += 2 if token in value_options else 1
+            cluster_value = (base in ASSIGNMENT_PREFIXES and len(token) > 2 and token[1] != '-'
+                             and '-' + token[-1] in value_options)
+            j += 2 if token in value_options or cluster_value else 1
         else:
             break
     j += positionals
     return (j if j < count else None), repl
 
 
-def resolve_runuser_command(tokens, k, out, names, depth):
+def runuser_command_index(tokens, k):
+    """Index of the command `runuser -u USER` runs, or None when it uses the user-then-arguments form."""
     j = k + 1
     direct = False
     while j < len(tokens):
@@ -946,8 +951,7 @@ def resolve_runuser_command(tokens, k, out, names, depth):
             j += 1
         else:
             break
-    if direct:
-        resolve_command(tokens, j, out, names, depth + 1)
+    return j if direct else None
 
 
 def resolve_command(tokens, k, out, names, depth=0, fed=None):
@@ -971,12 +975,19 @@ def resolve_command(tokens, k, out, names, depth=0, fed=None):
             out.scripts.append(tokens[j])
         else:
             out.reads_stdin = True
+            out.scripts.extend(tok for tok in tokens[j:] if tok.startswith('<('))
+    elif base in ('source', '.'):
+        out.scripts.extend(tok for tok in tokens[k + 1:] if tok.startswith('<('))
+    elif base in ('at', 'batch'):
+        out.reads_stdin = True
     elif base in USER_SWITCH_NAMES:
-        for j in range(k + 1, count - 1):
+        command_at = runuser_command_index(tokens, k) if base == 'runuser' else None
+        scan_end = count if command_at is None else command_at
+        for j in range(k + 1, scan_end - 1):
             if tokens[j] == '--command' or SHELL_C_FLAG_RE.match(tokens[j]):
                 out.scripts.append(tokens[j + 1])
-        if base == 'runuser':
-            resolve_runuser_command(tokens, k, out, names, depth)
+        if command_at is not None:
+            resolve_command(tokens, command_at, out, names, depth + 1)
     elif base == 'ssh':
         j = k + 1
         while j < count and tokens[j].startswith('-'):
@@ -994,7 +1005,8 @@ def resolve_command(tokens, k, out, names, depth=0, fed=None):
     elif base in PREFIX_SPECS:
         nxt, repl = skip_prefix_options(tokens, k, out)
         if nxt is not None and (base == 'watch' or (base == 'sudo' and any(
-                tok in ('-s', '--shell', '-i', '--login') for tok in tokens[k + 1:nxt]))):
+                tok in ('--shell', '--login') or (tok[:1] == '-' and tok[1:2] != '-' and set(tok[1:]) & set('is'))
+                for tok in tokens[k + 1:nxt]))):
             out.scripts.append(' '.join(tokens[nxt:]))
         if base == 'xargs':
             fed = repl or ''
@@ -1050,6 +1062,18 @@ def fed_variants(tokens, repl, producer):
     return variants
 
 
+def substitution_scripts(script, depth):
+    """Texts that echo or printf substitutions inside `script` hand to the command that consumes them."""
+    if not any(mark in script for mark in ('$(', '`', '<(', '>(')):
+        return []
+    texts = []
+    for seg in ShellParser(script, depth + 1).scan_substitutions():
+        lines = producer_lines(seg)
+        if lines:
+            texts += lines + [' '.join(lines)]
+    return texts
+
+
 def segments_match(segments, predicate, names, text_predicate, depth):
     if depth > MAX_NESTING:
         raise ShellParseError("nesting too deep")
@@ -1070,6 +1094,7 @@ def segments_match(segments, predicate, names, text_predicate, depth):
         if out.reads_stdin and seg.producer is not None:
             lines = producer_lines(seg.producer) or []
             scripts += lines + [' '.join(lines)]
+        scripts += [text for script in scripts for text in substitution_scripts(script, depth)]
         for script in scripts:
             if segments_match(ShellParser(script, depth + 1).parse(), predicate, names, text_predicate, depth + 1):
                 return True

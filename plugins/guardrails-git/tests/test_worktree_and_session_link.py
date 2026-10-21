@@ -656,6 +656,70 @@ def test_xargs_replace_forms():
     ])
 
 
+SUBSTITUTED_SCRIPT_FORMS = [
+    'bash -c "$(echo {})"',
+    "bash -c \"$(printf '%s' '{}')\"",
+    'bash -c "`echo {}`"',
+    'sh -c "$(echo {}; echo hi)"',
+    'timeout 5 bash -o pipefail -c "$(echo {})"',
+    'eval "$(echo {})"',
+    'ssh host "$(echo {})"',
+    'bash <(echo "{}")',
+    'source <(echo "{}")',
+    '. <(echo "{}")',
+    'timeout 5 bash <(printf "%s" "{}")',
+    'at now <<< "{}"',
+    'echo "{}" | at now',
+]
+
+
+# Why: a substitution that echoes a command into a -c script, process substitution or at runs that command.
+def test_echoed_substitutions_that_become_scripts():
+    assert_all_blocked([form.format(BAD_WORKTREE) for form in SUBSTITUTED_SCRIPT_FORMS])
+    assert_all_blocked([form.format(f"git commit -m {LINK_URL}") for form in SUBSTITUTED_SCRIPT_FORMS])
+    assert_all_allowed([
+        'bash -c "$(echo git worktree add .worktrees/x)"',
+        'bash <(echo "git status")',
+        'source <(echo "git worktree add .worktrees/x")',
+        'at now <<< "git status"',
+        'diff <(git show a:f) <(git show b:f)',
+        'cat <(echo "git worktree add ../x")',
+        'bash -c "echo hi"',
+    ])
+
+
+# Why: -i/-s inside an option cluster (-iu bob) still hands the trailing words to a shell.
+def test_sudo_option_clusters():
+    assert_all_blocked([
+        "sudo -iu bob 'git worktree add ../x'",
+        "sudo -su bob 'git worktree add ../x'",
+        "sudo -Eiu bob 'git worktree add ../x'",
+        "sudo -u bob -i 'git worktree add ../x'",
+        "sudo -iu bob -- git worktree add ../x",
+        "sudo -u bob git worktree add ../x",
+    ])
+    assert_all_allowed([
+        "sudo -iu bob 'git worktree add .worktrees/x'",
+        "sudo -iu bob 'git status'",
+        "sudo -u bob git status",
+    ])
+
+
+# Why: runuser -c flags after the command word belong to that command, not to runuser.
+def test_runuser_command_flags_are_not_runuser_options():
+    assert_all_allowed([
+        'runuser -u bob -- grep -c "git worktree add ../x" f',
+        'runuser -u bob -- grep -c "git commit -m x" f',
+        'runuser -u bob grep -c "git worktree add ../x" f',
+    ])
+    assert_all_blocked([
+        'runuser -u bob -c "git worktree add ../x"',
+        'runuser -c "git worktree add ../x" -u bob',
+        'runuser bob -c "git worktree add ../x"',
+        'su bob -c "git worktree add ../x"',
+    ])
+
+
 # Why: runuser -u USER runs the command directly, so it must resolve like any other prefix.
 def test_runuser_direct_command_forms():
     assert_all_blocked([
