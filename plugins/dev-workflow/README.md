@@ -50,6 +50,11 @@ Create `~/.claude/dev-workflow/config.json`:
   "deploy_command": "Run the dev CI workflow in GitHub Actions",
   "ci_gate_exempt_repos": [],
   "deploy_gate_exempt_repos": [],
+  "story_states": {
+    "in_development": "In Development",
+    "after_test_approval": "Ready for Release"
+  },
+  "reviewer_login": "your-reviewer-login",
   "models": {
     "implementation": "sonnet",
     "reasoning": "opus",
@@ -122,6 +127,20 @@ $ jq '.ci_gate_exempt_repos' ~/.claude/dev-workflow/config.json
 ```
 
 A missing verification line invalidates the exemption claim and is treated as a gate failure (`REQUEST_CHANGES`), not a pass.
+
+### Story States
+
+Three optional keys in `~/.claude/dev-workflow/config.json` control story transitions:
+
+| Key | Default | Effect |
+|-----|---------|--------|
+| `story_states.in_development` | `"In Development"` | The state `developing` (and `toiling`) moves a story to before planning, once per run, single-repo and multi-repo alike. Skipped when the request carries `transition: fired` or the story is already in that state. |
+| `story_states.after_test_approval` | unset | The state `testing-prs` moves the story to after it submits `APPROVE`. Unset means no post-test transition. |
+| `reviewer_login` | unset | The reviewer's GitHub login, used only by the post-test transition. |
+
+The post-test transition fires only when the reviewer's latest `APPROVED` or `CHANGES_REQUESTED` review (by `submitted_at`) is `APPROVED`. Reviews whose body starts with `## Test Report` are never the reviewer's. The reviewer's reviews are those by `reviewer_login` when it is set and that login has at least one such review on the PR; otherwise (unset, or set but absent from the PR, as on a repo where a person reviews) they are all remaining reviews, so a shared reviewer/tester login still works. The PR-level `reviewDecision` is never used. Otherwise the story is left unchanged pending review approval.
+
+The tasklist adapter ignores these keys; its stage-to-status mapping governs.
 
 ### Developer dev verification
 

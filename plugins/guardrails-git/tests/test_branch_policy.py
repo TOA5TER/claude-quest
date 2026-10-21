@@ -129,17 +129,17 @@ def test_checkout_main_blocked(command, monkeypatch, capsys):
 
 
 ALLOWED_WORKTREE = mirror_git_frontends([
-    "git worktree add --detach ../wt",
-    "git worktree add --detach ../wt main",
-    "git worktree add ../wt",
-    "git worktree add ../wt -b feature/new",
-    "git worktree add -b feature/new ../wt",
-    "git worktree add -b feature/new ../wt main",
+    "git worktree add --detach .worktrees/wt",
+    "git worktree add --detach .worktrees/wt main",
+    "git worktree add .worktrees/wt",
+    "git worktree add .worktrees/wt -b feature/new",
+    "git worktree add -b feature/new .worktrees/wt",
+    "git worktree add -b feature/new .worktrees/wt main",
     "git worktree list",
-    "git worktree remove ../wt",
+    "git worktree remove .worktrees/wt",
     "git worktree prune",
-    "git worktree move ../wt ../wt2",
-    "git worktree lock ../wt",
+    "git worktree move .worktrees/wt .worktrees/wt2",
+    "git worktree lock .worktrees/wt",
     "git worktree",
 ])
 
@@ -157,8 +157,8 @@ def test_worktree_commands_always_allowed(command, monkeypatch, capsys):
 
 
 BLOCKED_WORKTREE_ADD_EXISTING_MAIN = mirror_git_frontends([
-    "git worktree add ../wt main",
-    "git worktree add -f ../wt main",
+    "git worktree add .worktrees/wt main",
+    "git worktree add -f .worktrees/wt main",
 ])
 
 

@@ -21,7 +21,20 @@ Compact the conversation before continuing — you are about to iterate on exist
 
 ## Step 1: Identify the PR
 
-If no PR number is provided in context:
+If the argument is a PM story ID rather than a PR number:
+
+1. Read `~/.claude/dev-workflow/config.json` for `pm_adapter`, load the adapter per `skills/shared/adapter-loading.md`, and fetch the story through the adapter.
+2. Find the story's PR with the adapter's story-to-PR link lookup (for example a PR URL attached to the story).
+3. When the link lookup finds none (any adapter), fall back to:
+
+   ```bash
+   gh pr list --state all --limit 1000 --json number,headRefName
+   ```
+
+   Keep the PRs whose `headRefName` contains the story token as a delimited unit: preceded by the start of the name or a non-alphanumeric character, and followed by a non-digit or the end of the name, so `sc-12` never matches `sc-123`.
+4. One match is the PR to use. No match: report that no PR was found for the story and stop.
+
+If no PR number or story ID is provided in context:
 
 ```bash
 gh pr status --json currentBranch

@@ -65,6 +65,7 @@ If you have a story ID:
 
 1. Read `~/.claude/dev-workflow/config.json` to determine `pm_adapter` and `notes_adapter`
 2. Load PM adapter per procedure in `skills/shared/adapter-loading.md` → fetch story via PM adapter instructions
+   - **In-development transition.** When a story ID is provided and the request's first body line is not `transition: fired`, move the story to the state named by `story_states.in_development` in `~/.claude/dev-workflow/config.json` (default "In Development") through the PM adapter's Update Story operation, exactly once per run, single-repo and multi-repo alike, before planning. Skip it when the story is already in that state. A first body line of `transition: fired` means the orchestrator already moved the story: do not fire it.
 3. Load notes adapter per procedure in `skills/shared/adapter-loading.md`
 4. Read the **"Repos to modify"** field from the story (a comma-joined list of repo/service names), then load the Claude Instructions spec(s) via the notes adapter:
    - **Single repo (or field absent):** follow today's single-repo flow unchanged — load one spec and continue as before.
@@ -79,7 +80,7 @@ as the resolved single repo root and skip re-running `skills/shared/repo-discove
 two-path detection — the orchestrator already resolved it. Only fall back to running the full
 procedure below (including its multi-repo per-repo loop) when no repo path was supplied.
 
-A supplied repo path scopes the work to that one repo even if the story names several: load only that repo's spec, take the single-repo path, and skip dependency-graph building and the multi-repo "In Development" transition (in role-session mode the orchestrator owns ordering and the transition). Behavior with no supplied repo path, and for fresh-dispatch multi-repo runs, is unchanged.
+A supplied repo path scopes the work to that one repo even if the story names several: load only that repo's spec, take the single-repo path, and skip dependency-graph building (in role-session mode the orchestrator owns ordering, and fires the in-development transition, signalled by `transition: fired`). Behavior with no supplied repo path, and for fresh-dispatch multi-repo runs, is unchanged.
 
 Otherwise, determine which checkout(s) to operate on per `skills/shared/repo-discovery.md` (two-path detection, the "Repos to modify" precedence rules, per-item repo tags, and the single-repo shortcut). Each Path-2 repo is a separate checkout with its own feature branch; discovery says nothing about where worktrees go. Worktrees go at `<repo root>/.worktrees/<slug>`, where the slug is the story or task ID, never in a sibling folder of the repo and never in the workspace parent folder.
 
@@ -140,9 +141,9 @@ Then invoke subagent-driven execution:
 
 ### Multi-repo path (two or more repos named in "Repos to modify")
 
-Move the story to **"In Development" exactly once** — at the start of the entire run, before any per-repo work begins. Do NOT repeat this transition per repo.
+The story was already moved to the in-development state by the "PM Context" step above, once for the entire run. Do NOT repeat this transition per repo.
 
-**State ownership:** developing owns the "In Development" transition, except in role-session mode, where the orchestrator fires it; writing-specs owns "Ready for Dev". Each skill fires only its own transition — never the other's.
+**State ownership:** developing owns the in-development transition (the state set by `story_states.in_development`, default "In Development"), except when the request carries `transition: fired`, where the orchestrator has already fired it; writing-specs owns "Ready for Dev". Each skill fires only its own transition — never the other's.
 
 #### Step 1 — Infer the cross-repo dependency graph
 
@@ -364,21 +365,21 @@ Look for any workflow whose name contains "terraform" (case-insensitive).
        gh pr view --json body -q .body
        ```
 
-    2. Write the combined body (existing content + the Terraform Plan section) to `.scratch/pr-body-updated.txt` using the Write tool.
+    2. Write the combined body (existing content + the Terraform Plan section) to `./.scratch/tmp/pr-body-updated.txt` using the Write tool.
 
     3. Update the PR description:
 
        ```bash
-       gh-as-app.sh developer pr edit --body-file .scratch/pr-body-updated.txt
+       gh-as-app.sh developer api repos/{owner}/{repo}/pulls/{PR_NUMBER} -X PATCH -F body=@./.scratch/tmp/pr-body-updated.txt
        ```
 
     4. Delete the scratch file:
 
        ```bash
-       rm .scratch/pr-body-updated.txt
+       rm ./.scratch/tmp/pr-body-updated.txt
        ```
 
-    If no PR exists yet, save the plan output to `.scratch/terraform-plan.txt` — you will include it in the PR description when you create the PR.
+    If no PR exists yet, save the plan output to `./.scratch/tmp/terraform-plan.txt` — you will include it in the PR description when you create the PR.
 
   Then continue to the verification skill below.
 
