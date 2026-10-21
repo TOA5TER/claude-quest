@@ -523,6 +523,8 @@ PARALLEL_VALUE_OPTIONS = ('-j', '--jobs', '-S', '--sshlogin', '-a', '--arg-file'
                           '--load', '--memfree', '-E', '--eof', '--basefile', '--wd', '--workdir', '--sshloginfile',
                           '--slf', '--limit', '--rpl', '--plus')
 PARALLEL_PLACEHOLDERS = ('{/.}', '{//}', '{/}', '{.}', '{#}', '{}')
+PARALLEL_POSITIONAL_RE = re.compile(r'\{-?[0-9]+(?:/|//|\.|/\.)?\}')
+PARALLEL_FILE_INPUT_OPTIONS = ('-a', '--arg-file', '--arg-file-sep')
 TMUX_COMMAND_NAMES = ('new-session', 'new', 'new-window', 'neww', 'split-window', 'splitw', 'run-shell', 'run', 'send-keys',
                       'send', 'respawn-pane', 'respawnp', 'respawn-window', 'respawnw', 'if-shell', 'if', 'display-popup',
                       'popup', 'pipe-pane', 'pipep', 'set-hook', 'bind-key', 'bind', 'confirm-before', 'confirm',
@@ -985,7 +987,7 @@ def parallel_substitute(token, value, replace):
     }
     for mark in PARALLEL_PLACEHOLDERS + ((replace,) if replace else ()):
         token = token.replace(mark, forms.get(mark, value))
-    return token
+    return PARALLEL_POSITIONAL_RE.sub(lambda match: value, token)
 
 
 def resolve_parallel(tokens, k, out, names, depth):
@@ -1010,16 +1012,23 @@ def resolve_parallel(tokens, k, out, names, depth):
     out.texts.extend(tok for tok in template if re.search(r'\s', tok))
     inputs = []
     marker = None
+    file_inputs = any(tok in PARALLEL_FILE_INPUT_OPTIONS for tok in tokens[k + 1:j])
     for tok in tokens[end:]:
         if tok in PARALLEL_INPUT_MARKERS:
             marker = tok
+            file_inputs = file_inputs or tok in ('::::', '::::+')
         elif marker in (':::', ':::+'):
             inputs.append(tok)
     inputs = inputs[:TEXT_TOKEN_LIMIT]
-    placeholder = any(mark in tok for tok in template for mark in PARALLEL_PLACEHOLDERS + ((replace,) if replace else ()))
+    placeholder = any(
+        mark in tok or PARALLEL_POSITIONAL_RE.search(tok)
+        for tok in template for mark in PARALLEL_PLACEHOLDERS + ((replace,) if replace else ()))
+    unknown_fed = None if '--pipe' in tokens[k + 1:j] or '--pipepart' in tokens[k + 1:j] else (
+        (replace or '{}') if placeholder else '')
     if end < count:
         if not template:
             out.scripts.extend(inputs)
+            out.reads_stdin = out.reads_stdin or file_inputs
             return
         for value in inputs:
             if placeholder:
@@ -1029,10 +1038,10 @@ def resolve_parallel(tokens, k, out, names, depth):
             if template[0].startswith(PARALLEL_PLACEHOLDERS):
                 out.scripts.append(' '.join(words))
             resolve_command(tokens[:j] + words, j, out, names, depth + 1)
-        if not inputs:
-            resolve_command(tokens[:end], j, out, names, depth + 1)
+        if not inputs or file_inputs:
+            resolve_command(tokens[:end], j, out, names, depth + 1, unknown_fed if file_inputs else None)
     elif template:
-        resolve_command(tokens, j, out, names, depth + 1, (replace or '{}') if placeholder else '')
+        resolve_command(tokens, j, out, names, depth + 1, unknown_fed)
     else:
         out.reads_stdin = True
 
