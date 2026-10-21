@@ -509,6 +509,19 @@ SSH_VALUE_OPTIONS = ('-b', '-c', '-D', '-E', '-e', '-F', '-I', '-i', '-J', '-L',
 FIND_EXEC_FLAGS = ('-exec', '-execdir', '-ok', '-okdir')
 USER_SWITCH_NAMES = ('su', 'runuser')
 COMMAND_STRING_NAMES = ('sg', 'script', 'flock')
+INTERPRETER_RE = re.compile(r'(?:python|pypy|perl|ruby|node|nodejs|php|lua|luajit|expect|osascript|tclsh|deno|bun)[0-9.\-]*$')
+AWK_RE = re.compile(r'[gm]?awk$')
+INTERPRETER_CODE_FLAG_RE = re.compile(r'-[A-Za-z]*[ceErp][A-Za-z]*$|--(?:eval|print)$')
+EXEC_CALL_RE = re.compile(
+    r'system|popen|exec|spawn|\bcall\b|\brun\b|Popen|check_(?:call|output)|getoutput|getstatusoutput|eval\b|shell_exec|'
+    r'passthru|proc_open|child_process|\bqx\b|`|getline|\bshell\b')
+PARALLEL_NAMES = ('parallel', 'sem')
+PARALLEL_INPUT_MARKERS = (':::', '::::', ':::+', '::::+')
+TMUX_COMMAND_NAMES = ('new-session', 'new', 'new-window', 'neww', 'split-window', 'splitw', 'run-shell', 'run', 'send-keys',
+                      'send', 'respawn-pane', 'respawnp', 'respawn-window', 'respawnw', 'if-shell', 'if', 'display-popup',
+                      'popup', 'pipe-pane', 'pipep', 'set-hook', 'bind-key', 'bind', 'confirm-before', 'confirm',
+                      'command-prompt', 'source-file', 'source')
+GIT_EXEC_SUBCOMMANDS = ('rebase', 'submodule', 'bisect', 'filter-branch')
 RUNUSER_VALUE_OPTIONS = ('-u', '--user', '-g', '--group', '-G', '--supp-group', '-s', '--shell', '-w',
                          '--whitelist-environment', '-c', '--command')
 DATA_COMMANDS = ('echo', 'printf', 'grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack', 'cat', 'sed', 'awk', 'gawk', 'head',
@@ -891,6 +904,8 @@ class Resolved:
         self.commands = []
         self.scripts = []
         self.reads_stdin = False
+        self.texts = []
+        self.text_stdin = False
 
 
 def skip_prefix_options(tokens, k, out):
@@ -966,6 +981,9 @@ def resolve_command(tokens, k, out, names, depth=0, fed=None):
         out.scripts += [' '.join([text] + tokens[k + 1:]) for text in substitution_scripts(tokens[k], depth)]
     if base in WRAPPER_NAMES:
         out.commands.append((tokens, k, fed))
+        rest = tokens[k + 1:]
+        if any(tok in GIT_EXEC_SUBCOMMANDS or tok.startswith(('alias.', '--exec')) for tok in rest):
+            out.texts.append(' '.join(rest))
     elif base == 'eval':
         out.scripts.append(' '.join(tokens[k + 1:]))
     elif base in SHELL_NAMES:
@@ -990,6 +1008,30 @@ def resolve_command(tokens, k, out, names, depth=0, fed=None):
                 out.scripts.append(tokens[j + 1])
         if command_at is not None:
             resolve_command(tokens, command_at, out, names, depth + 1)
+    elif base in PARALLEL_NAMES:
+        rest = tokens[k + 1:]
+        end = next((i for i, tok in enumerate(rest) if tok in PARALLEL_INPUT_MARKERS), len(rest))
+        out.texts.append(' '.join(rest[:end]))
+        resolve_command(tokens[:k + 1 + end], k + 1, out, names, depth + 1)
+    elif base in ('yarn', 'pnpm', 'npm') and 'exec' in tokens[k + 1:]:
+        out.texts.append(' '.join(tokens[tokens.index('exec', k + 1) + 1:]))
+    elif base == 'tmux':
+        if any(tok in TMUX_COMMAND_NAMES for tok in tokens[k + 1:]):
+            out.texts.append(' '.join(tokens[k + 1:]))
+    elif base == 'screen':
+        out.texts.append(' '.join(tokens[k + 1:]))
+    elif AWK_RE.match(base):
+        text = ' '.join(tokens[k + 1:])
+        if EXEC_CALL_RE.search(text):
+            out.texts.append(text)
+    elif INTERPRETER_RE.match(base):
+        flag = next((j for j in range(k + 1, count) if INTERPRETER_CODE_FLAG_RE.match(tokens[j])), None)
+        if flag is not None:
+            text = ' '.join(tokens[flag + 1:])
+            if EXEC_CALL_RE.search(text):
+                out.texts.append(text)
+        elif all(tok.startswith('-') for tok in tokens[k + 1:]):
+            out.text_stdin = True
     elif base == 'ssh':
         j = k + 1
         while j < count and tokens[j].startswith('-'):
@@ -1076,6 +1118,11 @@ def substitution_scripts(script, depth):
     return texts
 
 
+def carrier_text_matches(text, text_predicate):
+    """True when text handed to a launcher or interpreter spells a blocked command, also as a quoted argv list."""
+    return text_predicate(text) or text_predicate(re.sub(r'["\',\[\]]', ' ', text))
+
+
 def segments_match(segments, predicate, names, text_predicate, depth):
     if depth > MAX_NESTING:
         raise ShellParseError("nesting too deep")
@@ -1100,7 +1147,12 @@ def segments_match(segments, predicate, names, text_predicate, depth):
         for script in scripts:
             if segments_match(ShellParser(script, depth + 1).parse(), predicate, names, text_predicate, depth + 1):
                 return True
+        for text in out.texts:
+            if carrier_text_matches(text, text_predicate):
+                return True
         for body, quoted in seg.heredocs:
+            if out.text_stdin and EXEC_CALL_RE.search(body) and carrier_text_matches(body, text_predicate):
+                return True
             if shell_stdin:
                 nested = ShellParser(body, depth + 1).parse()
             elif not quoted:

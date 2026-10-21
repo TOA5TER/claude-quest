@@ -772,3 +772,141 @@ def test_runuser_direct_command_forms():
         "runuser -u bob -- git status",
         "runuser -u bob -- echo git worktree add ../x",
     ])
+
+
+PARALLEL_FORMS = [
+    'parallel "{}" ::: a',
+    "parallel '{}' ::: a b",
+    'parallel -j2 "{}" ::: a',
+    'parallel --jobs 2 "{}" ::: a',
+    'parallel --halt now,fail=1 --tag -k "{}" ::: a',
+    'parallel -- "{}"',
+    'parallel -S host "{}" ::: a',
+    'cat f | parallel "{}"',
+    'echo a | parallel -I@ "{}"',
+    'sem "{}"',
+    'timeout 5 parallel "{}" ::: a',
+]
+TMUX_FORMS = [
+    'tmux new-session -d "{}"',
+    'tmux new-session -d -s s "{}"',
+    'tmux new -s s "{}"',
+    'tmux new-window "{}"',
+    'tmux neww -n w "{}"',
+    'tmux split-window -h "{}"',
+    'tmux run-shell "{}"',
+    'tmux run -b "{}"',
+    'tmux send-keys "{}" Enter',
+    'tmux send-keys -t 0 "{}" C-m',
+    'tmux respawn-pane -k "{}"',
+    'tmux if-shell true "{}"',
+    'tmux display-popup "{}"',
+    'tmux -L sock new-session -d "{}"',
+    'screen -dmS s "{}"',
+]
+INTERPRETER_FORMS = [
+    "python3 -c 'import os; os.system(\"{}\")'",
+    "python -c 'import os; os.popen(\"{}\")'",
+    "python3 -c 'import subprocess; subprocess.run(\"{}\", shell=True)'",
+    "python3 -c 'import subprocess; subprocess.call(\"{}\", shell=True)'",
+    "python3 -c 'import subprocess; subprocess.Popen(\"{}\", shell=True)'",
+    "python3 -c 'import subprocess; subprocess.check_call(\"{}\", shell=True)'",
+    "python3 -c 'import subprocess; subprocess.check_output(\"{}\", shell=True)'",
+    "python3 -c 'import subprocess; print(subprocess.getoutput(\"{}\"))'",
+    "python3 -c 'import subprocess; subprocess.run(\"{}\".split())'",
+    "python3.11 -c 'import os; os.system(\"{}\")'",
+    "python3 - <<EOF\nimport os\nos.system(\"{}\")\nEOF",
+    "python3 <<'EOF'\nimport os\nos.system(\"{}\")\nEOF",
+    "perl -e 'system(\"{}\")'",
+    "ruby -e 'system(\"{}\")'",
+    "ruby -e '`{}`'",
+    "node -e 'require(\"child_process\").execSync(\"{}\")'",
+    "php -r 'system(\"{}\");'",
+    "lua -e 'os.execute(\"{}\")'",
+    "awk 'BEGIN{{system(\"{}\")}}'",
+    "expect -c 'spawn {}'",
+    "timeout 5 python3 -c 'import os; os.system(\"{}\")'",
+]
+ARGV_FORMS = [
+    "python3 -c 'import subprocess; subprocess.run([\"git\", \"worktree\", \"add\", \"../x\"])'",
+    "python3 -c 'import subprocess; subprocess.check_call([\"git\", \"worktree\", \"add\", \"-b\", \"b\", \"../x\"])'",
+    "python3 -c 'import subprocess; subprocess.Popen([\"git\", \"-C\", \"r\", \"worktree\", \"add\", \"../x\"])'",
+    "python3 -c 'import os; os.execvp(\"git\", [\"git\", \"worktree\", \"add\", \"../x\"])'",
+    "python3 -c 'import os; os.execl(\"/usr/bin/git\", \"git\", \"worktree\", \"add\", \"../x\")'",
+    "python3 -c 'import os; os.spawnlp(os.P_WAIT, \"git\", \"git\", \"worktree\", \"add\", \"../x\")'",
+    "python3 -c 'import os; os.posix_spawn(\"/usr/bin/git\", [\"git\", \"worktree\", \"add\", \"../x\"], {})'",
+    "node -e 'require(\"child_process\").execFileSync(\"git\", [\"worktree\", \"add\", \"../x\"])'",
+    "ruby -e 'system(\"git\", \"worktree\", \"add\", \"../x\")'",
+    "perl -e 'system(\"git\", \"worktree\", \"add\", \"../x\")'",
+]
+GIT_EXEC_FORMS = [
+    "git rebase --exec '{}' main",
+    "git rebase -i --exec='{}' main",
+    "git submodule foreach '{}'",
+    "git bisect run sh -c '{}'",
+    "git filter-branch --tree-filter '{}' HEAD",
+    "git config alias.x '!{}'",
+    "git -c alias.x='!{}' x",
+    "yarn exec '{}'",
+    "pnpm exec '{}'",
+    "npm exec -- '{}'",
+]
+STRING_CARRIERS = PARALLEL_FORMS + TMUX_FORMS + INTERPRETER_FORMS + GIT_EXEC_FORMS
+
+
+# Why: launchers and interpreters that run a command string must be followed like a shell -c.
+def test_string_carriers_run_misplaced_worktree():
+    assert_all_blocked([form.format(BAD_WORKTREE) for form in STRING_CARRIERS])
+    assert_all_blocked(ARGV_FORMS)
+
+
+def test_string_carriers_run_session_link_commands():
+    assert_all_blocked([form.format(f"git commit -m x{LINK_URL}") for form in STRING_CARRIERS])
+    assert_all_blocked([form.format(f"gh pr create --title t --body x{LINK_URL}") for form in STRING_CARRIERS])
+    assert_all_blocked([
+        f"python3 -c 'import subprocess; subprocess.run([\"git\", \"commit\", \"-m\", \"x {LINK_URL}\"])'",
+        f"python3 -c 'import subprocess; subprocess.run([\"gh\", \"pr\", \"create\", \"--body\", \"x {LINK_URL}\"])'",
+    ])
+
+
+def test_string_carriers_allow_placed_worktrees_and_other_commands():
+    placed = "git worktree add .worktrees/x"
+    assert_all_allowed([form.format(placed) for form in STRING_CARRIERS])
+    assert_all_allowed([form.format("git status") for form in STRING_CARRIERS])
+    assert_all_allowed([
+        "python3 -c 'import subprocess; subprocess.run([\"git\", \"worktree\", \"add\", \".worktrees/x\"])'",
+        "python3 -c 'import os; os.execvp(\"git\", [\"git\", \"status\"])'",
+        "node -e 'require(\"child_process\").execFileSync(\"git\", [\"worktree\", \"add\", \".worktrees/x\"])'",
+        "python3 -c 'import subprocess; subprocess.run([\"git\", \"commit\", \"-m\", \"docs\"])'",
+    ])
+
+
+# Why: text that only mentions a command, or is fed to a launcher as data, does not run it.
+def test_string_carriers_ignore_prose_and_input_data():
+    assert_all_allowed([
+        "parallel echo {} ::: 'git worktree add ../x'",
+        "parallel gzip ::: git worktree add ../x",
+        "parallel --jobs 2 echo ::: a b",
+        "tmux display-message 'git worktree add ../x'",
+        "tmux list-sessions",
+        "tmux select-window -t 0",
+        "tmux attach -t git",
+        "screen -ls",
+        "python3 -c 'print(\"git worktree add ../x\")'",
+        "python3 -c 'import json; print(json.dumps(\"git worktree add ../x\"))'",
+        "python3 script.py 'git worktree add ../x'",
+        "python3 -m pytest -k 'git worktree add ../x'",
+        "python3 - <<'EOF'\nprint(\"git worktree add ../x\")\nEOF",
+        "node -e 'console.log(\"git worktree add ../x\")'",
+        "awk '{ print \"git worktree add ../x\" }' f",
+        "perl -e 'print \"git worktree add ../x\"'",
+        "git rebase main",
+        "git submodule update --init",
+        "git bisect start",
+        "git config user.name x",
+        "git commit -m 'git worktree add ../x'",
+        "yarn install",
+        "npm run build -- 'git worktree add ../x'",
+        f"tmux display-message '{LINK_URL}'",
+        f"python3 -c 'print(\"{LINK_URL}\")'",
+    ])
