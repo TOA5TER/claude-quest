@@ -104,7 +104,8 @@ Goal: understand the initiative well enough to propose a complete, correctly-ord
    (`subagent_type: general-purpose`, task type `reasoning`) — the orchestrator never runs
    `repo-discovery.md`'s procedure, reads source files, or greps the codebase directly, regardless of
    how small the read looks. The subagent returns a summary of repo purposes/structure; only that
-   summary enters the orchestrator's context.
+   summary enters the orchestrator's context. Both dispatches in this phase carry the `base-root:` line
+   described under Phase 7.
 3. **Propose a decomposition** into small tasks. For each proposed task, mirror `creating-stories`'s
    field structure: `title`, `description`, `acceptanceCriteria`, `testingInstructions`, `repo`
    (exactly one per task), `story_type`, and `depends_on` (task IDs). A dependency exists when one
@@ -151,7 +152,9 @@ task set. All creation happens here, in the orchestrator.
 The scheduler decides what runs next. It reads `tasklist.md` as the source of truth.
 
 1. **Compute the ready set.** A task is *ready* when its status is `pending` and every task in its
-   `depends_on` is `done` (i.e. its dependency's PR has been **merged by a human**). An
+   `depends_on` is `done` (i.e. its dependency's PR has been **merged by a human**), or is satisfied
+   by a verified pre-release pin (see "Epic Phase 6 readiness override" in
+   `skills/shared/pre-release-pin.md`), which replaces this rule for such a dependency. An
    `awaiting-merge` dependency does **not** satisfy a dependent — because epic never merges, dependents
    naturally pause until a human merges the dependency and a later resume advances it to `done`.
 2. **Apply the parallelism rule:**
@@ -196,6 +199,8 @@ v2.1.172+ it dispatches each of full-cycle's stages as its own nested subagent (
 under the depth-5 cap) — every stage gets a fresh context even under the epic. On older
 builds those stages run inline within the task's worker context (still isolated per task).
 Dispatch the concurrent tasks of a round in a **single message with multiple Agent calls**.
+
+**Base root for wrapper agents.** The plugin root is the parent of the parent of this skill's base directory (the "Base directory for this skill" line shown when the skill loads). End every Agent-tool dispatch prompt this skill makes with the line `base-root: <that absolute path>`, so a wrapper plugin's agents can read base agent sections from `<root>/agents/<role>.md`; base agents ignore the line. See `skills/shared/local-mode.md` → "Base Root for Wrapper Agents".
 
 This is epic's one genuinely concurrent, backgrounded dispatch point — apply
 `standards.md` → "Subagent Wait Discipline" here: immediately after dispatching the round,
@@ -242,7 +247,9 @@ When a task's `full-cycle` run reports review-approved **and** test-approved:
 
 1. Re-read the PR's authoritative review and test decisions from GitHub (dispatch the decision-read
    via the Agent tool with `subagent_type: dev-workflow:pr-state-reader` so raw JSON stays out of the
-   orchestrator). Both must be `APPROVED`.
+   orchestrator). Both must be `APPROVED`. A task whose repo is in Local Mode or approval-only mode
+   cannot reach this point: its worker returns `status: blocked` (see Phase 10), because GitHub holds no
+   decision for such a repo.
 2. **Do not merge.** The epic never merges. Via the `tasklist` adapter's **Update story**, set the
    task `Status` to `awaiting-merge` (which also updates its Mermaid node), and confirm the
    `PR` field records the open PR URL so it can be tracked and reported.
@@ -305,7 +312,11 @@ work, they don't create tasks" and keeps creation inside the orchestrator's cons
 
 **Blocked tasks.** A task is `blocked` when it exhausts full-cycle's loop-safety guard (review/test
 never converges), has an `awaiting-merge` PR that a human closed without merging, or otherwise cannot
-proceed autonomously. Mark it `blocked` via the adapter with the outstanding feedback recorded as a
+proceed autonomously. A task whose repo is in Local Mode (no push access) or approval-only mode (a
+reviewer or tester `message` starting `approval-only:`), or whose push read is `unknown`, is also
+`blocked`: its per-task worker returns `status: blocked` with a `message` naming the repo and why, and
+you record that reason. Full Local Mode inside epic is not supported (see `skills/shared/local-mode.md`).
+Mark it `blocked` via the adapter with the outstanding feedback recorded as a
 comment, then **continue with other unblocked tasks**. A block on one task never halts the whole
 epic. Note that `awaiting-merge` is **not** a blocked state — it is a healthy pause waiting on a human
 merge, reported separately below.

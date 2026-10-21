@@ -15,6 +15,8 @@ Either a PR number (e.g., `42`) or a PM ticket ID (e.g., `sc-123`) may be passed
 
 Read `skills/shared/standards.md` — these mandatory rules govern this entire session.
 
+Read `skills/shared/pre-release-pin.md` → "Pre-Release Pin Disclosure" — apply it on every test round.
+
 Read `skills/shared/adapter-loading.md` — adapter loading procedures referenced in Phase 0 and Phase 2.
 
 Read `skills/shared/checkpoint-seeding.md` — checkpoint seeding procedure referenced in Phase 2 and Phase 7.
@@ -388,7 +390,7 @@ stays at `"reviewing-prs"` from the Phase 2 seed.
 
 ### Story State Transition (after test approval)
 
-Runs only after this run submitted `APPROVE`, and only when `story_states.after_test_approval` is set in `~/.claude/dev-workflow/config.json`. With the key unset, fire no transition. A non-APPROVE verdict fires nothing. The tasklist adapter ignores this key; its stage-to-status mapping governs.
+Runs only after this run submitted `APPROVE`, and only when `story_states.after_test_approval` is set in `~/.claude/dev-workflow/config.json`. With the key unset, fire no transition. A non-APPROVE verdict fires nothing. In Local Mode (no PR) the transition is skipped. In approval-only mode the review decision is read from the latest `review-round-N.md` note (highest N) instead of the reviews API: `decision=APPROVED` counts as review approval, anything else, including no note, skips the transition. The tasklist adapter ignores this key; its stage-to-status mapping governs.
 
 1. Read the PR's reviews: `gh api repos/{owner}/{repo}/pulls/{PR_NUMBER}/reviews`.
 2. Never count a review whose body starts with `## Test Report` (the heading this skill puts at the top of every test review) as the reviewer's. Of the remaining reviews, take the reviewer's as follows: when `reviewer_login` is set and that login has at least one such review (an `APPROVED` or `CHANGES_REQUESTED` review that is not a `## Test Report`), the reviewer's reviews are those by that login; otherwise (unset, or set but absent from this PR, as on a repo where a person reviews) they are all of the remaining reviews, so a shared reviewer/tester login still works.

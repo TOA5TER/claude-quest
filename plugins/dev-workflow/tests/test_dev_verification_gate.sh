@@ -116,8 +116,8 @@ forbid "$A/tester.md" "agents/tester.md" "every round re-deploys fresh"
 
 # Why: the developer agent must gate its own result, expose verify mode, and check the mode before the transition logic.
 DA="$A/developer.md"
-sed -n '/^## Story mode/,/^## Rework mode/p' "$DA" | grep -q 'Dev Deploy & Verify' || fail "agents/developer.md: story mode must name the gate"
-sed -n '/^## Rework mode/,/^## Verify mode/p' "$DA" | grep -q 'Dev Deploy & Verify' || fail "agents/developer.md: rework mode must name the gate"
+sed -n '/^## Story mode/,/^## Rework mode/p' "$DA" | grep 'Dev Deploy & Verify' >/dev/null || fail "agents/developer.md: story mode must name the gate"
+sed -n '/^## Rework mode/,/^## Verify mode/p' "$DA" | grep 'Dev Deploy & Verify' >/dev/null || fail "agents/developer.md: rework mode must name the gate"
 need "$DA" "agents/developer.md" "Verify mode" "mode: verify" \
   "dev-workflow:dev-verify" "dev-verification blocked:" "status: error"
 before "$DA" "agents/developer.md" "## Mode selection" "If the request's first body line is \`transition: fired\`"
