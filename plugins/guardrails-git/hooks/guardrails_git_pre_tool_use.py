@@ -529,6 +529,11 @@ TMUX_COMMAND_NAMES = ('new-session', 'new', 'new-window', 'neww', 'split-window'
                       'send', 'respawn-pane', 'respawnp', 'respawn-window', 'respawnw', 'if-shell', 'if', 'display-popup',
                       'popup', 'pipe-pane', 'pipep', 'set-hook', 'bind-key', 'bind', 'confirm-before', 'confirm',
                       'command-prompt', 'source-file', 'source')
+PACKAGE_EXEC_SUBCOMMANDS = {
+    'npm': ('exec', 'x'), 'pnpm': ('exec', 'dlx'), 'yarn': ('exec', 'dlx'), 'bun': ('x',), 'cnpm': ('exec', 'x'),
+}
+PACKAGE_RUNNER_NAMES = ('npx', 'pnpx', 'bunx')
+PACKAGE_CALL_FLAG_RE = re.compile(r'-[A-Za-z]*c$|--call(?:=|$)')
 GIT_EXEC_SUBCOMMANDS = ('rebase', 'submodule', 'bisect', 'filter-branch')
 RUNUSER_VALUE_OPTIONS = ('-u', '--user', '-g', '--group', '-G', '--supp-group', '-s', '--shell', '-w',
                          '--whitelist-environment', '-c', '--command')
@@ -1087,8 +1092,14 @@ def resolve_command(tokens, k, out, names, depth=0, fed=None):
             resolve_command(tokens, command_at, out, names, depth + 1)
     elif base in PARALLEL_NAMES:
         resolve_parallel(tokens, k, out, names, depth)
-    elif base in ('yarn', 'pnpm', 'npm') and 'exec' in tokens[k + 1:]:
-        out.texts.append(' '.join(tokens[tokens.index('exec', k + 1) + 1:]))
+    elif base in PACKAGE_EXEC_SUBCOMMANDS and any(tok in PACKAGE_EXEC_SUBCOMMANDS[base] for tok in tokens[k + 1:]):
+        sub = next(j for j in range(k + 1, count) if tokens[j] in PACKAGE_EXEC_SUBCOMMANDS[base])
+        out.texts.append(' '.join(tokens[sub + 1:]))
+    elif base in PACKAGE_RUNNER_NAMES:
+        if any(PACKAGE_CALL_FLAG_RE.match(tok) for tok in tokens[k + 1:]):
+            out.texts.append(' '.join(tokens[k + 1:]))
+    elif base == 'corepack' and k + 1 < count:
+        resolve_command(tokens, k + 1, out, names, depth + 1)
     elif base == 'tmux':
         if any(tok in TMUX_COMMAND_NAMES for tok in tokens[k + 1:]):
             out.texts.append(' '.join(tokens[k + 1:]))
