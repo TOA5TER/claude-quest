@@ -374,3 +374,213 @@ def test_mentions_in_non_shell_arguments_allowed():
         'echo "$(git worktree add ../x)"',
         'sh -c "echo hi; git worktree add ../x"',
     ])
+
+
+COMMIT_WITH_LINK = f'git commit -m "x {LINK_URL}"'
+PR_WITH_LINK = f'gh pr create --title t --body "x {LINK_URL}"'
+NESTED_WRAPPERS = [
+    'timeout 5 bash -c "{}"',
+    'timeout -s KILL 5 bash -lc "{}"',
+    'env -i bash -c "{}"',
+    'env FOO=1 -u BAR bash -c "{}"',
+    'sudo -u bob sh -c "{}"',
+    'sudo -E bash -c "{}"',
+    'nice -n 5 bash -c "{}"',
+    'nohup sh -c "{}"',
+    "env -S '{}'",
+    'su -c "{}"',
+    'xargs -P4 -n1 bash -c "{}"',
+    'xargs -0 -I % sh -c "{}"',
+    'ssh host "{}"',
+    "ssh -p 22 -i key user@host '{}'",
+    'ssh host sh -c "{}"',
+    'ssh -o StrictHostKeyChecking=no host "cd repo && {}"',
+    "bash -c 'bash -c \"{}\"'",
+    'timeout 5 sudo -u bob env -i bash -c "{}"',
+    'docker exec c bash -c "{}"',
+]
+PREFIXED_DIRECT = [
+    "timeout 5 {}",
+    "timeout -s KILL -k 2 5 {}",
+    "env -i {}",
+    "env -u X FOO=1 {}",
+    "sudo -u bob {}",
+    "sudo -E {}",
+    "nice -n 5 {}",
+    "ionice -c3 {}",
+    "stdbuf -o0 {}",
+    "setsid {}",
+    "watch {}",
+    "find . -name x -exec {} \\;",
+    "find . -exec {} {{}} +",
+    "find . -execdir {} \\;",
+    "find . -ok {} \\;",
+    "find . -type d -exec timeout 5 {} \\;",
+    "xargs {}",
+    "xargs -n1 {}",
+    "echo a | xargs {}",
+]
+
+
+# Why: prefixed and nested command forms ran the same blocked command, so each must be refused too.
+def test_worktree_blocked_in_prefixed_and_nested_forms():
+    assert_all_blocked([form.format(BAD_WORKTREE) for form in NESTED_WRAPPERS + PREFIXED_DIRECT])
+
+
+def test_session_link_blocked_in_prefixed_and_nested_forms():
+    assert_all_blocked([form.format(cmd) for form in NESTED_WRAPPERS + PREFIXED_DIRECT
+                        for cmd in (COMMIT_WITH_LINK, PR_WITH_LINK)])
+
+
+# Why: a correctly placed worktree inside any wrapper form is the supported workflow and must keep working.
+def test_placed_worktree_and_clean_publish_allowed_in_prefixed_and_nested_forms():
+    placed = "git worktree add .worktrees/x -b fix/x"
+    clean = 'git commit -m "feat: x"'
+    assert_all_allowed([form.format(cmd) for form in NESTED_WRAPPERS + PREFIXED_DIRECT for cmd in (placed, clean)])
+
+
+STDIN_WORKTREE_BLOCKED = [
+    "echo ../x | xargs git worktree add",
+    "echo ../x main | xargs git worktree add",
+    "echo -b br ../x | xargs git worktree add",
+    "printf '%s\\n' ../x | xargs -n1 git worktree add",
+    "echo x | xargs -I{} git worktree add ../{}",
+    "echo x | xargs -I % git worktree add ../%",
+    "echo x | xargs -i git worktree add ../{}",
+    "echo x | xargs -I{} git worktree add {}",
+    "cat paths.txt | xargs git worktree add",
+    "ls | xargs -I{} git worktree add -b br {}",
+    "echo ../x | xargs bash -c 'git worktree add ../x'",
+    'echo "git worktree add ../x" | bash',
+    "echo 'git worktree add ../x' | sh -s",
+    "echo 'git worktree add ../x' | ssh host",
+    "printf '%s\\n' 'cd r' 'git worktree add ../x' | bash",
+    "cat <<'EOF' | ssh host\ngit worktree add ../x\nEOF",
+    "ssh host <<EOF\ngit worktree add ../x\nEOF",
+]
+STDIN_WORKTREE_ALLOWED = [
+    "echo .worktrees/x | xargs git worktree add",
+    "echo .worktrees/x main | xargs git worktree add",
+    "echo x | xargs -I{} git worktree add .worktrees/{}",
+    "echo x | xargs -I % git worktree add .worktrees/% -b b-%",
+    "printf '%s\\n' .worktrees/a .worktrees/b | xargs -n1 git worktree add",
+    "echo x | xargs git worktree add .worktrees/x",
+    "echo 'git worktree add .worktrees/x' | bash",
+    "ssh host <<EOF\ngit worktree add .worktrees/x\nEOF",
+    "cat <<'EOF' | ssh host\ngit status\nEOF",
+    "echo .worktrees/x | xargs git worktree list",
+    "echo x | xargs git status",
+    "ls | xargs git status",
+]
+
+
+# Why: the path of a stdin-fed worktree add is only known when the producer is a literal echo or printf.
+def test_stdin_fed_worktree_forms():
+    assert_all_blocked(STDIN_WORKTREE_BLOCKED)
+    assert_all_allowed(STDIN_WORKTREE_ALLOWED)
+
+
+STDIN_LINK_BLOCKED = [
+    f'echo "{LINK_URL}" | xargs git commit -m',
+    f'echo "{LINK_URL}" | xargs -I{{}} git commit -m {{}}',
+    f'echo "{LINK_URL}" | xargs -I{{}} sh -c "git commit -m {{}}"',
+    f'printf "%s\\n" "{LINK_URL}" | xargs -n1 git commit -m',
+    f'echo "{LINK_URL}" | xargs gh pr edit 5 --body',
+    f'echo "git commit -m {LINK_URL}" | bash',
+    f'echo "gh pr create --title t --body {LINK_URL}" | ssh host',
+    f"ssh host <<EOF\ngit commit -m '{LINK_URL}'\nEOF",
+    f"xargs git commit -m <<< '{LINK_URL}'",
+]
+
+
+def test_stdin_fed_session_link_forms():
+    assert_all_blocked(STDIN_LINK_BLOCKED)
+
+
+NESTED_LOOKALIKES = [
+    'echo "git worktree add ../x"',
+    "echo 'git worktree add ../x' | xargs echo",
+    'grep "git worktree add ../x" notes.md',
+    'timeout 5 grep "git worktree add ../x" notes.md',
+    'timeout 5 bash -c \'echo "git worktree add ../x"\'',
+    'sudo -u bob sh -c \'grep "git worktree add ../x" f\'',
+    'env -i bash -c "echo git worktree add ../x"',
+    'ssh host \'echo "git worktree add ../x"\'',
+    'ssh host "echo git worktree add ../x"',
+    'ssh git@host "ls -la"',
+    "ssh host git status",
+    'find . -exec grep "git worktree add ../x" {} \\;',
+    "find . -name git -exec ls {} \\;",
+    f'find . -name "git commit {LINK_URL}"',
+    'xargs grep -l "git worktree add ../x"',
+    "xargs echo git worktree add ../x",
+    f'echo "{LINK_URL}" | xargs grep -c x',
+    f'echo "{LINK_URL}" | xargs git log --grep',
+    f'timeout 5 grep -rn "{LINK_TEXT}" docs/',
+    f'sudo echo "git commit -m {LINK_URL}"',
+    f'ssh host "echo {LINK_URL}"',
+    f'echo "{LINK_URL}" | ssh host "cat > notes.md"',
+    f'echo "{LINK_URL}" | bash -c "cat > notes.md"',
+    "sudo -u git ls",
+    "env -i grep git notes.md",
+]
+
+
+# Why: wrapper prefixes must not turn prose or data arguments into commands.
+def test_quoted_mentions_behind_prefixes_allowed():
+    assert_all_allowed(NESTED_LOOKALIKES)
+
+
+# Why: an unquoted or word-split mention in echo/printf arguments is text, not a command at command position.
+def test_unquoted_mentions_in_data_commands_allowed():
+    assert_all_allowed([
+        "echo git worktree add ../x",
+        'echo "mention" git "worktree" add ../x',
+        "echo $(echo git worktree add ../x)",
+        'echo "$(echo git worktree add ../x)"',
+        "printf '%s\\n' git worktree add ../x",
+    ])
+    assert_all_blocked([
+        "echo hi; git worktree add ../x",
+        "echo $(git worktree add ../x)",
+        f"echo hi; git commit -m {LINK_URL}",
+    ])
+
+
+# Why: the older commit-boilerplate check still answers unquoted commit text at hook level, so the session-link rule is checked directly.
+def test_session_link_rule_ignores_unquoted_mentions_in_data_commands():
+    hook = load_hook()
+    for command in (f"echo hi; echo git commit -m {LINK_URL}", f"echo git commit -m {LINK_URL} && ls",
+                    f"printf '%s' git commit {LINK_URL}", f'echo "{LINK_URL}" | xargs echo git commit'):
+        assert not hook.carries_session_link_in_commit_or_pr(command), command
+    for command in (f"echo hi; git commit -m {LINK_URL}", f'echo "{LINK_URL}" | xargs git commit -m'):
+        assert hook.carries_session_link_in_commit_or_pr(command), command
+
+
+# Why: unknown front-ends keep the conservative scan so a wrapped command is not missed.
+def test_unknown_command_prefixes_still_scanned():
+    assert_all_blocked([
+        "docker exec c git worktree add ../x",
+        "kubectl exec pod -- git worktree add ../x",
+        f'docker exec c git commit -m "{LINK_URL}"',
+    ])
+
+
+# Why: a pipe followed by || or && must not leak one command's output into the next as stdin.
+def test_pipe_producer_tracking_ignores_logical_operators():
+    assert_all_allowed([
+        "echo ../x || xargs git worktree add .worktrees/x",
+        "echo ../x && xargs git status",
+    ])
+    hook = load_hook()
+    segments = hook.ShellParser("echo a | xargs git status || echo b | cat; ls").parse()
+    producers = [seg.producer.words[0] if seg.producer else None for seg in segments]
+    assert producers == [None, "echo", None, "echo", None], producers
+
+
+# Why: deep nesting must stay bounded and fail closed instead of recursing without limit.
+def test_deep_nesting_stays_bounded_and_blocks():
+    deep = "timeout 5 " * 20 + BAD_WORKTREE
+    nested = "echo " + "$(echo " * 12 + BAD_WORKTREE + ")" * 12
+    assert hook_decision_within(deep, 10) == "block"
+    assert hook_decision_within(nested, 10) == "block"
