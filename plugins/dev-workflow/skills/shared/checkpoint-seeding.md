@@ -3,11 +3,11 @@
 Shared procedure for a stage skill to seed or refresh its own entry in the dev-workflow
 checkpoint (`~/.claude/dev-workflow/state/{story-id}.json`, schema defined in
 `context-compaction.md`) at its own stage boundary. Each stage's own self-seed is now the
-primary writer of its `stage` field regardless of whether `full-cycle`/`epic` is driving the
+primary writer of its `stage` field regardless of whether `full-cycle` is driving the
 pipeline: `full-cycle`'s own writes (see `context-compaction.md` → "Write points") no longer
 duplicate a stage value at most boundaries — they cover the resume-bootstrap enrichment, the
 spec-approval top-level fields, loop-count increments, and the terminal `"done"` advance.
-(`next_action` remains reserved to full-cycle/epic's own bookkeeping in the schema below, but
+(`next_action` remains reserved to full-cycle's own bookkeeping in the schema below, but
 no current write point populates it — a pre-existing gap, not something introduced or
 resolved here.) Each stage skill that calls one of the two procedures below documents the
 exact point in its own flow where that call happens — see that skill's own preamble/phase
@@ -85,7 +85,7 @@ tool).
      When a PR number is supplied AND the entry's existing `pr_number` is `null`/absent,
      set it too. Never overwrite an already-set `pr_number` with a different value, and
      never touch `review_loop_count`, `test_loop_count`, or `next_action` — those fields
-     are full-cycle/epic's own bookkeeping and this procedure is a merge-upsert, not a
+     are full-cycle's own bookkeeping and this procedure is a merge-upsert, not a
      replace.
 5. **Update the top-level fields.** Set `updated_at` to the current ISO-8601 UTC timestamp.
    When a non-empty story title was supplied, set the top-level `story_title` to it. When
@@ -106,7 +106,7 @@ tool).
    checkpoint write failure.
 
 This procedure never touches `review_loop_count`, `test_loop_count`, `approval_text`, or
-`approval_timestamp` — those remain exclusively full-cycle/epic's own writes (see
+`approval_timestamp` — those remain exclusively full-cycle's own writes (see
 `context-compaction.md` → "Write points"). Nor does it touch `story_title`, beyond setting a
 supplied non-empty title in step 5: it never clears or blanks one. A dispatched subagent's own standalone self-seed
 (this procedure) and full-cycle's post-return write to the same repo entry can therefore

@@ -150,7 +150,7 @@ Read `skills/shared/dev-deploy.md` — it owns the evidence format, the validati
 
 ### Mandatory Dev Deploy CI Gate
 
-> **NON-SKIPPABLE — DEV DEPLOY CI.** Every test run — including runs dispatched autonomously by `epic` or `full-cycle` — MUST have a successful dev deploy CI run on the PR branch's current HEAD before executing any test scenario. That run is either the validated reused developer run (per the Developer Evidence Gate) or a fresh tester run of the **dev deploy CI**.
+> **NON-SKIPPABLE — DEV DEPLOY CI.** Every test run — including runs dispatched autonomously by `full-cycle` — MUST have a successful dev deploy CI run on the PR branch's current HEAD before executing any test scenario. That run is either the validated reused developer run (per the Developer Evidence Gate) or a fresh tester run of the **dev deploy CI**.
 >
 > - **Deploy fresh whenever reuse is not validated.** If the evidence is not reusable (dev no longer serves the HEAD, or the repo is only CI-exempt), trigger the configured deploy CI on the PR branch's current HEAD. Do not skip the deploy and test against whatever is already running.
 > - **You may NOT skip this step for any of the following reasons** (each is an explicitly forbidden rationalization):
@@ -390,7 +390,7 @@ stays at `"reviewing-prs"` from the Phase 2 seed.
 
 ### Story State Transition (after test approval)
 
-Runs only after this run submitted `APPROVE`, and only when `story_states.after_test_approval` is set in `~/.claude/dev-workflow/config.json`. With the key unset, fire no transition. A non-APPROVE verdict fires nothing. In Local Mode (no PR) the transition is skipped. In approval-only mode the review decision is read from the latest `review-round-N.md` note (highest N) instead of the reviews API: `decision=APPROVED` counts as review approval, anything else, including no note, skips the transition. The tasklist adapter ignores this key; its stage-to-status mapping governs.
+Runs only after this run submitted `APPROVE`, and only when `story_states.after_test_approval` is set in `~/.claude/dev-workflow/config.json`. With the key unset, fire no transition. A non-APPROVE verdict fires nothing. In Local Mode (no PR) the transition is skipped. In approval-only mode the review decision is read from the latest `review-round-N.md` note (highest N) instead of the reviews API: `decision=APPROVED` counts as review approval, anything else, including no note, skips the transition.
 
 1. Read the PR's reviews: `gh api repos/{owner}/{repo}/pulls/{PR_NUMBER}/reviews`.
 2. Never count a review whose body starts with `## Test Report` (the heading this skill puts at the top of every test review) as the reviewer's. Of the remaining reviews, take the reviewer's as follows: when `reviewer_login` is set and that login has at least one such review (an `APPROVED` or `CHANGES_REQUESTED` review that is not a `## Test Report`), the reviewer's reviews are those by that login; otherwise (unset, or set but absent from this PR, as on a repo where a person reviews) they are all of the remaining reviews, so a shared reviewer/tester login still works.

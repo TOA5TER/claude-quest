@@ -6,7 +6,6 @@ PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCAL_MODE="$PLUGIN_ROOT/skills/shared/local-mode.md"
 PIN="$PLUGIN_ROOT/skills/shared/pre-release-pin.md"
 FULL_CYCLE="$PLUGIN_ROOT/skills/full-cycle/SKILL.md"
-EPIC="$PLUGIN_ROOT/skills/epic/SKILL.md"
 DEVELOPER="$PLUGIN_ROOT/agents/developer.md"
 REVIEWER="$PLUGIN_ROOT/agents/reviewer.md"
 TESTER="$PLUGIN_ROOT/agents/tester.md"
@@ -49,7 +48,6 @@ done
 has "$LOCAL_MODE" 'base-root:' || fail "local-mode.md does not name the base-root: line"
 has "$LOCAL_MODE" 'error: base-root missing' || fail "local-mode.md does not define the pr-state-reader base-root error"
 has "$FULL_CYCLE" 'base-root:' || fail "full-cycle does not add the base-root: line to dispatches"
-has "$EPIC" 'base-root:' || fail "epic does not add the base-root: line to dispatches"
 
 # Why: the probe procedure is the one cross-repo directory change allowed, so its guards must stay intact.
 has "$LOCAL_MODE" 'probe-{story-id}-dryrun' || fail "local-mode.md lost the probe ref name"
@@ -61,11 +59,6 @@ has "$FULL_CYCLE" '## Local Mode and Approval-Only Repos' || fail "full-cycle is
 has "$FULL_CYCLE" 'head mismatch:' || fail "full-cycle does not name the head mismatch: prefix"
 has "$FULL_CYCLE" 'push rejected:' || fail "full-cycle does not name the push rejected: prefix"
 has "$FULL_CYCLE" 'Draft-PR Resume Routing' || fail "full-cycle does not point the draft row at Draft-PR Resume Routing"
-
-# Why: epic must use the pre-release readiness override in Phase 6.
-has "$EPIC" 'Epic Phase 6 readiness override' || fail "epic Phase 6 does not use the pre-release readiness override"
-# Why: epic must block Local Mode, approval-only and unknown-push tasks rather than silently stalling them.
-has "$EPIC" 'approval-only' || fail "epic does not block approval-only tasks"
 
 # Why: the developer is the only role that pins, re-pins and writes the develop note.
 has "$DEVELOPER" 'mode: repin' || fail "developer agent does not name mode: repin"

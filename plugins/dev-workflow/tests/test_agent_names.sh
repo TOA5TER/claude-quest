@@ -5,9 +5,9 @@ set -uo pipefail
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "$PLUGIN_ROOT/../.." && pwd)"
 PLUGIN_NAME="dev-workflow"
-ROLES="developer orchestrator pr-state-reader reviewer spec-writer tester"
+ROLES="developer pr-state-reader reviewer spec-writer tester"
 DOCS=("$PLUGIN_ROOT/README.md" "$PLUGIN_ROOT/CLAUDE.md" "$PLUGIN_ROOT"/skills/*/SKILL.md "$PLUGIN_ROOT"/skills/shared/*.md)
-DISPATCH_DOCS=("$PLUGIN_ROOT/skills/full-cycle/SKILL.md" "$PLUGIN_ROOT/skills/epic/SKILL.md" "$PLUGIN_ROOT/skills/shared/standards.md" "$PLUGIN_ROOT/skills/shared/role-sessions.md")
+DISPATCH_DOCS=("$PLUGIN_ROOT/skills/full-cycle/SKILL.md" "$PLUGIN_ROOT/skills/shared/standards.md" "$PLUGIN_ROOT/skills/shared/role-sessions.md")
 
 FAILURES=0
 fail() {
@@ -29,13 +29,13 @@ done
 
 # Why: a repeated plugin prefix or an unqualified role in a doc points at a name the Agent tool does not register.
 for doc in "${DOCS[@]}"; do
-  if grep -nE "$PLUGIN_NAME-(developer|orchestrator|pr-state-reader|reviewer|spec-writer|tester|\\\$)" "$doc" >/dev/null; then
+  if grep -nE "$PLUGIN_NAME-(developer|pr-state-reader|reviewer|spec-writer|tester|\\\$)" "$doc" >/dev/null; then
     fail "${doc#$PLUGIN_ROOT/} refers to an old-style worker name"
   fi
 done
 for t in "$PLUGIN_ROOT"/tests/*.sh; do
   [ "$t" = "$0" ] && continue
-  grep -qE "$PLUGIN_NAME-(developer|orchestrator|pr-state-reader|reviewer|spec-writer|tester|\\\$)" "$t" && fail "${t#$PLUGIN_ROOT/} refers to an old-style worker name"
+  grep -qE "$PLUGIN_NAME-(developer|pr-state-reader|reviewer|spec-writer|tester|\\\$)" "$t" && fail "${t#$PLUGIN_ROOT/} refers to an old-style worker name"
 done
 
 # Why: dispatch and launch values must be plugin-qualified roles that match a real agent file.
@@ -101,7 +101,7 @@ done
 PLUGIN_VERSION="$(jq -r '.version' "$PLUGIN_ROOT/.claude-plugin/plugin.json")"
 MARKET_VERSION="$(jq -r --arg n "$PLUGIN_NAME" '.plugins[] | select(.name == $n) | .version' "$REPO_ROOT/.claude-plugin/marketplace.json")"
 [ "$PLUGIN_VERSION" = "$MARKET_VERSION" ] || fail "plugin.json version $PLUGIN_VERSION differs from marketplace $MARKET_VERSION"
-[ "$PLUGIN_VERSION" = "2.60.1" ] || fail "plugin version $PLUGIN_VERSION is not 2.60.1"
+[ "$PLUGIN_VERSION" = "2.61.0" ] || fail "plugin version $PLUGIN_VERSION is not 2.61.0"
 
 if [ "$FAILURES" -gt 0 ]; then
   echo "$FAILURES check(s) failed" >&2

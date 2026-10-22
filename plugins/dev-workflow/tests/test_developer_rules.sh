@@ -8,7 +8,7 @@ SKILL="$PLUGIN_ROOT/skills/developing/SKILL.md"
 DISCOVERY="$PLUGIN_ROOT/skills/shared/repo-discovery.md"
 AGENT="$PLUGIN_ROOT/agents/developer.md"
 
-CANON='Worktrees go at <repo root>/.worktrees/<slug>, where the slug is the story or task ID, never in a sibling folder of the repo and never in the workspace parent folder.'
+CANON='Worktrees go at <repo root>/.worktrees/<slug>, where the slug is the story ID, never in a sibling folder of the repo and never in the workspace parent folder.'
 
 FAILURES=0
 fail() {

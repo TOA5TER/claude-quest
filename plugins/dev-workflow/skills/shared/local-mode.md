@@ -6,7 +6,7 @@ Local Mode keeps a run moving on a repo where the agent cannot push, or cannot a
 
 ## Local Mode Extension
 
-A wrapper plugin may tune this file's behavior by declaring values in a `## Local Mode Extension` section of its own shared standards file. The wrapper's orchestration skills (its full-cycle and epic wrappers, which run push detection and the probe in the main session) and its worker agents apply the values wherever this file and `pre-release-pin.md` say "per the extension".
+A wrapper plugin may tune this file's behavior by declaring values in a `## Local Mode Extension` section of its own shared standards file. The wrapper's orchestration skill (its full-cycle wrapper, which runs push detection and the probe in the main session) and its worker agents apply the values wherever this file and `pre-release-pin.md` say "per the extension".
 
 The section is a bullet list, one bullet per key, each bullet starting with the bold key name and a colon:
 
@@ -65,7 +65,6 @@ The result travels on a separate line from the pr-state-reader, `push=<repo:true
 | `push=false` on a repo not on both lists, or `unknown` on any repo | Stop and ask at entry (blocked when autonomous): the dev-verify, CI and deploy gates need a pushed branch and are never weakened, and an unknown answer is never guessed, even on a repo on both lists. |
 | Push works but the reviewer or tester cannot approve or request changes on its own PR | Approval-only mode: fixes keep being pushed to the open PR, the CI and deploy gates run normally, and only the review and test decisions move to notes. The reviewer and tester also post their report as a plain PR comment, informational and never read as a decision. |
 | A real push is rejected for permission (403 or auth) on a repo on both exempt lists | Backstop: that repo switches to Local Mode from that point, keeping its local commits, with no fresh push read. The developer then runs a backstop round (a `develop` with `mode: local` and `backstop: true`) that writes the develop note and `pr-draft.md` for the existing branch, without re-implementing. A repo not on both lists stops and asks. |
-| Epic per-task worker | `push=false`, `unknown` and approval-only are all reported blocked. |
 
 ---
 
@@ -101,4 +100,4 @@ Local Mode resume walks the base loop order, anchoring every note to the current
 
 ## Process Fidelity — Local Mode
 
-Local Mode, approval-only mode, the backstop switch, and the epic blocked rule are documented paths, not deviations: following them never needs the user's permission. Every hard-fail gate still applies in Local Mode: it is entered only on a repo exempt from the CI and deploy gates, and an ineligible repo stops and asks instead. Weakening a gate to fit a repo into Local Mode is a deviation and needs the user's explicit permission.
+Local Mode, approval-only mode, and the backstop switch are documented paths, not deviations: following them never needs the user's permission. Every hard-fail gate still applies in Local Mode: it is entered only on a repo exempt from the CI and deploy gates, and an ineligible repo stops and asks instead. Weakening a gate to fit a repo into Local Mode is a deviation and needs the user's explicit permission.

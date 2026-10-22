@@ -85,16 +85,16 @@ The `models` section is optional. When absent, all dispatches use the built-in d
 | `models.implementation` | `sonnet` | All coding/implementation subagents (implementers, TDD cycles) |
 | `models.reasoning` | `opus` | All reasoning/planning subagents (brainstorming, architecture, spec writing) |
 | `models.review` | `opus` | All review/testing subagents (review board, adversarial review, test agents) |
-| `models.stages.writing-specs` | `opus` | full-cycle's writing-specs stage: the spec-writer role session or relay dispatch in a standalone run, and the autonomous subagent for epic tasks |
+| `models.stages.writing-specs` | `opus` | full-cycle's writing-specs stage: the spec-writer role session or relay dispatch in a standalone run |
 | `models.stages.developing` | `sonnet` | full-cycle's developing stage (the developer role session's model, fixed at launch, or the fresh developer dispatch) |
 | `models.stages.reviewing-prs` | `opus` | full-cycle's reviewing-prs stage (reviewer role session or fresh subagent) |
 | `models.stages.testing-prs` | `opus` | full-cycle's testing-prs stage (tester role session or fresh subagent) |
-| `models.stages.addressing-pr-comments` | `sonnet` | The fresh developer rework dispatch in the review and test loops (fallback path and epic per-task workers). Ignored in role-session mode, where the developer session's model is fixed at launch from `models.stages.developing`. Existing configs that set it keep working on the fallback path only. |
+| `models.stages.addressing-pr-comments` | `sonnet` | The fresh developer rework dispatch in the review and test loops (fallback path). Ignored in role-session mode, where the developer session's model is fixed at launch from `models.stages.developing`. Existing configs that set it keep working on the fallback path only. |
 | `models.stages.entry-detection` | `sonnet` | full-cycle's resume/entry-detection subagent |
 | `models.stages.pr-number-read` | `sonnet` | full-cycle's post-developing PR-number resolution subagent |
 | `models.stages.decision-read` | `sonnet` | full-cycle's authoritative review/test decision-read subagent |
 | `models.stages.handoff-check` | `sonnet` | full-cycle's pre-send hand-off check subagent (PR draft state and dev-verification evidence) |
-| `models.stages.verify` | `sonnet` | The fresh developer `mode: verify` dispatch (fallback path and epic per-task workers); falls back to `models.implementation` |
+| `models.stages.verify` | `sonnet` | The fresh developer `mode: verify` dispatch (fallback path); falls back to `models.implementation` |
 
 **Resolution order** for any dispatch: `models.stages.<stage-key>` → `models.<task-type>` → built-in default. Stage-level keys take priority over task-type keys. Users who never add the `models` section see no change in behavior.
 
@@ -140,8 +140,6 @@ Three optional keys in `~/.claude/dev-workflow/config.json` control story transi
 
 The post-test transition fires only when the reviewer's latest `APPROVED` or `CHANGES_REQUESTED` review (by `submitted_at`) is `APPROVED`. Reviews whose body starts with `## Test Report` are never the reviewer's. The reviewer's reviews are those by `reviewer_login` when it is set and that login has at least one such review on the PR; otherwise (unset, or set but absent from the PR, as on a repo where a person reviews) they are all remaining reviews, so a shared reviewer/tester login still works. The PR-level `reviewDecision` is never used. Otherwise the story is left unchanged pending review approval.
 
-The tasklist adapter ignores these keys; its stage-to-status mapping governs.
-
 ### Developer dev verification
 
 Before hand-off the developer deploys its branch to dev through the dev deploy CI and verifies the change against live data. The ordering for non-exempt repos:
@@ -169,7 +167,7 @@ Standalone `full-cycle` runs the spec-writer, developer, reviewer, and tester as
 - Background launches need a trusted workspace.
 - Only for `bypassPermissions`: `skipDangerousModePermissionPrompt: true` in user settings (`~/.claude/settings.json`) or managed settings; a background bypass launch is refused until the bypass warning has been accepted there.
 
-**Fallback.** A preflight runs once before the first role-session launch, and each check is executed, never inferred. If a check fails when run (old version, agent view unavailable, background launch refused, no handshake reply), the run announces the failed check and its observed output once and completes the remaining work on the fresh-dispatch path: fresh spec-writer relay, developer, reviewer, and tester dispatches, with a fresh developer dispatch in rework mode for each fix loop. No stage runs on both paths at once; a run that switches from fresh dispatch to role sessions part-way follows the mid-run mode change rule in `role-sessions.md`. `epic` per-task workers always use the fresh-dispatch path.
+**Fallback.** A preflight runs once before the first role-session launch, and each check is executed, never inferred. If a check fails when run (old version, agent view unavailable, background launch refused, no handshake reply), the run announces the failed check and its observed output once and completes the remaining work on the fresh-dispatch path: fresh spec-writer relay, developer, reviewer, and tester dispatches, with a fresh developer dispatch in rework mode for each fix loop. No stage runs on both paths at once; a run that switches from fresh dispatch to role sessions part-way follows the mid-run mode change rule in `role-sessions.md`.
 
 **Config.** Optional `role_sessions.permission_mode` in `config.json` is passed as the sessions' permission mode for `acceptEdits`, `plan` and (with the opt-in) `bypassPermissions`; when unset the host default applies. `default` is permitted but launches every role with no flag, so the host default applies. `plan` applies only to the reviewer and tester; the spec-writer and developer launch with no flag. `bypassPermissions` is accepted, and passed to all four roles, only when `role_sessions.allow_bypass_permissions` is the JSON boolean `true`; without it, and for any other value (including `auto`), the value is refused, announced once, and the sessions launch with no flag. **The opt-in lets a message from any local session make a worker run any tool with no permission prompt, so turn it on only on a machine or container where every local session is your own** (`permissions.deny` rules still apply). When a role would launch with no flag and a launch directory's settings files set `permissions.defaultMode` to `auto`, the preflight prints a one-time, non-failing warning, because the auto-mode classifier can deny role sessions' sub-agent dispatches; managed and account-level defaults are not read. Optional `role_sessions.round_timeout_minutes` overrides the per-request time limit (defaults: 90 minutes for spec, answer, and revise; 60 for develop and fix; 120 for review and test; 30 for finalize).
 
@@ -186,7 +184,7 @@ Local Mode keeps a `full-cycle` run moving on a repo where the agent cannot push
 | Approval-only | Push works but the reviewer or tester cannot approve or request changes on its own PR | Fixes are pushed to the open PR and the CI and deploy gates run normally; only the review and test decisions move to notes. |
 | Backstop | A real push is rejected for permission on a repo listed in both exempt lists | The repo switches to Local Mode from that point, keeping its local commits. |
 
-A `push=false` repo that is not on both exempt lists, or a repo whose push read is `unknown`, stops and asks at entry: the CI, deploy and dev-verify gates need a pushed branch and are never weakened. Under `epic`, a Local Mode, approval-only or unknown-push task is marked blocked.
+A `push=false` repo that is not on both exempt lists, or a repo whose push read is `unknown`, stops and asks at entry: the CI, deploy and dev-verify gates need a pushed branch and are never weakened.
 
 **Notes.** Round notes (`develop-round-1.md`, `review-round-N.md`, `test-round-N.md`, `fix-review-round-N.md`, `fix-test-round-N.md`, and the one-time `pr-draft.md`) live in the repo's primary checkout under `.scratch/{story-id}/` when that folder is gitignored, otherwise in `$(git rev-parse --git-dir)/dev-workflow/{story-id}/`. Each note's first line carries the branch head it applies to, and a stage refuses to act on a note whose head is not the current branch tip.
 
@@ -194,13 +192,13 @@ A `push=false` repo that is not on both exempt lists, or a repo whose push read 
 
 **Extension contract.** A wrapper plugin declares optional values in a `## Local Mode Extension` section of its own shared standards file: `push-by-rule` (repos that read `push=true` with no probe), `trusted tag owners` (owners whose pre-release tags may be pinned), and the `git network command` and `gh command` forms. A missing key takes its default: every repo is probed, the dependency repo's owner must equal the dependent repo's owner, and plain `git` and `gh` are used. See `skills/shared/local-mode.md` → "Local Mode Extension" for the exact format.
 
-**Base root.** A wrapper plugin's agents replace the base agents by `subagent_type`, so they read base agent sections from `<root>/agents/<role>.md`. Role sessions receive the root from the session-start context line; `full-cycle` and `epic` end every Agent-tool dispatch prompt with a `base-root: <absolute path>` line.
+**Base root.** A wrapper plugin's agents replace the base agents by `subagent_type`, so they read base agent sections from `<root>/agents/<role>.md`. Role sessions receive the root from the session-start context line; orchestrating skills (`full-cycle` and any downstream wrapper's orchestration skill) end every Agent-tool dispatch prompt with a `base-root: <absolute path>` line.
 
 **Pre-release pins.** A dependent repo may pin to a verified pre-release commit of an unmerged dependency instead of blocking on its merge, and is re-pinned to the final tag later. The PR carries a do-not-merge banner and a `pinned-pre-release: {sha}` marker until then. See `skills/shared/pre-release-pin.md`.
 
 ## Adapters
 
-**PM adapters** (`skills/pm-adapter/`): `shortcut`, `jira`, `linear`, `github-issues`, `tasklist`
+**PM adapters** (`skills/pm-adapter/`): `shortcut`, `jira`, `linear`, `github-issues`
 
 **Notes adapters** (`skills/notes-adapter/`): `obsidian`, `local`
 
