@@ -73,7 +73,12 @@ need_text "$lookup_bullet" "Lookup bullet" \
   "ListAgents" \
   "claude respawn" \
   "ping" \
-  "Never launch under a name that a counting entry already has"
+  "Never launch under a name that a counting entry already has" \
+  "Unresponsive." \
+  "Ambiguous." \
+  "An interactive entry is never offered for reuse" \
+  "one higher than the highest family number" \
+  "skipping any number whose name is excluded from the family"
 
 # Why: the host-rename remark must not read as permission to launch a duplicate.
 names_bullet="$(line_starting "$RS" '- **Names.**')"
@@ -109,7 +114,8 @@ done
 # Why: the resume paragraph must respawn every finished state and name the matching rule.
 resume_para="$(line_starting "$FC" '**Role sessions on resume.**')"
 [ -n "$resume_para" ] || fail "full-cycle: Role sessions on resume paragraph not found"
-need_text "$resume_para" "Role sessions on resume" "respawn a done, stopped, failed, or crashed one"
+need_text "$resume_para" "Role sessions on resume" "respawn a done, stopped, failed, or crashed one" "Lookup before every launch" "ListAgents"
+forbid_text "$resume_para" "Role sessions on resume" "list sessions with claude agents --json --all"
 
 # Why: implementation work must never bypass an existing developer session.
 scope="$(line_starting "$FC" '**SCOPE BOUNDARY:**')"
