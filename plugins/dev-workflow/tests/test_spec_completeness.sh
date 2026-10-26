@@ -198,6 +198,73 @@ require "spec-writer agent" "$AGENT_TEXT" "never passed to the approver or the d
 require "spec-writer agent" "$AGENT_TEXT" "owns the full rules"
 forbid "spec-writer agent" "$AGENT_TEXT" "TBD"
 
+# Why: each change gets one named section inside its phase, with an S form so small specs stay small.
+P5_TEXT="$(region "$SKILL" '^## Phase 5:')"
+P7_TEXT="$(region "$SKILL" '^## Phase 7:')"
+P10_TEXT="$(region "$SKILL" '^## Phase 10:')"
+for h in "C1 Size Gate" "C2 Type Checklists" "C3 Evidence Ledger" "C4 Impact Inventory"; do
+  require "SKILL.md Phase 5" "$P5_TEXT" "### $h"
+done
+for h in "C5 Coverage Scan" "C6 Input Classes" "C7 Pre-mortem"; do
+  require "SKILL.md Phase 7" "$P7_TEXT" "### $h"
+done
+for h in "C8 Requirement Quality" "C9 Traceability" "C10 Length Caps" "C11 Lint Entry Gate"; do
+  require "SKILL.md Phase 10" "$P10_TEXT" "### $h"
+done
+for pair in "Phase 5:$P5_TEXT:4" "Phase 7:$P7_TEXT:3" "Phase 10:$P10_TEXT:4"; do
+  label="${pair%%:*}"; rest="${pair#*:}"; n="${rest##*:}"
+  count="$(printf '%s\n' "${rest%:*}" | grep -o '\*\*S:\*\*' | wc -l | tr -d ' ')"
+  [ "$count" -ge "$n" ] || fail "SKILL.md $label: expected at least $n S-form lines, found $count"
+done
+
+# Why: replay and review-record rules must sit between the standard and Phase 1 so they apply to every mode without renumbering phases.
+REPLAY_LINE="$(grep -n '^## Replay Mode' "$SKILL" | head -n1 | cut -d: -f1)"
+RECORD_LINE="$(grep -n '^## Review Record' "$SKILL" | head -n1 | cut -d: -f1)"
+if [ -z "$REPLAY_LINE" ] || [ -z "$RECORD_LINE" ]; then
+  fail "SKILL.md: Replay Mode or Review Record heading missing"
+elif [ "$REPLAY_LINE" -le "$STD_LINE" ] || [ "$RECORD_LINE" -le "$STD_LINE" ] || [ "$REPLAY_LINE" -ge "$PHASE1_LINE" ] || [ "$RECORD_LINE" -ge "$PHASE1_LINE" ]; then
+  fail "SKILL.md: Replay Mode and Review Record are not between the standard and Phase 1"
+fi
+
+# Why: the old cap wording and the old generic-review sentence would contradict the 3-round regime.
+forbid "SKILL.md" "$SKILL_TEXT" "5-iteration cap"
+forbid "SKILL.md" "$SKILL_TEXT" "the shared review procedure stays generic"
+
+# Why: the replay arguments must be documented where the arguments are.
+ARGS_TEXT="$(region "$SKILL" '^## Arguments')"
+require "SKILL.md Arguments" "$ARGS_TEXT" "replay-story:"
+require "SKILL.md Arguments" "$ARGS_TEXT" "replay-spec:"
+
+# Why: the spec-review regime is added beside the code regime; existing headings and the code-target text must survive byte for byte.
+ADV="$PLUGIN_ROOT/skills/shared/adversarial-review.md"
+ADV_TEXT="$(whole "$ADV")"
+for h in "## Regime Selection" "## Spec Document Regime" "### Reviewer Inputs" "### C12 Severity Rubric" "### C13 Partitioned First Pass" "### C14 Verify-Only Rounds" "### C15 Stopping Rules" \
+  "## Context Variables" "## Subagent Spawn Instructions" "## Subagent Procedure" "## Adversarial Persona" "## Output Format" "## Adversarial Review Report" "### Expectations Formed" "### Audit Findings" "### Summary" "### Recommendation" "## Handling Findings"; do
+  require "adversarial-review.md" "$ADV_TEXT" "$h"
+done
+CODE_CKSUM="$(awk '/^## Subagent Spawn Instructions/{on=1} on{print} /^- \*\*UNVERIFIED items:\*\*/{exit}' "$ADV" | cksum | cut -d' ' -f1)"
+[ "$CODE_CKSUM" = "3642265483" ] || fail "adversarial-review.md: code-target text changed (cksum $CODE_CKSUM)"
+for needle in "BLOCKER" "MAJOR" "NOTE" "3 rounds" "never resets" "ripple set" "Maximum 5 total adversarial review iterations"; do
+  require "adversarial-review.md" "$ADV_TEXT" "$needle"
+done
+
+# Why: the template must carry the new sections, size attribute and table classes the lint and the writer rely on.
+for needle in 'data-size-class' 'id="requirements"' 'id="evidence-impact"' 'id="completeness-checks"' 'id="clarifications"' 'id="glossary"' \
+  'id="evidence"' 'id="assumptions"' 'id="impact"' 'id="trace"' 'id="type-checklists"' 'id="coverage"' 'id="input-classes"' 'id="pre-mortem"' \
+  'decision-table' 'else-row' 'evidence-ledger' 'impact-inventory' 'coverage-scan' 'trace-matrix' 'type-checklist' 'class="pre-mortem' 'class="input-classes' 'class="assumptions'; do
+  require "template" "$TEMPLATE_TEXT" "$needle"
+done
+
+# Why: the checklist file is what the writer copies rows from, so every type and row id must exist.
+TYPES="$PLUGIN_ROOT/skills/writing-specs/type-checklists.md"
+TYPES_TEXT="$(whole "$TYPES")"
+for h in UI API Bug Infra Migration Integration Refactor Rules; do
+  require "type-checklists.md" "$TYPES_TEXT" "$h"
+done
+for id in UI-1 UI-2 UI-3 UI-4 UI-5 UI-6 UI-7 API-1 API-2 API-3 API-4 API-5 BUG-1 BUG-2 BUG-3 BUG-4 INF-1 INF-2 INF-3 INF-4 MIG-1 MIG-2 MIG-3 MIG-4 INT-1 INT-2 INT-3 INT-4 REF-1 REF-2 RUL-1 RUL-2; do
+  require "type-checklists.md" "$TYPES_TEXT" "$id"
+done
+
 # Why: the version bump must land in both manifests together and not fall below the release that carries these rules.
 PLUGIN_VERSION="$(jq -r '.version' "$PLUGIN_ROOT/.claude-plugin/plugin.json")"
 MARKET_VERSION="$(jq -r '.plugins[] | select(.name == "dev-workflow") | .version' "$REPO_ROOT/.claude-plugin/marketplace.json")"

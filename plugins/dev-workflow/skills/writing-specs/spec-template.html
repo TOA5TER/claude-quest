@@ -18,6 +18,10 @@
       {{REPO_NAME}}    — repo being specced
       {{STORY_TYPE}}   — feature | bug | chore | unknown
       {{DATE}}         — YYYY-MM-DD
+      {{SIZE_CLASS}}   — S | M | L (written to the <body> data-size-class attribute and the size pill)
+
+    Optional <body> attribute: data-cap-accepted="true" — present only when the
+    length cap was accepted or the spec was left unsplit (always on L).
   -->
   <title>Claude Instructions: {{STORY_TITLE}}</title>
   <style>
@@ -180,6 +184,14 @@
     .file-map ul:not([role="list"]) { list-style: disc; padding-left: 1.2rem; margin: .2rem 0 0; }
     .file-map code { overflow-wrap: anywhere; }
 
+    /* ---------- Spec tables (ledgers, matrices, checklists) ---------- */
+    table.decision-table, table.evidence-ledger, table.assumptions, table.impact-inventory,
+    table.trace-matrix, table.type-checklist, table.coverage-scan, table.input-classes,
+    table.pre-mortem, table.glossary { font-size: .9rem; }
+    table.decision-table tr.else-row td { font-style: italic; background: var(--surface); }
+    table.trace-matrix td a, table.coverage-scan td a { white-space: nowrap; }
+    .pill-size { color: var(--accent); border-color: var(--accent); font-weight: 600; }
+
     /* ---------- Anchor-linked headings ---------- */
     .hl { margin-left: .35rem; text-decoration: none; opacity: 0; font-weight: 400; }
     h2:hover .hl, h3:hover .hl, .hl:focus { opacity: 1; }
@@ -217,7 +229,7 @@
     }
   </style>
 </head>
-<body data-spec-key="{{STORY_ID}}-{{REPO_NAME}}">
+<body data-spec-key="{{STORY_ID}}-{{REPO_NAME}}" data-size-class="{{SIZE_CLASS}}"><!-- SLOT: add data-cap-accepted="true" to this tag only when the cap was accepted -->
 
   <!-- ============ Header meta bar ============ -->
   <header class="meta-bar">
@@ -229,6 +241,7 @@
         <li class="pill">{{REPO_NAME}}</li>
         <li class="pill">{{STORY_TYPE}}</li>
         <li class="pill">{{DATE}}</li>
+        <li class="pill pill-size">Size {{SIZE_CLASS}}</li>
       </ul>
     </div>
   </header>
@@ -241,11 +254,16 @@
         <summary>Contents</summary>
         <ol id="toc-list">
           <li><a href="#story-summary">Story Summary</a></li>
+          <li><a href="#requirements">Requirements</a></li>
           <li><a href="#technical-context">Technical Context</a></li>
           <li><a href="#implementation-steps">Implementation Steps</a></li>
+          <li><a href="#evidence-impact">Evidence and Impact</a></li>
           <li><a href="#test-requirements">Test Requirements</a></li>
           <li><a href="#manual-testing">Manual Testing</a></li>
           <li><a href="#validation-checklist">Validation Checklist</a></li>
+          <li><a href="#completeness-checks">Completeness Checks</a></li>
+          <li><a href="#clarifications">Clarifications</a></li>
+          <li><a href="#glossary">Glossary</a></li><!-- SLOT: delete this entry and the Glossary section when the spec adds no terms -->
           <!-- SLOT: add one entry per additional h2 section, in document order -->
         </ol>
       </details>
@@ -278,6 +296,21 @@
         <p><!-- SLOT: a constraint or risk the developer must not miss --></p>
       </div>
 
+      <!-- ============ Requirements — never collapsed ============ -->
+      <h2 id="requirements">Requirements <a class="hl" href="#requirements" aria-label="Link to Requirements">#</a></h2>
+      <p><!-- SLOT: one EARS-style requirement per R id, e.g. "R-1 When the user submits an empty form, the system shall show the error banner." --></p>
+      <ul>
+        <li><strong>R-1</strong> <!-- SLOT: requirement sentence --></li>
+      </ul>
+      <!-- Decision table pattern: data-hit-policy is "unique" or "first"; the last body row is the else-row. Delete if the spec has no decision logic. -->
+      <table class="decision-table" id="DT-1" data-hit-policy="first">
+        <thead><tr><th>Condition</th><th>Input state</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td><!-- SLOT: first condition --></td><td><!-- SLOT: value that matches --></td><td><!-- SLOT: action taken --></td></tr>
+          <tr class="else-row"><td>Otherwise</td><td>Any other value</td><td><!-- SLOT: default action --></td></tr>
+        </tbody>
+      </table>
+
       <!-- ============ Technical Context — never collapsed ============ -->
       <h2 id="technical-context">Technical Context <a class="hl" href="#technical-context" aria-label="Link to Technical Context">#</a></h2>
       <p><!-- SLOT: one sentence of architectural context, then the file map below. Group files by area; one file per item; role in one sentence; details as sub-bullets. --></p>
@@ -308,9 +341,44 @@
         <!-- SLOT: one li per step; use badge-required / badge-optional / badge-p0 / badge-p1 instead of adjectives -->
       </ol>
 
+      <!-- ============ Evidence and Impact — never collapsed ============ -->
+      <h2 id="evidence-impact">Evidence and Impact <a class="hl" href="#evidence-impact" aria-label="Link to Evidence and Impact">#</a></h2>
+      <h3 id="evidence">Evidence Ledger <a class="hl" href="#evidence" aria-label="Link to Evidence Ledger">#</a></h3>
+      <table class="evidence-ledger">
+        <thead><tr><th>ID</th><th>Fact</th><th>Source</th></tr></thead>
+        <tbody>
+          <tr><td><span id="E-1">E-1</span></td><td><!-- SLOT: a fact the spec relies on --></td><td><!-- SLOT: file:line, command run or link that proves it --></td></tr>
+        </tbody>
+      </table>
+      <h3 id="assumptions">Assumptions <a class="hl" href="#assumptions" aria-label="Link to Assumptions">#</a></h3>
+      <table class="assumptions">
+        <thead><tr><th>ID</th><th>Assumption</th><th>Resolution</th></tr></thead>
+        <tbody>
+          <tr><td><span id="A-1">A-1</span></td><td><!-- SLOT: what is assumed and could not be verified --></td><td><a href="#clarifications">Q-1</a> or [Inference]</td></tr>
+        </tbody>
+      </table>
+      <h3 id="impact">Impact Inventory <a class="hl" href="#impact" aria-label="Link to Impact Inventory">#</a></h3>
+      <table class="impact-inventory">
+        <thead><tr><th>ID</th><th>Consumer</th><th>Affected</th><th>Reason</th></tr></thead>
+        <tbody>
+          <tr><td><span id="I-1">I-1</span></td><td><!-- SLOT: file, caller, doc or test that depends on the change --></td><td>Yes / No</td><td><!-- SLOT: why it is or is not affected --></td></tr>
+        </tbody>
+      </table>
+
       <!-- ============ Test Requirements — never collapsed ============ -->
       <h2 id="test-requirements">Test Requirements <a class="hl" href="#test-requirements" aria-label="Link to Test Requirements">#</a></h2>
       <p><!-- SLOT: what tests need to be written, what patterns to follow --></p>
+      <ul>
+        <li><strong>T-1</strong> <!-- SLOT: one test per T id, naming what it asserts --></li>
+      </ul>
+      <h3 id="trace">Traceability Matrix <a class="hl" href="#trace" aria-label="Link to Traceability Matrix">#</a></h3>
+      <table class="trace-matrix">
+        <thead><tr><th>AC</th><th>Rules</th><th>Tests</th></tr></thead>
+        <tbody>
+          <tr><td><a href="#AC-1">AC-1</a></td><td><a href="#R-1">R-1</a></td><td><a href="#T-1">T-1</a></td></tr>
+          <tr><td>Property <a href="#DT-1">DT-1</a></td><td><a href="#R-1">R-1</a></td><td><a href="#T-1">T-1</a></td></tr>
+        </tbody>
+      </table>
 
       <!-- ============ Manual Testing — never collapsed ============ -->
       <h2 id="manual-testing">Manual Testing <a class="hl" href="#manual-testing" aria-label="Link to Manual Testing">#</a></h2>
@@ -329,6 +397,54 @@
         <!-- SLOT: one li per criterion; data-check values must be unique within this file -->
       </ul>
       <p class="progress" id="checklist-progress" aria-live="polite"></p>
+
+      <!-- ============ Completeness Checks — never collapsed ============ -->
+      <h2 id="completeness-checks">Completeness Checks <a class="hl" href="#completeness-checks" aria-label="Link to Completeness Checks">#</a></h2>
+      <h3 id="type-checklists">Type Checklists <a class="hl" href="#type-checklists" aria-label="Link to Type Checklists">#</a></h3>
+      <!-- SLOT: copy rows from type-checklists.md for each matching type, or replace the table with one line "Type checklists: none apply: reason" -->
+      <table class="type-checklist">
+        <thead><tr><th>ID</th><th>Question</th><th>Answer</th></tr></thead>
+        <tbody>
+          <tr><td>UI-1</td><td><!-- SLOT: question copied from type-checklists.md --></td><td><!-- SLOT: answer, or N/A: reason --></td></tr>
+        </tbody>
+      </table>
+      <h3 id="coverage">Coverage Scan <a class="hl" href="#coverage" aria-label="Link to Coverage Scan">#</a></h3>
+      <table class="coverage-scan">
+        <thead><tr><th>ID</th><th>Item</th><th>Status</th><th>Resolution</th></tr></thead>
+        <tbody>
+          <tr><td><span id="CS-1">CS-1</span></td><td><!-- SLOT: coverage category scanned --></td><td>Clear</td><td><!-- SLOT: where the spec covers it --></td></tr>
+          <tr><td><span id="CS-2">CS-2</span></td><td><!-- SLOT: coverage category scanned --></td><td>Partial</td><td><a href="#clarifications">Q-1</a></td></tr>
+        </tbody>
+      </table>
+      <h3 id="input-classes">Input Classes <a class="hl" href="#input-classes" aria-label="Link to Input Classes">#</a></h3>
+      <table class="input-classes">
+        <thead><tr><th>ID</th><th>Input class</th><th>Example</th><th>Handling</th></tr></thead>
+        <tbody>
+          <tr><td><span id="IC-1">IC-1</span></td><td><!-- SLOT: class of input, e.g. missing, empty, oversized --></td><td><!-- SLOT: concrete example value --></td><td><!-- SLOT: behavior and the R or AC that states it --></td></tr>
+        </tbody>
+      </table>
+      <h3 id="pre-mortem">Pre-mortem <a class="hl" href="#pre-mortem" aria-label="Link to Pre-mortem">#</a></h3>
+      <table class="pre-mortem">
+        <thead><tr><th>ID</th><th>Failure cause</th><th>Effect</th><th>Severity</th><th>Detection</th></tr></thead>
+        <tbody>
+          <tr><td><span id="F-1">F-1</span></td><td><!-- SLOT: how this change could fail in use --></td><td><!-- SLOT: what the user or system sees --></td><td>High</td><td><a href="#T-1">T-1</a></td></tr>
+        </tbody>
+      </table>
+
+      <!-- ============ Clarifications ============ -->
+      <h2 id="clarifications">Clarifications <a class="hl" href="#clarifications" aria-label="Link to Clarifications">#</a></h2>
+      <ul>
+        <li><strong id="Q-1">Q-1</strong> <!-- SLOT: question, and the answer with its source, or [Inference] --></li>
+      </ul>
+
+      <!-- ============ Glossary — conditional: keep only when the spec adds terms ============ -->
+      <h2 id="glossary">Glossary <a class="hl" href="#glossary" aria-label="Link to Glossary">#</a></h2>
+      <table class="glossary">
+        <thead><tr><th>ID</th><th>Term</th><th>Meaning</th><th>Read by</th></tr></thead>
+        <tbody>
+          <tr><td><span id="G-1">G-1</span></td><td><!-- SLOT: term, wrapped in dfn at first use --></td><td><!-- SLOT: one-sentence meaning --></td><td><a href="#R-1">R-1</a></td></tr>
+        </tbody>
+      </table>
 
     </main>
   </div>
