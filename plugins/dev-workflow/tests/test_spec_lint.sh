@@ -9,7 +9,7 @@ require_python3() {
   }
 }
 
-# Why: the guard must run before any external command, so the T-9 sub-case can run it with an empty PATH.
+# Why: the guard must run before any external command, so the python3-missing sub-case can run it with an empty PATH.
 if [ "${1:-}" = "--guard-only" ]; then
   require_python3
   exit 0
@@ -254,7 +254,12 @@ lint_mutation "undefined dfn term" clean-s.html '<dfn>greeting</dfn>' '<dfn>salu
 lint_mutation "undefined abbr term" clean-s.html 'uses the given name' 'uses the <abbr>CLI</abbr> name' undefined-ref
 lint_mutation "glossary read-by id missing" clean-s.html '<td>The line the tool prints.</td><td>R-1</td>' '<td>The line the tool prints.</td><td>R-9</td>' undefined-ref
 lint_mutation "unmapped test" clean-s.html '<section id="manual-testing">' '<p id="T-2">A second test nobody maps.</p><section id="manual-testing">' orphan
-lint_mutation "empty matrix cell" matrix-linked-m.html '<td><a href="#R-1">R-1</a> <a href="#R-2">R-2</a> <a href="#R-3">R-3</a></td>' '<td></td>' orphan
+lint_mutation "empty matrix cell" matrix-linked-m.html '</tbody></table>
+</section>
+<section id="manual-testing">' '<tr><td><a href="#AC-1">AC-1</a></td><td></td><td><a href="#T-1">T-1</a></td></tr></tbody></table>
+</section>
+<section id="manual-testing">' orphan
+require "empty matrix cell" "$OUT" "empty"
 lint_mutation "assumption with Inference" clean-s.html '<td>Clients send UTF-8 input.</td><td><a href="#Q-1">Q-1</a></td>' '<td>Clients send UTF-8 input.</td><td>[Inference] UTF-8 is the common default.</td>' ""
 lint_mutation "quoted deferral phrase" clean-s.html 'prints a greeting for the name it is given.' 'prints a greeting; the word <q>TBD</q> is quoted here.' ""
 lint_mutation "unquoted deferral phrase" clean-s.html 'prints a greeting for the name it is given.' 'prints a greeting; the owner is TBD.' deferral
