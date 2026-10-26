@@ -176,7 +176,7 @@ expect_rc "matrix range" 1
 require "matrix range" "$OUT" "FINDING orphan #R-1"
 [ "$(finding_classes)" = "orphan " ] || fail "matrix range: classes were '$(finding_classes)'"
 
-# Why: --partition writes the whole spec for S, and DT-2 packs h2 sections at 3,000 words for larger specs with the earliest-section tie rule for perspective.
+# Why: --partition writes the whole spec for S, and the partition rule in adversarial-review.md packs h2 sections at 3,000 words for larger specs with the earliest-section tie rule for perspective.
 lint --partition "$FX/clean-s.html" "$TMP/s"
 expect_rc "--partition S" 0
 require "--partition S" "$OUT" "partition-1.html"
