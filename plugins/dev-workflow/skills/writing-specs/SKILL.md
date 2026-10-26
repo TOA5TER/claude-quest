@@ -448,7 +448,7 @@ Per-Repo Sequential Loop" above), this criterion is a cheap re-check of the
 already-resolved list, filtered to this repo's capabilities by repo tag — not a
 fresh judgment.
 
-**No open questions in the final spec.** A finished spec must never contain `[Open Question]` items. Every question must be resolved before the spec is written — either automatically through investigation, or, in interactive mode, through back-and-forth with the user. Resolve them; do not defer them. The Cold-Start Completeness Standard and its Deferral ban make this absolute: nothing is left for the approver or the developer to settle.
+**No open questions in the final spec.** A finished spec must never contain `[Open Question]` items. Every question must be resolved before the spec is written — either automatically through investigation, or, in interactive mode, through the Phase 7 question batches. Resolve them; do not defer them. The Cold-Start Completeness Standard and its Deferral ban make this absolute: nothing is left for the approver or the developer to settle.
 
 **Decision:**
 - **Interactive mode** — If any criterion cannot be met after research, do not write a partial spec. Take the unresolved gaps back to the user in the Phase 7 batch (re-enter the Phase 4 brainstorm if the gaps are substantial). Only proceed to write the spec once every criterion is met and no open questions remain:
@@ -615,9 +615,9 @@ Place the required content sections into the template's structure as follows:
 | Manual Testing (Happy Path / Error Scenarios / UX Verification) | `#manual-testing` section + h3 subsections | NEVER collapse |
 | Validation Checklist (acceptance criteria; content varies by Phase 5 classification — see below) | `#validation-checklist` interactive checklist | NEVER collapse |
 | Requirements (EARS rules with IDs, decision and state tables) | `#requirements` section | NEVER collapse |
-| Evidence Ledger, Assumptions, Impact Inventory (C3, C4) | `#evidence-impact` section; tables with ids `evidence`, `assumptions`, `impact` | NEVER collapse |
+| Evidence Ledger, Assumptions, Impact Inventory (C3, C4) | `#evidence-impact` section; headings with ids `evidence`, `assumptions`, `impact` | NEVER collapse |
 | Traceability Matrix (C9) | `#trace` table inside `#test-requirements` | NEVER collapse |
-| Type Checklists, Coverage Scan, Input Classes, Pre-mortem (C2, C5, C6, C7) | `#completeness-checks` section; tables with ids `type-checklists`, `coverage`, `input-classes`, `pre-mortem` | NEVER collapse |
+| Type Checklists, Coverage Scan, Input Classes, Pre-mortem (C2, C5, C6, C7) | `#completeness-checks` section; headings with ids `type-checklists`, `coverage`, `input-classes`, `pre-mortem` | NEVER collapse |
 | Clarifications (every question and answer, the size-gate line, accepted lengths) | `#clarifications` section | NEVER collapse |
 | Glossary (only when the spec adds terms) | `#glossary` section | NEVER collapse |
 
@@ -699,7 +699,7 @@ Read and follow the adversarial review procedure in `skills/shared/adversarial-r
 
 - `story_id`: the story ID from `$ARGUMENTS`
 - `review_target`: "spec document"
-- `review_context`: the full Claude Instructions spec content written in Phase 10
+- `review_context`: the round folder written by "Reviewer Inputs" in the regime: each reviewer's own partition, reference and cross-cutting files (an S spec's reviewer gets the whole spec file); no reviewer is given the full spec of an M or L size class
 
 This target uses the Spec Document Regime in `skills/shared/adversarial-review.md`, not the code-target persona, output format or iteration loop. Prepare the round as its "Reviewer Inputs" section describes: snapshot the spec, write the round-folder files with `spec-lint.py`, and give every reviewer the story itself (through the PM adapter, or the local story file path in replay) and only the spec files named in its prompt, never the notes adapter's spec path. Keep the review record (see "Review Record") current through every round.
 
@@ -736,7 +736,7 @@ parentheses is the reviewer checklist item that owns it):
 
 This instruction comes from this skill; the shared review procedure holds the Spec Document Regime for spec targets beside its unchanged code-target regime.
 
-**Rounds.** The cap is 3 rounds per review cycle; a user's "continue" never resets the round count. After each round apply the stopping table in the regime. The rework that precedes round 3, and the rework that precedes each extension round, runs in a fresh general-purpose subagent (model resolved `models.stages.writing-specs` → `models.reasoning` → `opus`), which receives only the spec path, the review record path, the open BLOCKERs, the story ID, the writer-handling rules, the requirement-quality and traceability rules and the lint command. When a fix needs a decision the story, the Clarifications and the repo cannot settle, ask through the mode's ask route (autonomous: an `[Inference]` decision) before the next round.
+**Rounds.** The cap is 3 rounds per review cycle; a user's "continue" never resets the round count. After each round apply the stopping table in the regime. The rework that precedes round 3, and the rework that precedes each extension round, runs in a fresh general-purpose subagent (model resolved `models.stages.writing-specs` → `models.reasoning` → `opus`), which receives only the spec path, the review record path, the open BLOCKERs, the story ID (in a replay, the local story file path instead, with no PM fetch), the writer-handling rules, the requirement-quality, traceability and length-cap rules and the lint command. When a fix needs a decision the story, the Clarifications and the repo cannot settle, ask through the mode's ask route (autonomous: an `[Inference]` decision) before the next round.
 
 **Restructure report.** A stop at the cap, or an early stop, produces a restructure report: the BLOCKER count per round, the stopping-table row that fired, the failing IDs, a proposed restructure (a split, a section rewrite or a table conversion) and the options: approve the restructure and its extension (at most 2 more rounds, once per review cycle), accept the spec with its open BLOCKERs listed for the approver, or stop. It goes out through the mode's ask route (relay: `kind: questions`). When the approved restructure is a split, the C1 "accepts split" row applies instead of an extension: no further round runs, the written spec stays on disk unchanged, the split plan names it as superseded and the review record's state becomes `stopped`. In autonomous mode the run returns `status: error` with the report and never runs Phase 12. While a relay report awaits its answer, the record's `data-state` is `awaiting-answer`.
 

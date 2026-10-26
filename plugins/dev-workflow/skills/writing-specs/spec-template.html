@@ -300,7 +300,7 @@
       <h2 id="requirements">Requirements <a class="hl" href="#requirements" aria-label="Link to Requirements">#</a></h2>
       <p><!-- SLOT: one EARS-style requirement per R id, e.g. "R-1 When the user submits an empty form, the system shall show the error banner." --></p>
       <ul>
-        <li><strong>R-1</strong> <!-- SLOT: requirement sentence --></li>
+        <li id="R-1"><strong>R-1</strong> <!-- SLOT: requirement sentence --></li>
       </ul>
       <!-- Decision table pattern: data-hit-policy is "unique" or "first"; the last body row is the else-row. Delete if the spec has no decision logic. -->
       <table class="decision-table" id="DT-1" data-hit-policy="first">
@@ -369,7 +369,7 @@
       <h2 id="test-requirements">Test Requirements <a class="hl" href="#test-requirements" aria-label="Link to Test Requirements">#</a></h2>
       <p><!-- SLOT: what tests need to be written, what patterns to follow --></p>
       <ul>
-        <li><strong>T-1</strong> <!-- SLOT: one test per T id, naming what it asserts --></li>
+        <li id="T-1"><strong>T-1</strong> <!-- SLOT: one test per T id, naming what it asserts --></li>
       </ul>
       <h3 id="trace">Traceability Matrix <a class="hl" href="#trace" aria-label="Link to Traceability Matrix">#</a></h3>
       <table class="trace-matrix">
@@ -392,9 +392,9 @@
       <!-- ============ Validation Checklist — interactive, persisted, never collapsed ============ -->
       <h2 id="validation-checklist">Validation Checklist <a class="hl" href="#validation-checklist" aria-label="Link to Validation Checklist">#</a></h2>
       <ul class="checklist">
-        <li><label><input type="checkbox" data-check="ac-1"> <span><!-- SLOT: acceptance criterion 1 --></span></label></li>
-        <li><label><input type="checkbox" data-check="ac-2"> <span><!-- SLOT: acceptance criterion 2 --></span></label></li>
-        <!-- SLOT: one li per criterion; data-check values must be unique within this file -->
+        <li id="AC-1"><label><input type="checkbox" data-check="ac-1"> <span><!-- SLOT: acceptance criterion 1 --></span></label></li>
+        <li id="AC-2"><label><input type="checkbox" data-check="ac-2"> <span><!-- SLOT: acceptance criterion 2 --></span></label></li>
+        <!-- SLOT: one li per criterion; data-check values must be unique within this file, and each li carries id="AC-n" so the matrix can link it -->
       </ul>
       <p class="progress" id="checklist-progress" aria-live="polite"></p>
 

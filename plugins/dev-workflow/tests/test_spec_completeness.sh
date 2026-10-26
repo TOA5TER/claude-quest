@@ -251,7 +251,7 @@ done
 # Why: the template must carry the new sections, size attribute and table classes the lint and the writer rely on.
 for needle in 'data-size-class' 'id="requirements"' 'id="evidence-impact"' 'id="completeness-checks"' 'id="clarifications"' 'id="glossary"' \
   'id="evidence"' 'id="assumptions"' 'id="impact"' 'id="trace"' 'id="type-checklists"' 'id="coverage"' 'id="input-classes"' 'id="pre-mortem"' \
-  'decision-table' 'else-row' 'evidence-ledger' 'impact-inventory' 'coverage-scan' 'trace-matrix' 'type-checklist' 'class="pre-mortem' 'class="input-classes' 'class="assumptions'; do
+  'class="decision-table"' 'class="else-row"' 'class="evidence-ledger"' 'class="impact-inventory"' 'class="coverage-scan"' 'class="trace-matrix"' 'class="type-checklist"' 'class="pre-mortem"' 'class="input-classes"' 'class="assumptions"'; do
   require "template" "$TEMPLATE_TEXT" "$needle"
 done
 
@@ -259,7 +259,7 @@ done
 TYPES="$PLUGIN_ROOT/skills/writing-specs/type-checklists.md"
 TYPES_TEXT="$(whole "$TYPES")"
 for h in UI API Bug Infra Migration Integration Refactor Rules; do
-  require "type-checklists.md" "$TYPES_TEXT" "$h"
+  grep -qx "## $h" "$TYPES" || fail "type-checklists.md: missing heading '## $h'"
 done
 for id in UI-1 UI-2 UI-3 UI-4 UI-5 UI-6 UI-7 API-1 API-2 API-3 API-4 API-5 BUG-1 BUG-2 BUG-3 BUG-4 INF-1 INF-2 INF-3 INF-4 MIG-1 MIG-2 MIG-3 MIG-4 INT-1 INT-2 INT-3 INT-4 REF-1 REF-2 RUL-1 RUL-2; do
   require "type-checklists.md" "$TYPES_TEXT" "$id"

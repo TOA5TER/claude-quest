@@ -81,7 +81,7 @@ expect_only_class() {
   printf '%s\n' "$OUT" | tail -n1 | grep -Eq '^spec-lint: [0-9]+ finding\(s\)$' || fail "$label: last line is not the summary"
 }
 
-# Why: T-6 — the clean S fixture is the baseline every other fixture is a one-defect mutation of.
+# Why: the clean S fixture is the baseline every other fixture is a one-defect mutation of.
 lint "$FX/clean-s.html"
 expect_rc "clean S fixture" 0
 require "clean S fixture" "$OUT" "spec-lint: 0 finding(s)"
@@ -91,19 +91,19 @@ forbid "clean S fixture" "$OUT" "FINDING"
 lint "$FX/matrix-linked-m.html"
 expect_rc "clean M fixture" 0
 
-# Why: T-7 — one fixture per class L-1 to L-12.
-expect_only_class "L-1 cap" cap.html cap
-expect_only_class "L-2 long-item" long-item.html long-item
-expect_only_class "L-3 deferral" deferral.html deferral
-expect_only_class "L-4 adjective" adjective.html adjective
-expect_only_class "L-5 orphan" orphan.html orphan
-expect_only_class "L-6 undefined-ref" undefined-ref.html undefined-ref
-expect_only_class "L-7 table-gap" table-gap.html table-gap
-expect_only_class "L-8 decision-table" decision-table.html decision-table
-expect_only_class "L-9 uncited" uncited.html uncited
-expect_only_class "L-10 assumption" assumption.html assumption
-expect_only_class "L-11 unanswered" unanswered.html unanswered
-expect_only_class "L-12 structure" structure.html structure
+# Why: every lint class has one fixture.
+expect_only_class "cap" cap.html cap
+expect_only_class "long-item" long-item.html long-item
+expect_only_class "deferral" deferral.html deferral
+expect_only_class "adjective" adjective.html adjective
+expect_only_class "orphan" orphan.html orphan
+expect_only_class "undefined-ref" undefined-ref.html undefined-ref
+expect_only_class "table-gap" table-gap.html table-gap
+expect_only_class "decision-table" decision-table.html decision-table
+expect_only_class "uncited" uncited.html uncited
+expect_only_class "assumption" assumption.html assumption
+expect_only_class "unanswered" unanswered.html unanswered
+expect_only_class "structure" structure.html structure
 
 # Why: the deferral fixture also holds a quoted phrase, a code phrase and a verify sentence in #test-requirements; only the plain phrase may be reported.
 lint "$FX/deferral.html"
@@ -121,7 +121,7 @@ lint "$FX/adjective.html"
 lint "$FX/cap-accepted.html"
 expect_rc "cap accepted" 0
 
-# Why: T-8 — an unreadable file or a missing size class is exit 2, not a finding.
+# Why: an unreadable file or a missing size class is exit 2, not a finding.
 lint "$FX/does-not-exist.html"
 expect_rc "missing file" 2
 lint "$FX/no-size-class.html"
@@ -129,13 +129,13 @@ expect_rc "no data-size-class" 2
 lint
 expect_rc "no arguments" 2
 
-# Why: T-9 — with python3 absent, the test guard must stop non-zero and name python3.
+# Why: with python3 absent, the test guard must stop non-zero and name python3.
 GUARD_OUT="$(PATH=/nonexistent "$BASH" "${BASH_SOURCE[0]}" --guard-only 2>&1)"
 GUARD_RC=$?
 [ "$GUARD_RC" -ne 0 ] || fail "python3 guard: exit 0 with python3 missing"
 require "python3 guard" "$GUARD_OUT" "python3"
 
-# Why: T-10 — --words counts prose without tables, code, pre, header, TOC, scripts, styles and comments, and total without only the page furniture.
+# Why: --words counts prose without tables, code, pre, header, TOC, scripts, styles and comments, and total without only the page furniture.
 lint --words "$FX/words.html"
 expect_rc "--words" 0
 require "--words" "$OUT" "prose 10"
@@ -205,13 +205,70 @@ for k in 1 2; do
 done
 rmdir "$TMP/big" 2>/dev/null
 
+# Why: mutated copies of a clean fixture show each rule fires on its own defect and stays quiet on the allowed forms.
+mutate() {
+  local base="$1" old="$2" new="$3"
+  PYTHONDONTWRITEBYTECODE=1 python3 - "$FX/$base" "$TMP/mutated.html" "$old" "$new" <<'PY'
+import sys
+src, out, old, new = sys.argv[1:5]
+text = open(src, encoding="utf-8").read()
+if text.count(old) != 1:
+    sys.exit("mutate: expected one match for %r, found %d" % (old, text.count(old)))
+open(out, "w", encoding="utf-8").write(text.replace(old, new))
+PY
+}
+
+lint_mutation() {
+  local label="$1" base="$2" old="$3" new="$4" want="$5"
+  mutate "$base" "$old" "$new" || { fail "$label: mutation did not apply"; return; }
+  lint "$TMP/mutated.html"
+  if [ -z "$want" ]; then
+    expect_rc "$label" 0
+  else
+    expect_rc "$label" 1
+    [ "$(finding_classes)" = "$want " ] || fail "$label: classes were '$(finding_classes)', wanted only '$want'"
+  fi
+}
+
+CC_END='</section>
+<section id="clarifications">'
+COV='<table class="coverage-scan"><thead><tr><th>ID</th><th>Item</th><th>Status</th><th>Resolution</th></tr></thead><tbody><tr><td>CS-1</td><td>Edge cases</td><td>%s</td><td>%s</td></tr></tbody></table>'
+cov() { printf "$COV" "$1" "$2"; }
+
+lint_mutation "coverage clear" clean-s.html "$CC_END" "$(cov Clear 'R-1')$CC_END" ""
+lint_mutation "coverage bare out of scope" clean-s.html "$CC_END" "$(cov Partial 'out of scope: later')$CC_END" unanswered
+lint_mutation "coverage unknown status" clean-s.html "$CC_END" "$(cov Maybe 'R-1')$CC_END" unanswered
+lint_mutation "coverage partial with no link" clean-s.html "$CC_END" "$(cov Partial 'R-1')$CC_END" unanswered
+lint_mutation "coverage partial with question" clean-s.html "$CC_END" "$(cov Partial '<a href="#Q-1">Q-1</a>')$CC_END" ""
+lint_mutation "coverage no-behavior-change prefix" clean-s.html "$CC_END" "$(cov Partial 'out of scope, no behavior change: cosmetic')$CC_END" ""
+
+PM='<table class="pre-mortem"><thead><tr><th>ID</th><th>Cause</th><th>Effect</th><th>Severity</th><th>Detection</th></tr></thead><tbody><tr><td>F-1</td><td>Bad input</td><td>Crash</td><td>%s</td><td>%s</td></tr></tbody></table>'
+pm() { printf "$PM" "$1" "$2"; }
+lint_mutation "pre-mortem High without detection" clean-s.html "$CC_END" "$(pm High 'logs')$CC_END" unanswered
+lint_mutation "pre-mortem High with test link" clean-s.html "$CC_END" "$(pm High '<a href="#T-1">T-1</a>')$CC_END" ""
+lint_mutation "pre-mortem High with alert" clean-s.html "$CC_END" "$(pm High 'alert: crash-rate')$CC_END" ""
+lint_mutation "pre-mortem Medium without detection" clean-s.html "$CC_END" "$(pm Medium 'logs')$CC_END" ""
+
+lint_mutation "decision table without else-row" clean-s.html '<tr class="else-row">' '<tr>' decision-table
+lint_mutation "undefined dfn term" clean-s.html '<dfn>greeting</dfn>' '<dfn>salutation</dfn>' undefined-ref
+lint_mutation "undefined abbr term" clean-s.html 'uses the given name' 'uses the <abbr>CLI</abbr> name' undefined-ref
+lint_mutation "glossary read-by id missing" clean-s.html '<td>The line the tool prints.</td><td>R-1</td>' '<td>The line the tool prints.</td><td>R-9</td>' undefined-ref
+lint_mutation "unmapped test" clean-s.html '<section id="manual-testing">' '<p id="T-2">A second test nobody maps.</p><section id="manual-testing">' orphan
+lint_mutation "empty matrix cell" matrix-linked-m.html '<td><a href="#R-1">R-1</a> <a href="#R-2">R-2</a> <a href="#R-3">R-3</a></td>' '<td></td>' orphan
+lint_mutation "assumption with Inference" clean-s.html '<td>Clients send UTF-8 input.</td><td><a href="#Q-1">Q-1</a></td>' '<td>Clients send UTF-8 input.</td><td>[Inference] UTF-8 is the common default.</td>' ""
+lint_mutation "quoted deferral phrase" clean-s.html 'prints a greeting for the name it is given.' 'prints a greeting; the word <q>TBD</q> is quoted here.' ""
+lint_mutation "unquoted deferral phrase" clean-s.html 'prints a greeting for the name it is given.' 'prints a greeting; the owner is TBD.' deferral
+
+WORDS150="$(python3 -c 'print(" ".join(["word"] * 150))')"
+WORDS151="$(python3 -c 'print(" ".join(["word"] * 151))')"
+lint_mutation "item of exactly 150 words" clean-s.html 'The tool prints a greeting for the name it is given.' "$WORDS150" ""
+lint_mutation "item of 151 words" clean-s.html 'The tool prints a greeting for the name it is given.' "$WORDS151" long-item
+
 # Why: --partition needs the size class like the lint does.
 lint --partition "$FX/no-size-class.html" "$TMP/none"
 expect_rc "--partition no size class" 2
 
-# fill_template : substitutes the clean fixture's sections into the spec template and lints the result.
-# Sections whose id the fixture lacks are dropped from the template, and links left dangling by that are unwrapped.
-# Skipped when the template does not carry the section ids requirements, evidence-impact, completeness-checks and clarifications.
+# Why: the filled template proves a spec that follows the template lints clean; sections the fixture lacks are dropped and their dangling links unwrapped.
 fill_template() {
   local filled="$TMP/template-filled.html"
   PYTHONDONTWRITEBYTECODE=1 python3 - "$LINT" "$TEMPLATE" "$FX/clean-s.html" "$filled" <<'PY'
@@ -222,8 +279,9 @@ m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 tpl, fx = m.parse(template), m.parse(fixture)
 tids, fids = m.ids_of(tpl), m.ids_of(fx)
-if not all(i in tids for i in ("requirements", "evidence-impact", "completeness-checks", "clarifications")):
-    sys.exit(3)
+missing = [i for i in ("requirements", "evidence-impact", "completeness-checks", "clarifications") if i not in tids]
+if missing:
+    sys.exit("template lacks section ids: " + ", ".join(missing))
 
 def unit(ids, sid):
     n = ids[sid]
@@ -254,10 +312,6 @@ with open(out, "w", encoding="utf-8") as fh:
     fh.write("<!doctype html>\n" + "".join(m.ser(c) for c in tpl.children))
 PY
   local rc=$?
-  if [ "$rc" -eq 3 ]; then
-    echo "SKIP: template filled with the clean fixture (template lacks the new section ids)"
-    return
-  fi
   [ "$rc" -eq 0 ] || { fail "template fill: substitution script failed with exit $rc"; return; }
   lint "$filled"
   expect_rc "template filled with the clean fixture" 0
