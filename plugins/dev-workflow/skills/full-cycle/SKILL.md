@@ -241,7 +241,7 @@ This stage satisfies the Story Creation Gate in `skills/shared/standards.md` onl
 >
 > Pass the feature description from `$ARGUMENTS` if one was provided.
 
-Drive the interview to completion in the main agent so it can ask the user questions. Capture the resulting **story ID** and carry it forward. Proceed to writing-specs.
+Drive the interview to completion in the main agent so it can ask the user questions. Capture the resulting **story ID** and carry it forward. Proceed to writing-specs. When Phase 3.5 split the request, carry forward only the first part's story ID to writing-specs, and list the later parts' IDs to the user, in order, as stories this run does not drive.
 
 ---
 

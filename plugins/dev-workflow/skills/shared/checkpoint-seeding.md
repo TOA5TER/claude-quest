@@ -198,7 +198,10 @@ sentinel's own staleness handling (`hooks/compact-injector.sh`'s `STALE_SECONDS=
 4. Return the placeholder file's path to the caller. `creating-stories` uses this returned
    path to delete the file immediately on its three abandonment paths (the Phase 2
    adapter-lacks-Create-Story stop, a Phase 5 user cancel, or a Phase 6 creation failure — see
-   "Cleanup is the caller's responsibility, not this procedure's" below). On the story-creation
+   "Cleanup is the caller's responsibility, not this procedure's" below). The one exception is
+   a Phase 3.5 split run that stops after at least one part is created: the Phase 5 cancel and
+   Phase 6 failure paths then leave the placeholder in place, because a created part can still
+   reach `writing-specs`, whose Phase 3 sweep removes it. On the story-creation
    success path, `creating-stories` does not use the returned path at all: it leaves the
    placeholder in place, and `writing-specs`' Phase 3 self-seed is what later discovers and
    deletes it, via its own independent glob sweep over `.pending-*.json` — not via this
@@ -215,7 +218,9 @@ neither of which is this procedure:
 - **`creating-stories` deletes it immediately** on any of its three abandonment paths — the
   Phase 2 adapter-lacks-Create-Story stop, a Phase 5 user cancel, or a Phase 6 creation
   failure — since none of these ever produces a story that could reach `writing-specs` to
-  supersede the placeholder.
+  supersede the placeholder. Exception: in a Phase 3.5 split run that has already created at
+  least one part, the Phase 5 cancel and Phase 6 failure paths leave the placeholder in place,
+  because that part can still reach `writing-specs`.
 - **`writing-specs` deletes it on normal completion.** On a Phase 6 creation success,
   `creating-stories` deliberately leaves the placeholder in place (see its own Phase 6
   instructions) rather than deleting it or writing a real checkpoint entry itself.

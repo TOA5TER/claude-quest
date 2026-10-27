@@ -328,14 +328,15 @@ story's `story_type`, title, or other metadata.
 
 ### C1 Size Gate
 
-Assign one size class at the end of this phase: **S** when the story has at most 3 acceptance criteria for this repo, one repo is in scope and the change adds no new rule or state logic; **L** when the gate below trips; **M** otherwise. Write the class on `<body>` as `data-size-class` and as a header pill.
+Read `skills/shared/size-gate.md`: it holds every class definition, threshold, counting rule, split pattern and prose cap. Assign one size class from its "Size Classes" section at the end of this phase. Write the class on `<body>` as `data-size-class` and as a header pill.
 
-The gate trips when the rule count exceeds 5, any one rule needs more than 5 examples, or the projected prose exceeds the cap for M (see "C10 Length Caps"). Count rules as Example Mapping does: one rule per distinct business rule the acceptance criteria imply, with its examples counted under it. When it trips, propose sequenced sub-specs split by the Humanizing Work or SPIDR patterns before Phase 9, sent at once rather than held for the Phase 7 batch. Re-run the gate at Phase 7. The gate runs once for the story, in the first repo's Phase 5, before any spec is written; each later repo's Phase 7 re-check covers only that repo's projected prose against the cap. A split the user declined is never proposed again in the same run; a later over-cap result goes through the C10 acceptance question.
+First check the story description for a size-accepted marker line (table below): a marked story gets `data-cap-accepted="true"` whatever the gate result, so check it before the trip test. Apply the "Counting" and "Thresholds" sections to decide whether the gate trips. When it trips, propose sequenced sub-specs split by the "Split Patterns" section before Phase 9, sent at once rather than held for the Phase 7 batch. Re-run the gate at Phase 7. The gate runs once for the story, in the first repo's Phase 5, before any spec is written; each later repo's Phase 7 re-check covers only that repo's projected prose against the cap. A split the user declined is never proposed again in the same run; a later over-cap result goes through the C10 acceptance question.
 
 The outcome follows this table (hit policy: first). writing-specs never creates, archives or re-parents a story.
 
 | Mode | User answer | Writer action |
 |------|-------------|---------------|
+| any | story description carries a size-accepted marker line, one starting `Size accepted by user:` in the description text, outside the `## Original Request` section (size-gate.md) | Propose no split. Set `data-cap-accepted="true"` and, when the gate trips, class L (otherwise the class "Size Classes" assigns). Log one Clarifications entry citing the marker as story text, and continue. |
 | relay | split proposal not yet answered | Send `blocked` with `kind: questions` carrying the proposal, the recommended option and the consequence. |
 | relay | accepts split | Write no spec. Send `blocked` with `kind: stop` whose body is the split plan. |
 | interactive | accepts split | Write no spec. Show the split plan and end the run. |
@@ -343,7 +344,7 @@ The outcome follows this table (hit policy: first). writing-specs never creates,
 | autonomous | none possible | Write one spec, set `data-cap-accepted="true"`, log an `[Inference]` Clarifications entry and name the overrun in the Phase 12 PM comment. |
 | any other | any other | Treat as unanswered: ask again through the mode's ask route. |
 
-A split plan lists, per new story: title, scope, the acceptance criteria it takes from the original (by criterion text), its order, and whether the original is archived or kept as the parent. It ends with the instruction to verify the plan, create the stories and re-run writing-specs on each. In replay, an accepted split writes files as "Replay Mode" describes.
+The split plan follows the "Split Plan" section of `skills/shared/size-gate.md`. In replay, an accepted split writes files as "Replay Mode" describes.
 
 **S:** the gate is one line in Clarifications stating the counts.
 
@@ -654,11 +655,11 @@ Give acceptance criteria, rules, tests, steps and table rows stable IDs: AC, R, 
 
 ### C10 Length Caps
 
-Prose words, excluding tables, code, `pre`, the table of contents, the header, scripts, styles and comments, must not exceed 1,500 for S or 4,000 for M. An L spec exists only after a declined split, so it has no numeric cap and always carries `data-cap-accepted="true"`. No `<p>`, `<li>` or table cell may exceed 150 words at any size, and no table may have more than 20 columns.
+Prose words, excluding tables, code, `pre`, the table of contents, the header, scripts, styles and comments, must not exceed the prose cap of the spec's size class in the "Size Classes" section of `skills/shared/size-gate.md`. An L spec has no numeric cap and always carries `data-cap-accepted="true"`. No `<p>`, `<li>` or table cell may exceed 150 words at any size, and no table may have more than 20 columns.
 
-When the lint reports `cap` for an S or M spec, first convert prose to tables and cut repetition. If the spec is still over, interactive and relay mode ask one question (relay: `kind: questions` with the `written:` line): accept the length, or split per C1. Acceptance sets `data-cap-accepted="true"` and is logged as a Q-n. Autonomous mode sets the attribute itself, logs an `[Inference]` entry and names the overrun in the Phase 12 PM comment.
+When the lint reports `cap` for an S or M spec, first convert prose to tables and cut repetition. If the spec is still over, interactive and relay mode ask one question (relay: `kind: questions` with the `written:` line): accept the length, or split per C1. Acceptance sets `data-cap-accepted="true"` and is logged as a Q-n. Autonomous mode sets the attribute itself, logs an `[Inference]` entry and names the overrun in the Phase 12 PM comment. A story carrying the size-accepted marker (C1) gets no length-cap question.
 
-**S:** the 1,500-word cap.
+**S:** the S prose cap in `skills/shared/size-gate.md`.
 
 ### Anti-patterns (explicitly forbidden)
 
