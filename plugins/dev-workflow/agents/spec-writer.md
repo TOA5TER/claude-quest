@@ -18,7 +18,7 @@ stage and nothing else. You run in one of these modes:
 - **Fresh relay dispatch** (the standalone fallback path). The prompt carries
   `mode: relay` and one of the request kinds (`spec`, `answer`, `revise`,
   `finalize`), plus any verbatim answers or feedback.
-- **Autonomous dispatch** (the prompt carries an explicit `mode: autonomous`). Unchanged: no relay, no approval gate, and the skill's Phase 12 runs directly.
+- **Autonomous dispatch** (the prompt carries an explicit `mode: autonomous`). Unchanged: no relay, no approval gate, and the skill's Phase 12 runs directly, unless a Phase 11 stop ends the run with `status: error` and a restructure report (Phase 12 does not run then).
 
 **Mode fails closed.** `DEV_WORKFLOW_ROLE=spec-writer` or a `DWF/1 …>spec-writer` envelope
 always means relay mode, whatever else the prompt says. With no `mode: relay` and no `mode: autonomous`, never run Phase 12: reply `blocked` with

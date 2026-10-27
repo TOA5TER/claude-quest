@@ -66,6 +66,8 @@ skills/
   developing/   # Full development workflow (TDD, subagents, PR)
   writing-specs/          # Story → Claude Instructions spec transformation
     spec-template.html # Standalone HTML document shell for generated specs
+    type-checklists.md # Per-type checklist rows copied into a spec's Type Checklists table
+    spec-lint.py       # Python 3 lint that must report zero findings before the spec review
   reviewing-prs/           # Multi-perspective PR review with mode detection
   testing-prs/             # Evidence-based functional testing
   debugging/     # Debug/dev/rework unified skill
@@ -99,9 +101,10 @@ Runtime state (not committed): `~/.claude/dev-workflow/state/`
 
 ## Working on This Codebase
 
-Content is mostly Markdown skill definitions, plus a small number of static assets (e.g., `skills/writing-specs/spec-template.html`) — there is no compiled code and no build step. The only tests are the shell tests under `tests/`. Run the matching test after each kind of edit:
+Content is mostly Markdown skill definitions, plus a small number of static assets (e.g., `skills/writing-specs/spec-template.html`) — there is no compiled code and no build step, apart from one standard-library Python lint (`skills/writing-specs/spec-lint.py`). The only tests are the shell tests under `tests/`. Run the matching test after each kind of edit:
 
-- `bash tests/test_spec_completeness.sh` — after touching `skills/writing-specs/SKILL.md`, `skills/writing-specs/spec-template.html` or `agents/spec-writer.md`
+- `bash tests/test_spec_completeness.sh` — after touching `skills/writing-specs/SKILL.md`, `skills/writing-specs/spec-template.html`, `skills/writing-specs/type-checklists.md`, `skills/shared/adversarial-review.md` or `agents/spec-writer.md`
+- `bash tests/test_spec_lint.sh` — after touching `skills/writing-specs/spec-lint.py` or `tests/fixtures/spec-lint/`
 - `bash tests/test_role_session_context.sh` — after touching a hook, `hooks/hooks.json` or the role agents
 - `bash tests/test_developer_rules.sh` — after touching the worktree or attribution wording in the developing skill, repo-discovery or the developer agent
 - `bash tests/test_dev_verification_gate.sh` — after touching the dev-verification gate wording in `skills/shared/dev-deploy.md`, the developing, addressing-pr-comments, debugging, reviewing-prs, testing-prs, dev-verify or full-cycle skills, `skills/shared/standards.md`, `skills/shared/role-sessions.md`, `skills/shared/context-compaction.md`, the README, or the agent definitions
