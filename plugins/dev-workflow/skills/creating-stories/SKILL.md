@@ -180,7 +180,7 @@ This phase has no autonomous branch: the Pre-Gate stops an autonomous run before
 |-------------|------------|--------|
 | Within both thresholds | None (no question asked) | Continue to Phase 4 with one story. |
 | Threshold exceeded | `Accept the split` | Run Phases 4 to 6 once per part, in plan order. |
-| Threshold exceeded | `Keep one story` | Add the size-accepted marker line (`Size accepted by user: ...`, exact text in `size-gate.md`) to the end of the description, then run Phases 4 to 6 once. |
+| Threshold exceeded | `Keep one story` | Add the size-accepted marker line (`Size accepted by user: ...`, exact text in `size-gate.md`) as the last line of the `description` field (not the end of the rendered story body), then run Phases 4 to 6 once. |
 | Threshold exceeded | stop, quit, cancel or exit | Run the Phase 5 cancel branch: delete any placeholder and stop with zero stories created. |
 | Otherwise | Any other reply text | Treat it as feedback on the plan: revise the plan and ask the same question again. After 3 revisions with no choice, suggest the user cancel and restart, as Phase 5 does. |
 

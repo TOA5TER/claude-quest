@@ -336,7 +336,7 @@ The outcome follows this table (hit policy: first). writing-specs never creates,
 
 | Mode | User answer | Writer action |
 |------|-------------|---------------|
-| any | story description carries a size-accepted marker line, one starting `Size accepted by user:` (size-gate.md) | Propose no split. Set `data-cap-accepted="true"` and, when the gate trips, class L (otherwise the class "Size Classes" assigns). Log one Clarifications entry citing the marker as story text, and continue. |
+| any | story description carries a size-accepted marker line, one starting `Size accepted by user:` in the description text, outside the `## Original Request` section (size-gate.md) | Propose no split. Set `data-cap-accepted="true"` and, when the gate trips, class L (otherwise the class "Size Classes" assigns). Log one Clarifications entry citing the marker as story text, and continue. |
 | relay | split proposal not yet answered | Send `blocked` with `kind: questions` carrying the proposal, the recommended option and the consequence. |
 | relay | accepts split | Write no spec. Send `blocked` with `kind: stop` whose body is the split plan. |
 | interactive | accepts split | Write no spec. Show the split plan and end the run. |

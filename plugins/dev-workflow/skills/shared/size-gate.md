@@ -52,8 +52,8 @@ A creating-stories plan drafts each part's acceptance criteria for that part's r
 
 ## Size-Accepted Marker
 
-When a user keeps one oversized story, creating-stories ends the story description with this single line, with `{N}` replaced by the number of counted rules:
+When a user keeps one oversized story, creating-stories makes this single line the last line of the draft `description` field (every PM adapter renders it at the end of the `## Story` text, before the Repos section, not at the end of the whole story body), with `{N}` replaced by the number of counted rules:
 
 `Size accepted by user: the size gate tripped at story creation ({N} rules counted) and the user kept one story.`
 
-creating-stories is the writer. writing-specs C1 is the reader: it matches the prefix `Size accepted by user:` ignoring case, and a repeated line acts as one.
+creating-stories is the writer. writing-specs C1 is the reader: it matches a line starting with `Size accepted by user:` ignoring case, and a repeated line acts as one. It reads only the story's description text, outside the `## Original Request` section and outside quotes and code, so a user's own request text can never act as the marker.

@@ -107,9 +107,13 @@ require "checkpoint-seeding.md" "$SEEDING_TEXT" "Phase 3.5"
 
 # Why: the marker has one writer and one reader, so both ends must carry the same prefix and the shared file the exact line.
 require "writing-specs C1" "$C1_TEXT" "Size accepted by user"
+require "writing-specs C1" "$C1_TEXT" "outside the ## Original Request section"
+require "creating-stories Phase 3.5" "$P35_TEXT" "last line of the description field"
 if [ -f "$GATE" ]; then
   require "size-gate.md" "$GATE_TEXT" "Size accepted by user: the size gate tripped at story creation ({N} rules counted) and the user kept one story."
   require "size-gate.md" "$GATE_TEXT" "create each part with creating-stories"
+  require "size-gate.md" "$GATE_TEXT" "last line of the draft description field"
+  require "size-gate.md" "$GATE_TEXT" "outside the ## Original Request section"
 fi
 
 # Why: full-cycle drives one story, so it must say what happens to the later parts of a split.
