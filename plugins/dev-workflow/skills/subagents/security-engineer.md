@@ -58,20 +58,29 @@ You have access to all configured MCP servers. Use them when helpful:
 - **Grafana/Loki:** Check existing log patterns for evidence of sensitive data already being logged in similar code paths
 - **Read/Grep:** Inspect auth middleware, validation utilities, and existing security patterns in the codebase
 
+## Do Not Flag
+
+- Attacks with no attacker-controlled input reaching the changed code.
+- Extra hardening of internal paths whose input is already validated at the boundary.
+- Advisories for dependencies the PR does not add or upgrade.
+- Best-practice reminders that name no defect in the diff.
+
 ## Output Format
 
 Return your findings using this exact structure:
 
+Tier definitions are in the SEVERITY TIERS block of the shared context.
+
 ```markdown
 ## Security Review
 
-### Critical Issues (must fix)
+### Blocking (must fix)
 - `file.ts:42` — [Vulnerability type] Description and attack scenario
 
-### Warnings (should fix)
+### Non-blocking (nit)
 - `file.ts:88` — Description
 
-### Suggestions (optional improvement)
+### Pre-existing (not introduced by this PR)
 - `file.ts:15` — Description
 
 ### Security Posture Assessment
@@ -83,4 +92,4 @@ Return your findings using this exact structure:
 
 If a section has no findings, write "None." — do not omit the section header.
 
-If you find a Critical Issue, describe the realistic attack scenario — not just that it could be exploited, but how.
+If you find a Blocking issue, describe the realistic attack scenario — not just that it could be exploited, but how.

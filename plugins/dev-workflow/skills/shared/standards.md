@@ -103,7 +103,7 @@ long-lived, named background session per story spec-writer, per reviewer and tes
 `skills/shared/role-sessions.md`. The same `dev-workflow:spec-writer`, `dev-workflow:developer`, `dev-workflow:reviewer`,
 and `dev-workflow:tester` agent definitions back both modes. Agent dispatch remains for
 `dev-workflow:pr-state-reader` (entry detection, decision read,
-PR-number read) and the reviewer's perspective fan-out. When role sessions are unavailable (failed preflight) the whole
+PR-number read) and the reviewer's perspective and finding-verifier fan-outs. When role sessions are unavailable (failed preflight) the whole
 run uses the fresh-dispatch fallback.
 
 **Fix loops use the developer's rework mode.** There is no separate fix worker. Feedback on an

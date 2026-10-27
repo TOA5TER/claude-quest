@@ -4,7 +4,7 @@ Standalone `full-cycle` runs the spec-writer, developer, reviewer, and tester as
 
 **Scope.** Standalone `full-cycle` only. A standalone `full-cycle`, including one running as a background job, always runs the preflight and launches role sessions unless an executed check fails. Whether a given session can launch is settled by running preflight check 3, never by reasoning about what kind of session it is.
 
-**Other workers are unchanged.** `dev-workflow:pr-state-reader` and the reviewer's parallel perspective fan-out stay fresh one-shot subagents.
+**Other workers are unchanged.** `dev-workflow:pr-state-reader` and the reviewer's parallel perspective and finding-verifier fan-outs stay fresh one-shot subagents.
 
 GitHub stays the authoritative source for every review and test decision.
 

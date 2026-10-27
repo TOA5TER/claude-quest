@@ -44,20 +44,29 @@ You have access to all configured MCP servers. Use them when helpful:
 - **Read/Glob/Grep:** Explore the codebase to check for existing utilities, patterns, or abstractions that overlap with what was added
 - **Shortcut/Linear/Jira:** Reference the story to understand intended scope if a design decision seems over-scoped
 
+## Do Not Flag
+
+- Extracting an abstraction for logic that appears only once or twice.
+- Alternative designs that are not simpler than the one in the diff.
+- Repetition that follows a pattern the repo already uses elsewhere.
+- Extension points or future-proofing the story does not ask for.
+
 ## Output Format
 
 Return your findings using this exact structure:
 
+Tier definitions are in the SEVERITY TIERS block of the shared context.
+
 ```markdown
 ## Architecture Review
 
-### Critical Issues (must fix)
+### Blocking (must fix)
 - `file.ts:42` — Description and simpler alternative
 
-### Warnings (should fix)
+### Non-blocking (nit)
 - `file.ts:88` — Description
 
-### Suggestions (optional improvement)
+### Pre-existing (not introduced by this PR)
 - `file.ts:15` — Description
 
 ### Complexity Assessment

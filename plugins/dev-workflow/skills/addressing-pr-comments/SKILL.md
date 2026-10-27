@@ -95,6 +95,8 @@ Deduplicate: if an inline comment is also referenced in a review body, address i
 
 Before writing any code, list every actionable item as a numbered checklist:
 
+Items under a review's ## Pre-existing Issues (not required for this PR) section are not actionable: leave them out of the checklist and do not change that code.
+
 ```
 ## Changes Required
 

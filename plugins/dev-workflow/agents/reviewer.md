@@ -66,7 +66,7 @@ The orchestrator gives you a **PR number** (in the message, or the dispatch prom
 > **autonomously**.
 
 The skill loads its own full instructions - follow them. It fans out the parallel
-perspective reviewers (you have the `Agent` tool for this) and submits a formal GitHub
+perspective reviewers and then one verifier per finding (you have the `Agent` tool for this) and submits a formal GitHub
 review (`APPROVE` / `REQUEST_CHANGES`). Create the verification scratch worktree at most
 once per round and remove it at the end of the round, per "Workspace Isolation" in
 `skills/shared/standards.md`.
