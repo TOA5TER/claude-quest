@@ -1,6 +1,6 @@
 # Size Gate
 
-The single definition of the size gate: how big a story or spec may be before it must be split. Read it for the counting rule, the thresholds, the size classes, the split patterns, the split-plan format and the marker that records a kept oversized story. Nothing here is restated elsewhere; the readers below cite sections by name.
+The single definition of the size gate: how big a story or spec may be before it must be split. Read it for the counting rule, the thresholds, the size classes, the split patterns, the split-plan format and the marker that records a kept oversized story. The readers below cite sections by name.
 
 ## Who Reads This
 
@@ -34,7 +34,7 @@ Prose words are counted as C10 Length Caps defines them.
 
 ## Split Patterns
 
-Split by the SPIDR patterns (Spike, Paths, Interfaces, Data, Rules) or the Humanizing Work story-splitting patterns (for example by workflow step, business-rule variation or data variation). Every part must itself stay within the Thresholds. Never cut one part per repo or one part per environment: those stay in one story under the multi-repo and multi-environment rules.
+Split by the SPIDR patterns (Spike, Paths, Interfaces, Data, Rules) or the Humanizing Work story-splitting patterns (for example by workflow step, business-rule variation or data variation). Every part must itself stay within the Thresholds. When one rule alone has too many examples, split by business-rule or data variation: divide that rule into narrower rules, or divide its examples across parts, so each part lists the narrower rules or the examples it takes. Never cut one part per repo or one part per environment: those stay in one story under the multi-repo and multi-environment rules.
 
 ## Split Plan
 
@@ -42,7 +42,7 @@ List, per part:
 
 - title and scope
 - repos to modify and repos to reference, each a subset of the whole request's repos
-- the counted rules it takes, by rule text, each with its example count; every counted rule goes to exactly one part
+- the counted rules it takes, by rule text, each with its example count; every counted rule goes to exactly one part (a rule divided under Split Patterns counts as its narrower rules, each going to exactly one part)
 - its acceptance criteria, by criterion text
 - its order
 
@@ -52,7 +52,7 @@ A creating-stories plan drafts each part's acceptance criteria for that part's r
 
 ## Size-Accepted Marker
 
-When a user keeps one oversized story, creating-stories ends the story description with this single line, with `{N}` filled with the counted rules:
+When a user keeps one oversized story, creating-stories ends the story description with this single line, with `{N}` replaced by the number of counted rules:
 
 `Size accepted by user: the size gate tripped at story creation ({N} rules counted) and the user kept one story.`
 

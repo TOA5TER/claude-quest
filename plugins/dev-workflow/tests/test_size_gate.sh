@@ -98,6 +98,8 @@ P35_TEXT="$(region "$CS" '^## Phase 3\.5: Size Check$' '^## ')"
 for needle in "skills/shared/size-gate.md" "AskUserQuestion" "Accept the split" "Keep one story" "Size accepted by user:" "2-question" "autonomous"; do
   require "creating-stories Phase 3.5" "$P35_TEXT" "$needle"
 done
+P0_TEXT="$(region "$CS" '^## Phase 0:' '^## Phase 1')"
+require "creating-stories Phase 0" "$P0_TEXT" "Phase 3.5"
 SCOPE_TEXT="$(grep -m1 '^\*\*SCOPE BOUNDARY' "$CS" | normalise)"
 require "creating-stories SCOPE BOUNDARY" "$SCOPE_TEXT" "Phase 3.5"
 SEEDING_TEXT="$(normalise < "$SEEDING")"

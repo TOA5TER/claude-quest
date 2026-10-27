@@ -57,7 +57,9 @@ The Phase 5 draft-approval gate is unchanged and still applies on every path.
     seed writes the real `{story-id}.json` entry that supersedes it (see Phase 6 below). On
     any abandonment path instead — the Phase 2 adapter-lacks-Create-Story stop, a Phase 5
     user cancel, or a Phase 6 creation failure — this skill deletes it immediately, since no
-    story will ever reach writing-specs to supersede it. If step 2
+    story will ever reach writing-specs to supersede it. The one exception: once a Phase 3.5
+    split part is created, the Phase 5 cancel and Phase 6 failure paths leave the placeholder
+    in place, because that part can still reach writing-specs. If step 2
     found zero repos, skip this call — there is nothing to seed yet.
 3. **Git-host search for a named-but-not-locally-found repo.** Scan the request text — `$ARGUMENTS` when it is non-empty (this step's primary trigger point, run here at Phase 0) — for a specific repo, service, or codebase name that step 2's local discovery did not find. When one is named:
    - Resolve the org to search: in the single-repo case (Path 1), from that repo's own git remote (extract the owner segment from `git remote get-url origin`); in the workspace-parent case (Path 2), from any one already-discovered child repo's remote (they are normally the same org) — if the discovered repos span more than one org, ask the user which to search.
