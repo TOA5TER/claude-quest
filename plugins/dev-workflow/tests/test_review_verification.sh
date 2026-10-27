@@ -77,7 +77,7 @@ for needle in \
   "Migration Immutability" \
   "Review Standards Checklist violations are not gate findings" \
   "VERDICT:" "PR-SCOPE:" "BLOCKING-CLASS:" "EVIDENCE:" "REASON:" \
-  "refuted" "unconfirmed" "confirmed" \
+  "| refuted |" "| unconfirmed |" "| confirmed |" \
   "Required Changes" "Suggestions" "Pre-existing Issues" "Dropped"; do
   printf '%s\n' "$phase_body" | grep -qF -- "$needle" || fail "Phase 5.2 is missing '$needle'"
 done
@@ -89,11 +89,12 @@ printf '%s\n' "$checklist_body" | grep -qF -- "Each violation enters Phase 5.2 a
 for needle in \
   "**Finding verification:**" \
   "## Pre-existing Issues (not required for this PR)" \
-  "Pre-existing and dropped findings never lower the score."; do
+  "Pre-existing and dropped findings never lower the score." \
+  "print it with zeros"; do
   has "$REVIEWING" "$needle" || fail "SKILL.md is missing '$needle'"
 done
 inline_body="$(subsection "$REVIEWING" "### Inline Comments")"
-printf '%s\n' "$inline_body" | grep -qF -- "Pre-existing or dropped findings" || fail "Inline Comments section is missing the R-21 wording"
+printf '%s\n' "$inline_body" | grep -qF -- "Pre-existing or dropped findings" || fail "Inline Comments section is missing the Pre-existing or dropped exclusion"
 final_body="$(section "$REVIEWING" "## Phase 5.5: Verify Before Submitting Review")"
 printf '%s\n' "$final_body" | grep -qF -- "raised = confirmed + demoted + dropped" || fail "Phase 5.5 is missing the count identity"
 

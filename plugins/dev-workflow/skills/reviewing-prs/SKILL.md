@@ -428,21 +428,21 @@ Run the "Review Standards Checklist" in `skills/shared/standards.md` against the
 
 Re-Review Mode skips this phase and goes straight to Phase 5.5.
 
-In First Review Mode, no finding reaches the review until a fresh-context verifier has checked it against evidence.
+In First Review Mode, no non-gate finding reaches the review until a fresh-context verifier has checked it against evidence.
 
 **Step 1: Merge into unique findings.** Merge the six perspective reports and the Review Standards Checklist violations into one list of unique findings. Two findings with the same `file:line` and the same defect are one finding, which keeps the highest tier any report gave it (Blocking, then Pre-existing, then Non-blocking). Each checklist violation enters this list with raised tier Blocking, and its FINDING input names the class documented-standard violation.
 
-**Step 2: Set gate findings aside.** A gate finding skips verification and tiers and goes to Required Changes exactly as before, and is not counted in the verification line. Gate findings are: the Migration Immutability Check finding (Phase 3), a failed Mandatory Dev Build CI Gate or terraform plan result, and any finding that an instruction outside `skills/subagents/` requires to be force-included in Required Changes (such as a wrapper plugin's gate). Review Standards Checklist violations are not gate findings; they go through this phase.
+**Step 2: Set gate findings aside.** A gate finding skips verification and tiers and goes to Required Changes exactly as Phase 3 and Phase 6 require, and is not counted in the verification line. Gate findings are: the Migration Immutability Check finding (Phase 3), a failed Mandatory Dev Build CI Gate or terraform plan result, and any finding that an instruction outside `skills/subagents/` requires to be force-included in Required Changes (such as a wrapper plugin's gate). Review Standards Checklist violations are not gate findings; they go through this phase.
 
-**Step 3: Launch one verifier per finding.** Launch one general-purpose verifier subagent per unique non-gate finding, all in a single message, on the model resolved from `models.review` in `~/.claude/dev-workflow/config.json`, falling back to `opus`. Apply `skills/shared/standards.md` → "Subagent Wait Discipline" as Step 2 does. With zero unique non-gate findings, launch no verifier.
+**Step 3: Launch one verifier per finding.** Launch one general-purpose verifier subagent per unique non-gate finding, all in a single message, on the model resolved from `models.review` in `~/.claude/dev-workflow/config.json`, falling back to `opus`. Apply `skills/shared/standards.md` → "Subagent Wait Discipline" as Phase 5 Step 2 does. With zero unique non-gate findings, launch no verifier.
 
 Each verifier prompt carries exactly these inputs and nothing else. A verifier never receives another finding, the other reports, the perspective name, or how many perspectives raised its finding.
 
 | Input | Content |
 |-------|---------|
-| WORKSPACE RULE | The Step 2 WORKSPACE RULE paragraph, verbatim. |
-| STORY REQUIREMENTS, SPECIFICATION, CI/CD STATUS, PR DIFF | The same content Step 2's shared context block carries. |
-| SEVERITY TIERS | The same block Step 2's shared context carries. |
+| WORKSPACE RULE | The Phase 5 Step 2 WORKSPACE RULE paragraph, verbatim. |
+| STORY REQUIREMENTS, SPECIFICATION, CI/CD STATUS, PR DIFF | The same content Phase 5 Step 2's shared context block carries. |
+| SEVERITY TIERS | The same block Phase 5 Step 2's shared context carries. |
 | FINDING | The single finding: its raised tier, `file:line`, claim and the evidence the report gave. |
 | VERIFIER INSTRUCTIONS | Read the cited lines and the code around them at the PR head. When the finding claims something a local build, lint or test run would show (a failing test, a compile error, a lint error), run that command inside the worktree the WORKSPACE RULE locates; when no worktree matches, say in REASON that local verification was not possible and judge from the diff and CI/CD status. Try to refute the finding before confirming it. Without evidence the verdict is unconfirmed. Return the five labeled lines below, one value each. |
 
@@ -458,7 +458,7 @@ Each verifier returns exactly these labeled lines:
 
 **Step 4: Apply the evidence rule.** If a verifier returns VERDICT: confirmed or VERDICT: refuted with an EVIDENCE line that is empty, says none, or only restates the claim without a `file:line` quote, command output or CI log line, treat the verdict as unconfirmed. Agreement alone never confirms a finding. Neither the number of reports that raised a finding nor a verifier's agreement without evidence confirms it.
 
-**Step 5: Retry a failed verifier once.** If a verifier returns no output, or output with no VERDICT line, re-dispatch it once with the same prompt; a second failure is treated as VERDICT: unconfirmed.
+**Step 5: Retry a failed verifier once.** If a verifier returns no output, or output where any of the five labels is missing or has a value outside its allowed set, re-dispatch it once with the same prompt; a second failure is treated as VERDICT: unconfirmed.
 
 **Step 6: Place each finding.** Place every unique non-gate finding by the table below (hit policy: first matching row), and count it once in raised (N) and once in exactly one of confirmed (C), demoted (M) or dropped (D), so N = C + M + D.
 
@@ -482,7 +482,7 @@ Each verifier returns exactly these labeled lines:
 > Verify with fresh command execution:
 > - All CI/CD checks still pass (re-run status check from Phase 3)
 > - The PR diff reflects current HEAD (no new commits since loading in Phase 4)
-> - **First Review Mode:** every Blocking finding Phase 5.2 confirmed is in Required Changes, no dropped or (unverified) finding is, and the Finding verification counts add up (raised = confirmed + demoted + dropped)
+> - **First Review Mode:** every finding the Phase 5.2 table placed in Required Changes is there, no dropped or (unverified) finding is, and the Finding verification counts add up (raised = confirmed + demoted + dropped)
 > - **Re-Review Mode:** All unresolved items from the Phase 5 verification checklist have been carried forward to Phase 6. No New Critical Findings that meet the exception threshold have been omitted.
 
 ---
@@ -533,7 +533,7 @@ Each verifier returns exactly these labeled lines:
 
 **CI path:** [(a) reused developer deploy run {RUN_ID} | (b) fresh dev build CI run {RUN_ID} | skipped by exemption]
 
-**Finding verification:** N raised, C confirmed, M demoted to non-blocking, D dropped
+**Finding verification:** N raised, C confirmed, M demoted to non-blocking, D dropped (print it with zeros, 0 raised, 0 confirmed, 0 demoted, 0 dropped, when no findings were raised)
 
 ## Summary
 [2-3 sentence overview of the implementation quality]
@@ -571,7 +571,7 @@ Each verifier returns exactly these labeled lines:
 Where a finding is tied to a specific line of code, post it as an **inline review comment** on that line rather than burying it in the review body. Use inline comments for:
 - Gate findings and confirmed Required Changes with a clear `file:line` target
 - Confirmed Suggestions tied to a specific code pattern
-- Questions about a specific implementation choice
+- Confirmed questions about a specific implementation choice
 
 Never post an inline comment for "(unverified)", Pre-existing or dropped findings.
 
