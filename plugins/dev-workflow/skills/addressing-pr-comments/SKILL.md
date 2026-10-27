@@ -104,6 +104,8 @@ Items under a review's ## Pre-existing Issues (not required for this PR) section
 2. [Author @bar, review body] — [what they asked for]
 ```
 
+**Disputes.** Instead of changing code, you may mark a Required Change or a test failure as disputed, only with evidence that the defect is absent: a `file:line` quote at the PR head, or a command with its output. End a disputed checklist entry with `— Disputed: <evidence>`. Suggestions, Pre-existing items and `[Gate]` items are never disputed; a gate finding is fixed or the gate re-run.
+
 If no actionable feedback is found, inform the user and stop.
 
 ---
@@ -114,7 +116,7 @@ Address each item from the checklist:
 
 - Apply the full RED-GREEN-REFACTOR cycle for code changes:
   > Invoke Skill: `superpowers:test-driven-development`
-- Address items in checklist order — do not skip or defer
+- Address items in checklist order — do not skip or defer. A disputed item is addressed by its dispute and gets no code change
 - Do not change anything outside the scope of reviewer feedback. Exception: the Code Comment Compliance Check in Step 5 requires rephrasing or removing any matched ticket/commit-hash/CI-run-ID citation with no suppression path, even when the offending comment predates this review/fix round and no reviewer flagged it — this is the one carve-out to this rule.
 - Same-repo boundary: never clone, check out, or read another repository's files during a fix loop — not even to investigate a cross-repo constraint (e.g. a schema or config another repo defines). Investigate via documentation, the PR description, or by asking the user instead.
 - Commit frequently with descriptive messages referencing the item being addressed
@@ -170,16 +172,23 @@ Reply format: one concise sentence stating what was done (e.g., "Fixed — switc
 
 If you deviated from what the reviewer asked on a specific comment, explain why in the reply to that comment.
 
+For a disputed item, reply with a reply that starts `Disputed —` followed by the evidence.
+
 ### 6b: Post Summary Comment
 
 Post a summary comment on the PR covering all changes. Call out any deviations not already explained in inline replies.
 
 Comment format:
+Omit the Disputed Findings section when nothing is disputed. A disputed item is not also listed under Changes Addressed.
+
 ```markdown
 ## Changes Addressed
 
 1. [Item 1] — [what was changed and where: file.ts:42]
 2. [Item 2] — [what was changed and where]
+
+## Disputed Findings
+- [the item's bullet text verbatim as it appears in the review or test report, tag included; never the Step 3 checklist wording] — Evidence: [file:line quote at the PR head, or command with its output]
 
 ## Deviations
 [Omit section entirely if none. Otherwise explain each deviation and reasoning.]

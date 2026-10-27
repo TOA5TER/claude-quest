@@ -18,8 +18,8 @@ The superpowers plugin provides core methodology skills (TDD, systematic debuggi
 |---------|-------|---------|
 | `/start developing [story-id]` | developing | Branch, implement with TDD, commit, create PR |
 | `/start writing-specs story-id` | writing-specs | Fetch story → analyze codebase → write Claude Instructions spec |
-| `/start reviewing-prs PR` | reviewing-prs | Multi-perspective PR review against story requirements, with every finding verified and tiered by severity |
-| `/start testing-prs PR` | testing-prs | Functional testing with evidence gathering |
+| `/start reviewing-prs PR` | reviewing-prs | Multi-perspective PR review against story requirements, with every finding verified and tiered by severity, a perspective tag on every finding, and a per-round precision record; a developer dispute is ruled upheld or rejected on re-review |
+| `/start testing-prs PR` | testing-prs | Functional testing with evidence gathering, test integrity checks (revert-the-fix, plus mutation and property-based tooling the repo already declares) and a per-round precision record |
 | `/start debugging` | debugging | Debug-first workflow (describe bug → investigate → TDD fix) |
 | `/start debugging story-id --rework` | debugging | Read story comments as rework items → fix → new PR |
 | `/start creating-stories` | creating-stories | Interview user → draft story → submit to PM tool |
@@ -153,6 +153,14 @@ Before hand-off the developer deploys its branch to dev through the dev deploy C
 7. Reviewer, then tester.
 
 The reviewer and tester validate that evidence against the GitHub run API, never trusting the comment text. Missing, stale, or invalid evidence is bounced immediately (REQUEST_CHANGES; the tester also applies `tests-failing`) with no build, no review, and no deploy. With valid evidence the reviewer reads the developer's deploy run output instead of triggering its own dev build CI when every build job has a counterpart in the deploy run, and the tester reuses the deploy only when it is still the newest run of the deploy workflow with nothing in flight. A repo in **either** `ci_gate_exempt_repos` or `deploy_gate_exempt_repos` gets no developer deploy and no bounce; the developer posts an exempt-form note with the `jq` proof line. The reviewer also skips its evidence gate for `ci_gate_exempt_repos`. The procedure lives in `skills/shared/dev-deploy.md`, and `dev-workflow:dev-verify` runs it on an existing PR.
+
+## Review Precision
+
+Every review body and test report records its round and a `## Review Precision` table of findings raised, dropped by the verifier and disputed by the developer, per perspective. Nothing is stored outside the report text, so precision comes from review history alone: read the reviews with `gh api repos/{owner}/{repo}/pulls/{PR_NUMBER}/reviews`.
+
+- The false-positive rate of a perspective is (Verifier-dropped + Developer-disputed) / Raised, summed over the reviews or test reports being measured.
+- The guardrail metric is rounds per PR: the highest Review round and Test round on each PR. A change that lowers the false-positive rate while raising rounds per PR is a regression.
+- A stricter review-side rate counts only the disputes the next Re-Review marked `Disputed — upheld`.
 
 ## Role Sessions (standalone full-cycle)
 

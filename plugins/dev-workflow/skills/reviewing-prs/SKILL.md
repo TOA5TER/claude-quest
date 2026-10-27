@@ -278,7 +278,7 @@ gh api repos/{owner}/{repo}/pulls/{PR_NUMBER} --jq '.body'
 gh api repos/{owner}/{repo}/issues/{PR_NUMBER}/comments
 ```
 
-Extract any stated deviations, trade-off decisions, or "I chose X instead of Y because Z" notes. Carry these forward as **Acknowledged Deviations** — do not flag these as issues in Phase 5 unless there is strong reason to disagree (e.g., security risk, data loss, correctness failure). If you do disagree, explicitly reference the developer's stated reasoning and explain why the concern overrides it.
+Extract any stated deviations, trade-off decisions, or "I chose X instead of Y because Z" notes. Carry these forward as **Acknowledged Deviations** — do not flag these as issues in Phase 5 unless there is strong reason to disagree (e.g., security risk, data loss, correctness failure). If you do disagree, explicitly reference the developer's stated reasoning and explain why the concern overrides it. A `## Disputed Findings` section is never an Acknowledged Deviation; Re-Review Mode rules on it (see Re-Review Mode below).
 
 ---
 
@@ -395,10 +395,20 @@ Wait for all 6 agents to complete, collect all findings, then run the Review Sta
 
 Work through each item in the **Previous Required Changes** list extracted in Phase 1.5. For each item:
 
-- **Status:** Addressed / Not Addressed / Partially Addressed
+- **Status:** Addressed / Not Addressed / Partially Addressed / Disputed — upheld / Disputed — rejected
 - **Evidence:** Specific `file:line` reference from the current diff showing the change (or its absence)
 
-Items with **Status: Not Addressed** or **Partially Addressed** must be carried forward verbatim into the Required Changes section of the Phase 6 review body. If a required change was addressed by deleting the problematic code entirely, mark it **Addressed** with Evidence citing the deletion.
+Items with **Status: Not Addressed**, **Partially Addressed** or **Disputed — rejected** must be carried forward verbatim into the Required Changes section of the Phase 6 review body. If a required change was addressed by deleting the problematic code entirely, mark it **Addressed** with Evidence citing the deletion.
+
+**Disputes.** Read the `## Disputed Findings` sections in PR conversation comments created after the latest non-bounce `CHANGES_REQUESTED` review (fetched in Phase 3.5); in Local Mode and approval-only mode, read that section of the previous review round's fix note. Match each disputed item to a Previous Required Change by its verbatim text, and rule on each match:
+
+| # | Condition (a Previous Required Change matched by a disputed item) | Status |
+|---|-------------------------------------------------------------------|--------|
+| 1 | The dispute carries no `file:line` quote and no command output | `Disputed — rejected`, carried forward |
+| 2 | The reviewer re-reads the quoted lines or re-runs the command at the current head, and the result shows the defect absent | `Disputed — upheld`, not carried forward |
+| 3 | Otherwise | `Disputed — rejected`, carried forward verbatim |
+
+An unmatched disputed item gets no ruling. An upheld item counts as addressed in the score.
 
 After verifying all previous items, evaluate whether any **new** findings meet the Critical Exception Threshold:
 
@@ -411,7 +421,7 @@ After verifying all previous items, evaluate whether any **new** findings meet t
 
 The one exception to this threshold is a Review Standards Checklist violation (see below) in code added since the last review: it is a Required Change even though it is not a security, data-loss or correctness finding. Checklist violations in code already reviewed stay omitted, matching the one-review-per-cycle rule.
 
-List qualifying new findings under a **New Critical Findings** section with an explicit per-item justification of why the threshold is met.
+List qualifying new findings under a **New Critical Findings** section with an explicit per-item justification of why the threshold is met. Tag each one `[Re-Review]`, and each checklist violation `[Review Standards Checklist]`.
 
 Once the verification checklist is complete, run the Review Standards Checklist below on the code added since the last review, then continue to Phase 5.5.
 
@@ -430,7 +440,7 @@ Re-Review Mode skips this phase and goes straight to Phase 5.5.
 
 In First Review Mode, no non-gate finding reaches the review until a fresh-context verifier has checked it against evidence.
 
-**Step 1: Merge into unique findings.** Merge the six perspective reports and the Review Standards Checklist violations into one list of unique findings. Two findings with the same `file:line` and the same defect are one finding, which keeps the highest tier any report gave it (Blocking, then Pre-existing, then Non-blocking). Each checklist violation enters this list with raised tier Blocking, and its FINDING input names the class documented-standard violation.
+**Step 1: Merge into unique findings.** Merge the six perspective reports and the Review Standards Checklist violations into one list of unique findings. Two findings with the same `file:line` and the same defect are one finding, which keeps the highest tier any report gave it (Blocking, then Pre-existing, then Non-blocking). Each checklist violation enters this list with raised tier Blocking, and its FINDING input names the class documented-standard violation. Record, for each unique finding, the perspectives that raised it (Review Standards Checklist for a checklist violation). The record feeds only the perspective tags and the Review Precision table; the verifier input table below stays as it is, so no verifier sees a perspective name.
 
 **Step 2: Set gate findings aside.** A gate finding skips verification and tiers and goes to Required Changes exactly as Phase 3 and Phase 6 require, and is not counted in the verification line. Gate findings are: the Migration Immutability Check finding (Phase 3), a failed Mandatory Dev Build CI Gate or terraform plan result, and any finding that an instruction outside `skills/subagents/` requires to be force-included in Required Changes (such as a wrapper plugin's gate). Review Standards Checklist violations are not gate findings; they go through this phase.
 
@@ -483,7 +493,7 @@ Each verifier returns exactly these labeled lines:
 > - All CI/CD checks still pass (re-run status check from Phase 3)
 > - The PR diff reflects current HEAD (no new commits since loading in Phase 4)
 > - **First Review Mode:** every finding the Phase 5.2 table placed in Required Changes is there, no dropped or (unverified) finding is, and the Finding verification counts add up (raised = confirmed + demoted + dropped)
-> - **Re-Review Mode:** All unresolved items from the Phase 5 verification checklist have been carried forward to Phase 6. No New Critical Findings that meet the exception threshold have been omitted.
+> - **Re-Review Mode:** All unresolved items from the Phase 5 verification checklist have been carried forward to Phase 6. No New Critical Findings that meet the exception threshold have been omitted. Every matched dispute has a ruling.
 
 ---
 
@@ -496,7 +506,7 @@ Each verifier returns exactly these labeled lines:
 - 3-4: Significant problems, request changes
 - 1-2: Fundamental issues, request changes with priority concerns
 
-*In Re-Review Mode: score is based primarily on how completely previous required changes were addressed. New critical findings that meet the exception threshold lower the score as in first review.*
+*In Re-Review Mode: score is based primarily on how completely previous required changes were addressed (a `Disputed — upheld` item counts as addressed). New critical findings that meet the exception threshold lower the score as in first review.*
 
 *In First Review Mode: score only the findings Phase 5.2 kept in Required Changes and Suggestions. Pre-existing and dropped findings never lower the score.*
 
@@ -506,6 +516,7 @@ Each verifier returns exactly these labeled lines:
 ## Review Score: X/10
 
 **CI path:** [(a) reused developer deploy run {RUN_ID} | (b) fresh dev build CI run {RUN_ID} | skipped by exemption]
+**Review round:** {R}
 
 ## Summary
 [2-3 sentence overview of whether previous requests were addressed]
@@ -514,6 +525,7 @@ Each verifier returns exactly these labeled lines:
 - [original required change item]: Addressed — `file.ts:42` resolves the issue
 - [original required change item]: Not Addressed — no relevant change found in diff
 - [original required change item]: Partially Addressed — `file.ts:88` handles the happy path but the error case remains
+- [original required change item]: Disputed — upheld|rejected — [evidence or reason]
 
 ## New Critical Findings (Exception Threshold Met)
 [Omit this section entirely if no new findings qualify. If present, include per-item threshold justification for each finding.]
@@ -523,6 +535,20 @@ Each verifier returns exactly these labeled lines:
 
 ## Suggestions (Optional)
 [Omit entirely in re-review unless directly related to an unresolved previous request]
+
+## Review Precision
+
+| Perspective | Raised | Verifier-dropped | Developer-disputed |
+|-------------|--------|------------------|--------------------|
+| Code Quality | 0 | n/a | {n} |
+| Architecture | 0 | n/a | {n} |
+| Security | 0 | n/a | {n} |
+| Performance | 0 | n/a | {n} |
+| Product Fit | 0 | n/a | {n} |
+| Budget Impact | 0 | n/a | {n} |
+| Review Standards Checklist | {n} | n/a | {n} |
+| Re-Review | {n} | n/a | {n} |
+| Unattributed | 0 | n/a | {n} |
 ~~~
 
 **For First Review Mode**, build this format from the Phase 5.2 dispositions. Required Changes holds only the Required Changes findings plus gate findings; Suggestions holds the Suggestions findings; the perspective sections (Code Quality to Budget Impact) summarize only findings placed in Required Changes, Suggestions or Pre-existing Issues, never dropped ones.
@@ -532,6 +558,7 @@ Each verifier returns exactly these labeled lines:
 ## Review Score: X/10
 
 **CI path:** [(a) reused developer deploy run {RUN_ID} | (b) fresh dev build CI run {RUN_ID} | skipped by exemption]
+**Review round:** {R}
 
 **Finding verification:** N raised, C confirmed, M demoted to non-blocking, D dropped (print it with zeros, 0 raised, 0 confirmed, 0 demoted, 0 dropped, when no findings were raised)
 
@@ -557,14 +584,44 @@ Each verifier returns exactly these labeled lines:
 [Cost impact rating and findings from Budget Manager — omit section if no new costs]
 
 ## Required Changes
-[Confirmed Blocking findings and gate findings, bulleted with file:line references]
+[Confirmed Blocking findings and gate findings, bulleted with file:line references; each bullet starts with its perspective tag, e.g. `[Code Quality, Security]` or `[Gate]`]
 
 ## Suggestions (Optional)
-[Suggestions findings from Phase 5.2, including "(unverified)" items]
+[Suggestions findings from Phase 5.2, including "(unverified)" items; each bullet starts with its perspective tag]
 
 ## Pre-existing Issues (not required for this PR)
 [Confirmed issues the PR did not introduce, for information only; omit if none]
+
+## Review Precision
+
+| Perspective | Raised | Verifier-dropped | Developer-disputed |
+|-------------|--------|------------------|--------------------|
+| Code Quality | {n} | {n} | {n} |
+| Architecture | {n} | {n} | {n} |
+| Security | {n} | {n} | {n} |
+| Performance | {n} | {n} | {n} |
+| Product Fit | {n} | {n} | {n} |
+| Budget Impact | {n} | {n} | {n} |
+| Review Standards Checklist | {n} | {n} | {n} |
+| Re-Review | 0 | n/a | 0 |
+| Unattributed | 0 | n/a | {n} |
 ```
+
+### Perspective Tags, Review Round and Review Precision
+
+**Perspective tags.** Every bullet in a First Review's Required Changes and Suggestions (Optional) sections starts with `[<names>]`, listing each perspective that raised the finding, joined by `, `, in the order Code Quality, Architecture, Security, Performance, Product Fit, Budget Impact, Review Standards Checklist. Gate findings are tagged `[Gate]`. The tag comes first, before an `(unverified)` prefix. In Re-Review, carried-forward bullets keep their text verbatim (tag included), New Critical Findings are tagged `[Re-Review]` and checklist violations `[Review Standards Checklist]`.
+
+**Review round.** Set `{R}` as follows. On GitHub it is 1 plus the number of earlier reviews on the PR with a non-empty body that does not start with `## Test Report`, counting only reviews by `reviewer_login` when it is set and has such a review on the PR, else counting every such review (the selection rule the post-test transition in `skills/testing-prs/SKILL.md` uses, applied to every review state); evidence-bounce reviews count. In Local Mode and approval-only mode it is the N of the `review-round-N.md` note being written.
+
+**Review Precision.** Every row is always printed, with `0` where nothing was counted.
+
+| Column | First Review | Re-Review |
+|--------|--------------|-----------|
+| Raised | Unique non-gate findings each perspective raised; a merged finding counts once in each raising perspective's row; checklist violations go to Review Standards Checklist; gate findings are not counted; Re-Review and Unattributed are `0` | New Critical Findings in the Re-Review row and checklist violations in the Review Standards Checklist row; every other row `0` |
+| Verifier-dropped | Findings Phase 5.2 Step 6 counted as D, in each raising perspective's row | `n/a` in every row |
+| Developer-disputed | Items in `## Disputed Findings` sections posted after the latest earlier review counted in the Review round rule above (PR conversation comments; in Local Mode and approval-only mode, the fix note for the previous review round), attributed to the rows their tag names; an item with no perspective tag counts in Unattributed; `[Test: …]` and `[Gate]` items are not counted here | Same |
+
+The Verifier-dropped column sums to D in the Finding verification line. The round line and table live only in the review body text (and, in Local Mode and approval-only mode, in the round note that holds that body); add no checkpoint field, file, label or PM field. An evidence-bounce review (body with the `<!-- dev-evidence-bounce` marker) keeps its current body with no round line and no precision table, and still counts as a round.
 
 ### Inline Comments
 
