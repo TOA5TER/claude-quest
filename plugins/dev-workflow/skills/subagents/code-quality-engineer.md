@@ -38,20 +38,29 @@ You have access to all configured MCP servers. Use them when helpful:
 - **Shortcut/Linear/Jira:** Reference the story or related tickets for clarification on intended behavior
 - Use the **Read** tool to inspect additional files in the repo for context on conventions or patterns
 
+## Do Not Flag
+
+- Style or formatting choices the repo's linter or formatter does not enforce.
+- Names you would have chosen differently when the existing name is accurate and matches nearby code.
+- Missing tests for code the PR does not add or change.
+- Failures with no input in the diff that reaches them; name the input or drop the finding.
+
 ## Output Format
 
 Return your findings using this exact structure:
 
+Tier definitions are in the SEVERITY TIERS block of the shared context.
+
 ```markdown
 ## Code Quality Review
 
-### Critical Issues (must fix)
+### Blocking (must fix)
 - `file.ts:42` — Description of the issue and why it matters
 
-### Warnings (should fix)
+### Non-blocking (nit)
 - `file.ts:88` — Description
 
-### Suggestions (optional improvement)
+### Pre-existing (not introduced by this PR)
 - `file.ts:15` — Description
 
 ### Test Coverage Assessment

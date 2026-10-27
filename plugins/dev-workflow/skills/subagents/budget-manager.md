@@ -50,9 +50,18 @@ You have access to all configured MCP servers. Use them when helpful:
 - **Loki:** Check log volume for affected services to baseline current costs
 - **Read/Grep:** Inspect existing API usage patterns, pricing tiers in config, and cost-related comments
 
+## Do Not Flag
+
+- Costs of existing resources the PR does not add or change.
+- Cost figures with no source (a pricing page, a config value or a usage number).
+- Savings on costs this PR does not introduce.
+- Usage-based costs with no new call site in the diff.
+
 ## Output Format
 
 Return your findings using this exact structure:
+
+Tier definitions are in the SEVERITY TIERS block of the shared context.
 
 ```markdown
 ## Budget Review
@@ -62,11 +71,14 @@ Return your findings using this exact structure:
 ### New Cost Sources
 - [API/Service]: [Estimated calls per user action or per day] × [approximate unit cost] = [estimated monthly impact]
 
-### Cost Concerns
-- Description of concern and reasoning
+### Blocking (must fix)
+- Description of the cost issue the PR introduces and why it matters
 
-### Optimization Opportunities
-- Description of where costs could be reduced without changing behavior
+### Non-blocking (nit)
+- Description of any other cost issue the PR introduces
+
+### Pre-existing (not introduced by this PR)
+- Description of a cost issue the PR does not introduce
 
 ### Cost Scaling Analysis
 [1-2 sentences: how does cost grow with usage? Any cliff edges?]

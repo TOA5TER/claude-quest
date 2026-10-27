@@ -18,7 +18,7 @@ The superpowers plugin provides core methodology skills (TDD, systematic debuggi
 |---------|-------|---------|
 | `/start developing [story-id]` | developing | Branch, implement with TDD, commit, create PR |
 | `/start writing-specs story-id` | writing-specs | Fetch story → analyze codebase → write Claude Instructions spec |
-| `/start reviewing-prs PR` | reviewing-prs | Multi-perspective PR review against story requirements |
+| `/start reviewing-prs PR` | reviewing-prs | Multi-perspective PR review against story requirements, with every finding verified and tiered by severity |
 | `/start testing-prs PR` | testing-prs | Functional testing with evidence gathering |
 | `/start debugging` | debugging | Debug-first workflow (describe bug → investigate → TDD fix) |
 | `/start debugging story-id --rework` | debugging | Read story comments as rework items → fix → new PR |
@@ -84,7 +84,7 @@ The `models` section is optional. When absent, all dispatches use the built-in d
 |-----|---------|---------|
 | `models.implementation` | `sonnet` | All coding/implementation subagents (implementers, TDD cycles) |
 | `models.reasoning` | `opus` | All reasoning/planning subagents (brainstorming, architecture, spec writing) |
-| `models.review` | `opus` | All review/testing subagents (review board, adversarial review, test agents) |
+| `models.review` | `opus` | All review/testing subagents (review board, finding verifiers, adversarial review, test agents) |
 | `models.stages.writing-specs` | `opus` | full-cycle's writing-specs stage: the spec-writer role session or relay dispatch in a standalone run, and the fresh writer that does the rework before review rounds 3 to 5 |
 | `models.stages.developing` | `sonnet` | full-cycle's developing stage (the developer role session's model, fixed at launch, or the fresh developer dispatch) |
 | `models.stages.reviewing-prs` | `opus` | full-cycle's reviewing-prs stage (reviewer role session or fresh subagent) |
