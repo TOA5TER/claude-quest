@@ -23,15 +23,6 @@ has() {
   grep -qF -- "$2" "$1"
 }
 
-# section FILE HEADING : prints the body of an h2 section up to the next h2.
-section() {
-  awk -v h="$2" '
-    $0 == h { on = 1; next }
-    on && /^## / { exit }
-    on { print }
-  ' "$1"
-}
-
 # lineno FILE LITERAL : prints the first line number of an exact-line match.
 lineno() {
   grep -nxF -- "$2" "$1" | head -1 | cut -d: -f1
@@ -106,8 +97,13 @@ for lit in "**Review round:**" "## Review Precision"; do
   [ "$count" = "2" ] || fail "reviewing-prs has $count '$lit' lines, expected 2 (one per body format)"
 done
 need "$REVIEWING" "reviewing-prs precision wording" \
-  "| Perspective | Raised | Verifier-dropped | Developer-disputed |" "Re-Review" "Unattributed" \
+  "| Perspective | Raised | Verifier-dropped | Developer-disputed |" \
   "[Gate]" "[Re-Review]" "the perspectives that raised it"
+# Why: the prose mentions these names too, so only a table row start proves the row exists in both body formats.
+for row in "| Re-Review |" "| Unattributed |"; do
+  rows="$(grep -c -- "^$row" "$REVIEWING")"
+  [ "$rows" = "2" ] || fail "reviewing-prs has $rows table rows starting '$row', expected 2 (one per body format)"
+done
 
 # Why: the dispute path needs matching wording in the fixer, the ruler, the local-mode note and both agents.
 need "$ADDRESSING" "addressing-pr-comments dispute wording" "Disputed —" "## Disputed Findings" "— Disputed:" "[Gate]"

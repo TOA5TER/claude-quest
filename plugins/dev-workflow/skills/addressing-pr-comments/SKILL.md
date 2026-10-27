@@ -104,7 +104,7 @@ Items under a review's ## Pre-existing Issues (not required for this PR) section
 2. [Author @bar, review body] — [what they asked for]
 ```
 
-**Disputes.** Instead of changing code, you may mark a Required Change or a test failure as disputed, only with evidence that the defect is absent: a `file:line` quote at the PR head, or a command with its output. End a disputed checklist entry with `— Disputed: <evidence>`. Suggestions, Pre-existing items and `[Gate]` items are never disputed; a gate finding is fixed or the gate re-run.
+**Disputes.** Instead of changing code, you may mark a Required Change or a test failure as disputed, only with evidence that the defect is absent: a `file:line` quote at the PR head, or a command with its output (the reviewer reads that output and never runs the command). End a disputed checklist entry with `— Disputed: <evidence>`. Suggestions, Pre-existing items and `[Gate]` items are never disputed; a gate finding is fixed or the gate re-run.
 
 If no actionable feedback is found, inform the user and stop.
 
@@ -179,7 +179,6 @@ For a disputed item, reply with a reply that starts `Disputed —` followed by t
 Post a summary comment on the PR covering all changes. Call out any deviations not already explained in inline replies.
 
 Comment format:
-Omit the Disputed Findings section when nothing is disputed. A disputed item is not also listed under Changes Addressed.
 
 ```markdown
 ## Changes Addressed
@@ -193,6 +192,8 @@ Omit the Disputed Findings section when nothing is disputed. A disputed item is 
 ## Deviations
 [Omit section entirely if none. Otherwise explain each deviation and reasoning.]
 ```
+
+Omit the Disputed Findings section when nothing is disputed. A disputed item is not also listed under Changes Addressed.
 
 ```bash
 gh pr comment {PR_NUMBER} --body "..."
