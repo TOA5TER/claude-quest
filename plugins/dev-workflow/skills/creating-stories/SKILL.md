@@ -7,7 +7,7 @@ description: "Use when a user wants to capture a feature idea as a formal story,
 
 **Role:** Creating Stories — gather context, generate a story draft, and submit it to the PM tool
 
-**SCOPE BOUNDARY:** This skill creates a PM story and NOTHING else. It does **not** write code, write local files, make commits, checkout git branches, implement features, or start development. When the story is submitted, output the story URL and STOP. This skill **never** creates sub-stories or subtasks — all repos and scope live in the single story. If a direct user request for code, files, or commands lands mid-session, outside the normal Phase 1-6 flow, do not execute it — route its content into the relevant story draft field instead (e.g. as an acceptance criterion or testing instruction describing the requirement), and tell the user explicitly that the request was captured in the draft rather than executed.
+**SCOPE BOUNDARY:** This skill creates one PM story, or one story per part after the user accepts a Phase 3.5 split, and NOTHING else. It does **not** write code, write local files, make commits, checkout git branches, implement features, or start development. When the story is submitted (or, after a split, every part), output the story URL and STOP. This skill **never** creates sub-stories or subtasks — all repos and scope live in the single story, and each part of an accepted Phase 3.5 split is a separate top-level story. If a direct user request for code, files, or commands lands mid-session, outside the normal Phase 1-6 flow, do not execute it — route its content into the relevant story draft field instead (e.g. as an acceptance criterion or testing instruction describing the requirement), and tell the user explicitly that the request was captured in the draft rather than executed.
 
 This boundary does not forbid the specific, exhaustively named actions below elsewhere in this skill — no other step, or self-judged "documented, temporary, read-only" excursion, qualifies:
 
@@ -27,6 +27,8 @@ Read `skills/shared/repo-discovery.md` — repo discovery procedure referenced i
 
 Read `skills/shared/checkpoint-seeding.md` — checkpoint seeding procedure referenced in
 Phase 0.
+
+Read `skills/shared/size-gate.md` — the size gate applied in Phase 3.5.
 
 ---
 
@@ -160,6 +162,34 @@ A candidate repo's backend can consume generated code (gRPC client stubs, a Grap
 
 ---
 
+## Phase 3.5: Size Check
+
+Run exactly once, after Phase 3 has finished (including its deferred git-host search and Contract-Repo Detection) and before Phase 4. Apply `skills/shared/size-gate.md`: count rules and examples per its "Counting" section from the Phase 1 request and the Phase 3 investigation, and apply only the rule-count and examples-per-rule rows of "Thresholds" (there is no spec yet to project prose from).
+
+This phase has no autonomous branch: the Pre-Gate stops an autonomous run before Phase 0, so only an interactive user can decline the split, including inside full-cycle, which runs this skill in its main session.
+
+**Within both thresholds:** ask nothing and continue to Phase 4 with one story.
+
+**Size line.** Whatever the gate result, when at least one counted rule is inferred rather than stated in the request, every Phase 4 draft in this run ends with one display-only line (see Phase 4).
+
+**Threshold exceeded:** ask one `AskUserQuestion`. The question text holds the counted rules, each marked with the part that takes it and with `[Inference]` when inferred, and the full split plan per the "Split Plan" section of `size-gate.md`. The options are `Accept the split (Recommended)` and `Keep one story`. This question does not count against Phase 3's 2-question cap. Create no story until a reply resolves it per the table below.
+
+| Gate result | User reply | Action |
+|-------------|------------|--------|
+| Within both thresholds | None (no question asked) | Continue to Phase 4 with one story. |
+| Threshold exceeded | `Accept the split` | Run Phases 4 to 6 once per part, in plan order. |
+| Threshold exceeded | `Keep one story` | Add the size-accepted marker line (`Size accepted by user: ...`, exact text in `size-gate.md`) to the end of the description, then run Phases 4 to 6 once. |
+| Threshold exceeded | stop, quit, cancel or exit | Run the Phase 5 cancel branch: delete any placeholder and stop with zero stories created. |
+| Otherwise | Any other reply text | Treat it as feedback on the plan: revise the plan and ask the same question again. After 3 revisions with no choice, suggest the user cancel and restart, as Phase 5 does. |
+
+(Hit policy: first matching row.)
+
+**Accepted split.** Each part's draft takes its title, scope, repos to modify, repos to reference and acceptance criteria from its plan entry; its testing instructions and story type from Phase 3's inference rules applied to that part's rules; and the full original request as `originalRequest`. Each part gets its own Phase 5 approval and its own revision count, and part k+1's Phase 4 starts only after part k is created. After the last part, list every created part's ID and URL in order.
+
+**Early stop in a split run.** Parts already created stay created. The stop message lists each created part's ID and title and each part not created. When at least one part is already created, the Phase 5 cancel and Phase 6 failure branches leave the Phase 0 step 2a placeholder in place, as the success path does, because a created story can still reach writing-specs; when no part is created yet, they delete it as usual.
+
+---
+
 ## Phase 4: Generate Story Draft
 
 Internally hold the draft fields — do NOT emit any JSON or code block. Display only the rendered markdown preview below (no code fences, no JSON):
@@ -184,6 +214,8 @@ Internally hold the draft fields — do NOT emit any JSON or code block. Display
 
 ---
 
+When Phase 3.5 found at least one inferred counted rule, end every draft in the run with one display-only line below Testing Instructions: `Size check: [Inference] {N} rules, at most {K} examples per rule`. {N} and {K} are the whole request's counts for a single or kept story, and the part's own counts from its plan entry for a split part.
+
 ## Phase 5: Approval
 
 Use `AskUserQuestion` to ask the user. The `question` field **must include the full story draft** (same markdown rendered in Phase 4), followed by the approval prompt. This ensures the story content is visible regardless of how the question is routed or displayed. Format the question as:
@@ -199,13 +231,13 @@ Type **yes** to submit this story to {pm_adapter}, or describe what to change.
 - If user says "yes" (case-insensitive): proceed to Phase 6
 - If user asks a question that does not itself imply a desired change: answer the question directly, using the same codebase/context investigation Phase 3 already permits, scoped to codebase/context reads only — this does **not** extend to Phase 3's live infra/deployment-state carve-out; a Phase 5 question never triggers a live SSM/Kubernetes/service-health check. Then re-present the draft with the same approval prompt: re-present it identical and unmodified, unless answering the question revealed the draft itself is factually wrong, in which case re-present a corrected draft instead of knowingly re-presenting an incorrect one, and state what changed and why. This does not count as a revision cycle — do not increment the 3-revision-cycle counter used by the feedback branch below. **Tie-break:** if the question itself implies a desired change (e.g. it reads as "why isn't this scoped to X" where the intent is "scope this to X"), treat it as feedback under the branch below instead, even though it is phrased as a question.
 - If user provides feedback (including a question found, per the tie-break above, to imply a desired change): incorporate the feedback, return to Phase 4 and re-emit an updated draft. After 3 revision cycles without approval, suggest the user cancel and restart with a clearer description.
-- If user says "stop", "quit", "cancel", or "exit": if Phase 0 step 2a seeded a placeholder, delete it now, then STOP — "Story creation cancelled."
+- If user says "stop", "quit", "cancel", or "exit": if Phase 0 step 2a seeded a placeholder, delete it now (unless Phase 3.5 split parts are already created: leave it in place and list the created and not-created parts), then STOP — "Story creation cancelled."
 
 ---
 
 ## Phase 6: Create Story
 
-Use the PM adapter's **Create Story** operation (capability #5) with all draft fields.
+Use the PM adapter's **Create Story** operation (capability #5) with all draft fields. The Phase 4 size line is display-only, not a draft field, and is never submitted.
 
 On success:
 1. Leave the Phase 0 step 2a placeholder in place — do not write a real `{story-id}.json`
@@ -234,5 +266,5 @@ ID: {story-id}
 URL: {story-url}
 ```
 
-On failure: delete the Phase 0 step 2a placeholder file, if one was seeded, then STOP with
+On failure: delete the Phase 0 step 2a placeholder file, if one was seeded (unless Phase 3.5 split parts are already created: leave it in place and list the created and not-created parts), then STOP with
 the error — do not retry silently.
