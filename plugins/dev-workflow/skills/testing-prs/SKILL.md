@@ -88,10 +88,10 @@ For a migration-related symptom specifically, independent verification means que
 Get PR details using the actual PR number from arguments:
 
 ```bash
-gh pr view {PR_NUMBER} --json number,title,body,headRefName
+gh pr view {PR_NUMBER} --json number,title,body,headRefName,baseRefName,headRefOid
 ```
 
-The `headRefName` field in the JSON output is the branch name — note it for use in subsequent commands.
+The `headRefName` field in the JSON output is the branch name — note it for use in subsequent commands. The Test Integrity checks in Phase 5 use `baseRefName` as the base and `headRefOid` as the head. In a Local Mode round (no PR) the base is the repo's default branch (`git -C <repo root> symbolic-ref --short refs/remotes/origin/HEAD` with the `origin/` prefix removed) and the head is the branch tip the round message gives.
 
 Extract expected behavior, acceptance criteria, and branch name.
 
@@ -133,7 +133,7 @@ gh api repos/{owner}/{repo}/pulls/{PR_NUMBER} --jq '.body'
 gh api repos/{owner}/{repo}/issues/{PR_NUMBER}/comments
 ```
 
-Extract any stated deviations or scope adjustments. Carry these forward as **Acknowledged Deviations** — when designing test scenarios in Phase 4, test against the developer's stated behavior (not the original spec) for acknowledged deviations. Only flag a deviation as a failure if there is strong reason to disagree (e.g., the deviation breaks a critical acceptance criterion, introduces a security risk, or causes data loss). If you do flag it, explicitly reference the developer's reasoning and explain why.
+Extract any stated deviations or scope adjustments. Carry these forward as **Acknowledged Deviations** — when designing test scenarios in Phase 4, test against the developer's stated behavior (not the original spec) for acknowledged deviations. Only flag a deviation as a failure if there is strong reason to disagree (e.g., the deviation breaks a critical acceptance criterion, introduces a security risk, or causes data loss). If you do flag it, explicitly reference the developer's reasoning and explain why. A `## Disputed Findings` section in a developer comment is never an Acknowledged Deviation; it is read only for the precision table in Phase 6.
 
 ---
 
@@ -256,6 +256,9 @@ From story acceptance criteria and Claude Instructions (or PR description if no 
 - User-facing messages and behaviors
 - Accessibility (if applicable)
 
+### Test Integrity Scenarios
+Plan these checks on every run: the revert-the-fix check, the mutation check and the property-based check. Phase 5's "Test Integrity" subsection defines each one and the single result it resolves to: `PASS`, `FAIL`, `N/A: <reason>` or `not possible: <reason>`.
+
 ---
 
 ## Phase 5: Execute Tests
@@ -276,9 +279,68 @@ For each scenario:
 
 **During execution:** If you encounter any error — unexpected output, exception, wrong behavior, missing data — **stop and investigate it immediately.** Do not move on. Do not assume it is noise. Capture it as a failure with full evidence. The presence of an error means the test fails, even if the "main flow" looked okay.
 
+### Test Integrity
+
+A test that passes with or without the fix proves nothing. Run the checks planned in Phase 4. Each resolves to exactly one of `PASS`, `FAIL`, `N/A: <reason>` or `not possible: <reason>`.
+
+**Changed files.** Take them from `git -C <verification worktree> diff --name-status --diff-filter=AMR <merge-base> <head>`, where the verification worktree is the PR-head worktree resolved per the Tester-Specific Rules (a reused linked worktree or the verification scratch worktree). Exclude a changed file from both classes when a directory segment is named `fixtures`, `testdata`, `__snapshots__` or `snapshots`, when its name is `conftest.py` or `__init__.py`, or when its extension is `.json`, `.jsonl`, `.yaml`, `.yml`, `.html`, `.md`, `.txt`, `.csv` or `.snap`. Any other changed file is a **test file** when a directory segment is named `test`, `tests`, `__tests__` or `spec`, or its name matches `test_*`, `*_test.*`, `*.test.*`, `*.spec.*`, `*Test.*` or `*Tests.*`; the rest are **changed source files**. Deleted files are ignored; a renamed test file counts as changed.
+
+**Merge-base.** Run `git -C <repo root> fetch origin <base>`, then `git -C <repo root> merge-base origin/<base> <head>`; the output is the merge-base. A failed command makes the revert-the-fix check `not possible`.
+
+**Revert-the-fix check.** Run it in a revert-check worktree, created once per test run with `git -C <repo root> worktree add --detach <repo root>/.worktrees/revert-check-<first 12 characters of head> <merge-base>` (the detached form the Fallback bullet of Workspace Isolation uses; `superpowers:using-git-worktrees` cannot create a detached worktree). Inside it, run `superpowers:using-git-worktrees` Step 2 (Project Setup) and the Workspace Isolation dependency-folder rule, and run no baseline. Then check out the head's versions of the added or changed test files with `git -C <revert-check worktree> checkout <head> -- <test file paths>`. Run each added or changed test file with the documented test command (table TC-1) in the revert-check worktree (pre-change outcome) and in the verification worktree (head outcome), merge-base first. Any failure counts, including a load or import error from a module the PR adds. If a path already exists at the revert-check location before creation, do not reuse it and do not run anything in it: the check is `not possible: leftover revert-check path`. At the end of the run, only when this run's `worktree add` succeeded, discard the overlay with `git -C <revert-check worktree> reset --hard` and remove the worktree under the Removal rule in `skills/shared/standards.md`; never run `reset --hard` against a path this run did not create.
+
+| Order | Source of the documented test command | Per-file form | Outcome of one test file (shared by the revert-the-fix and property-based checks) |
+|-------|---------------------------------------|---------------|-------------------------------------------------------------------------------------|
+| 1 | The nearest `CLAUDE.md` or `README.md` that names a command for running tests, walking up from the test file's directory to the repo root | The named command with the test file's path in place of the file path it names, or appended as its last argument when it names none | Fail when the command exits non-zero, unless the output ties the only failure to a coverage threshold; else pass |
+| 2 | A `test` target or script in the root `Makefile`, `package.json` or `pyproject.toml`, or `cargo test` for a root `Cargo.toml`, or `go test ./...` for a root `go.mod` | The command with the test file's path appended; for `cargo test`, `go test ./...` and Makefile targets, the whole command once per worktree, with per-file outcomes read from the runner output | With the path appended: as row 1. With the whole command: fail when the runner output reports a counterexample or failing case in the file, or a build or load failure of the package, crate or module directory that contains it; else pass. A non-zero exit, failing case or counterexample that the output ties to other files has no effect on this file. A run that stops before it reports a result for the file gives row 3 |
+| 3 | None of the above | The check is `not possible: no documented test command`; the same holds when per-file outcomes cannot be read from the runner output | None; the check is not possible |
+
+Revert-the-fix result (first matching row):
+
+| # | Condition | Result |
+|---|-----------|--------|
+| 1 | The PR adds or changes no test file (this includes a bug fix with no tests, which Code Quality reports) | `N/A: no added or changed test files` |
+| 2 | The merge-base cannot be found, the revert-check worktree cannot be created, its Project Setup fails, or TC-1 row 3 applies | `not possible: <reason>` |
+| 3 | Any added or changed test file fails at the head | `FAIL: <files> fail at the PR head` |
+| 4 | At least one added or changed test file fails at the merge-base, and every merge-base failure is a missing third-party package that a manifest at the merge-base declares (an environment failure, per the red-baseline rule of Workspace Isolation) | `not possible: dependencies missing at the merge-base: <package>` |
+| 5 | At least one added or changed test file fails at the merge-base | `PASS`, listing the files that also pass pre-change, for information only |
+| 6 | Otherwise: every added or changed test file passes at the merge-base | `FAIL: no added or changed test file fails against pre-change code` |
+
+**Existing tooling only.** A mutation or property-based tool counts as existing only when a file tracked at the PR head (`git -C <verification worktree> ls-files`) declares a tool in the table below. The tester never installs a tool, never adds a package and never edits a manifest; the only installs that run are the Project Setup step of `superpowers:using-git-worktrees` and the dependency-folder rule, both working from the repo's own manifests. A declared tool that still fails to start is `not possible: <first error line>`.
+
+| Tool | Kind | Declared by (tracked file at PR head) |
+|------|------|---------------------------------------|
+| Stryker | mutation | `@stryker-mutator/core` in `package.json`, or a `stryker.conf.*` or `stryker.config.*` file |
+| mutmut | mutation | `mutmut` in a Python manifest or lockfile, or a `[mutmut]` or `[tool.mutmut]` section |
+| cosmic-ray | mutation | `cosmic-ray` in a Python manifest or lockfile |
+| PIT | mutation | `pitest-maven` in `pom.xml` or `info.solidsoft.pitest` in a Gradle build file |
+| cargo-mutants | mutation | a `.cargo/mutants.toml` file |
+| Infection | mutation | `infection/infection` in `composer.json`, or an `infection.json` or `infection.json5` file |
+| go-mutesting | mutation | `go-mutesting` in `go.mod` or a tracked `tools.go` |
+| `fast-check` | property | `fast-check` in `package.json` |
+| Hypothesis | property | `hypothesis` in a Python manifest or lockfile |
+| proptest, quickcheck | property | the crate name in `Cargo.toml` |
+| jqwik | property | `net.jqwik` in `pom.xml` or a Gradle build file |
+| gopter, rapid | property | `github.com/leanovate/gopter` or `pgregory.net/rapid` in `go.mod` |
+
+**Mutation check.** Run the declared tool in the verification worktree under the repo's own configuration, scoped to the changed source files through the tool's own command-line option for naming the files or paths to mutate. A tool with no such option is `not possible: <tool> cannot be scoped to the changed files`, so code the PR never touched cannot fail it. Never pass a threshold option on the command line. A PASS lists the mutation score and the surviving mutants.
+
+**Property-based check.** Run, with the per-file form of the documented test command in the verification worktree, every test file that names a declared property tool and either is added or changed by the PR or contains the file name, without extension, of a changed source file (the in-scope property test files). A FAIL counts only a failure that TC-1's outcome column ties to an in-scope property test file; failures the output ties to other files have no effect on this check.
+
+Mutation and property-based result (each evaluated alone, first matching row):
+
+| # | Condition | Result |
+|---|-----------|--------|
+| 1 | No tool of this kind is declared at the PR head | `N/A: no mutation tooling declared` or `N/A: no property-based tooling declared` |
+| 2 | Nothing is in scope (no changed source file for mutation; no in-scope property test file for property) | `N/A: nothing in scope` |
+| 3 | The tool fails to start, cannot be scoped, or exits non-zero without reporting a mutation result, a counterexample, a failing case, or a build or load failure | `not possible: <tool> cannot be scoped to the changed files` for a tool that cannot be scoped; otherwise `not possible: <first error line>` |
+| 4 | A property run reports a counterexample, a failing case, or a build or load failure that TC-1's outcome column ties to an in-scope property test file | `FAIL`, quoting the counterexample or failure |
+| 5 | The repo's own config for the mutation tool sets a minimum score (Stryker `thresholds.break`, PIT `mutationThreshold`, Infection `minMsi` or `minCoveredMsi`, or a threshold option in the documented mutation command) and the run exits non-zero reporting a score below that configured threshold | `FAIL`, with the score, the threshold and the survivors |
+| 6 | Otherwise, including a tool that exits non-zero only because mutants survived when the repo sets no minimum score (for example cargo-mutants or mutmut with no threshold), and a property run whose only failures the output ties to files outside the in-scope property test files | `PASS`, with the score and survivors (mutation) or the case count (property) |
+
 ### Review Standards Checklist
 
-Run the "Review Standards Checklist" in `skills/shared/standards.md` against the PR diff. Each violation is a failure listed in the test report's `## Failures` section, and the verdict is REQUEST_CHANGES, the same as a failed scenario.
+Run the "Review Standards Checklist" in `skills/shared/standards.md` against the PR diff. Each violation is a failure listed in the test report's `## Failures` section, and the verdict is REQUEST_CHANGES, the same as a failed scenario. Its failures take the `[Test: Review Standards Checklist]` tag.
 
 ---
 
@@ -293,7 +355,7 @@ If Phase 5 produced **3 or more independent test failures** across different sub
 >
 > Group failures by domain (API failures, UI failures, data-layer failures, etc.).
 > Each agent investigates one domain. After completion, integrate findings into the Phase 6
-> test report under "Failures".
+> test report under "Failures". A merged failure keeps its `[Test: <section>]` tag.
 >
 > Every dispatched agent's prompt must carry this workspace rule: any local command against
 > the PR's code runs only inside a git worktree already checked out on the PR's branch —
@@ -318,6 +380,7 @@ If Phase 5 produced **3 or more independent test failures** across different sub
 **Branch:** [branch name]
 **Story:** [story ID or "no story linked"]
 **Deploy path:** [reused developer deploy run {RUN_ID} | fresh tester deploy run {RUN_ID} | skipped by exemption]
+**Test round:** {R}
 
 ## Summary
 **{X}/{Y} tests passed**
@@ -333,12 +396,33 @@ If Phase 5 produced **3 or more independent test failures** across different sub
 ### UX Verification
 - [PASS/FAIL] [test description] — evidence: [brief evidence summary]
 
+### Test Integrity
+- [PASS/FAIL/N/A/not possible] revert-the-fix — command: [command], exit code: [n], evidence: [one line per test file: `<file> — merge-base: pass|fail, head: pass|fail`, then the first failing line at the merge-base]
+- [PASS/FAIL/N/A/not possible] mutation — command: [command], exit code: [n], evidence: [score and surviving mutants, or the N/A or not possible reason]
+- [PASS/FAIL/N/A/not possible] property-based — command: [command], exit code: [n], evidence: [case count, counterexample, or the N/A or not possible reason]
+
 ## Failures
-[If any: specific details of each failure with reproduction steps]
+[If any: specific details of each failure with reproduction steps. Start every item with `[Test: <section>]`, the section being Happy Path, Error Scenarios, UX Verification, Test Integrity or Review Standards Checklist.]
 
 ## Recommendation
 [APPROVE / REQUEST CHANGES with reasoning]
+
+## Review Precision
+
+| Perspective | Raised | Verifier-dropped | Developer-disputed |
+|-------------|--------|------------------|--------------------|
+| Happy Path | {n} | n/a | {n} |
+| Error Scenarios | {n} | n/a | {n} |
+| UX Verification | {n} | n/a | {n} |
+| Test Integrity | {n} | n/a | {n} |
+| Review Standards Checklist | {n} | n/a | {n} |
 ```
+
+**Test Integrity counting.** `PASS` and `FAIL` bullets count toward `{X}/{Y} tests passed`; `N/A` and `not possible` do not. A `FAIL` is also listed under `## Failures` with the `[Test: Test Integrity]` tag and makes the verdict REQUEST_CHANGES; `N/A` and `not possible` never block an APPROVE.
+
+**Test round.** Set `{R}` to 1 plus the number of earlier reviews on the PR whose body starts with `## Test Report`. In a Local Mode or approval-only round, `{R}` is the N of the `test-round-N.md` note being written.
+
+**Review Precision.** Raised is the number of `## Failures` items carrying that row's tag in this report. Verifier-dropped is `n/a` in every row. Developer-disputed counts the items tagged `[Test: <section>]` in `## Disputed Findings` sections posted after the latest earlier test report by the trusted authors defined in `skills/reviewing-prs/SKILL.md` Re-Review Mode "Disputes" (PR conversation comments; in Local Mode and approval-only mode, the fix note for the previous test round), in the row of that section. Every row is always printed, with `0` where nothing was counted. The round line and the table live only in the report text; add no checkpoint field, file, label or PM field.
 
 **A successful dev deploy run on current HEAD is a necessary precondition for an APPROVE recommendation.** The recommendation may be APPROVE only if a dev deploy CI run reached conclusion `success` on the PR branch's current HEAD — either the validated reused developer run or a fresh tester run (or the repo is dev-deploy-CI-exempt and the report shows the verification command and output per the Dev Deploy CI Exemption section above) **and** all test scenarios passed. Missing, stale, or invalid developer evidence on a non-exempt repo, a deploy failure, a missing/unrunnable deploy CI on a non-exempt repo, a non-`success` deploy CI conclusion, a local-only deploy, or an exemption claim missing its verification line yields **REQUEST CHANGES** regardless of any local validation.
 
@@ -370,6 +454,8 @@ Submit formal GitHub review using the actual PR number:
 A successful dev deploy CI run is a precondition for both APPROVE and the `tested-in-dev` label below. Never APPROVE + `tested-in-dev` without it.
 
 Include full test report in the review body.
+
+**Disputes.** The tester never rules on a dispute. Every run re-runs every scenario under the ALWAYS-FRESH mandate, so a disputed failure that recurs is listed again under `## Failures`; the tester only counts disputes in its Review Precision table.
 
 **Always** label the testing outcome so downstream automation (e.g. `dev-workflow:full-cycle`'s resume detection) can distinguish a test result from a review result on the same PR. Apply exactly one label per run, matching the review decision, and clear the opposite label so the two are never both present (use the actual PR number):
 

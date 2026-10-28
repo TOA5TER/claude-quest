@@ -77,7 +77,7 @@ Names: `develop-round-1.md`, `review-round-N.md`, `test-round-N.md`, `fix-review
 First lines, exactly:
 
 - Review and test notes: `decision=APPROVED|CHANGES_REQUESTED head=<sha>`, then the full report the stage would have posted to GitHub, with a `## Required Changes` section when changes are requested.
-- Fix notes: `head=<sha> addresses=<review|test>-round-N`, then a summary of what changed for each required change.
+- Fix notes: `head=<sha> addresses=<review|test>-round-N`, then a summary of what changed for each required change, ending with a `## Disputed Findings` section when any item is disputed.
 - Develop note (Local Mode only, written at the end of story mode): `head=<sha> branch=<name>`, then the exempt gate proof (the literal `jq` exemption commands and their output) and a summary of what was built. The reviewer's and tester's developer-evidence gate reads this note in place of the PR evidence comment.
 
 Head check: it applies to the note a round acts on: the decision note the stage just wrote, and the develop or fix note the next stage starts from. Its head must equal the branch tip (the local branch tip in Local Mode, the PR head in approval-only mode); if not, the round fails. Earlier-round notes read only as history (Re-Review's previous Required Changes, recurrence counting, the review approval the post-test transition and the test loop rely on) are not head-checked, the same way the base reads an earlier GitHub review.
@@ -86,7 +86,7 @@ Exempt gate proof: with no PR to comment on, the developer, reviewer and tester 
 
 PR draft: the developer writes `pr-draft.md` in the notes folder (location rule above) once, in story mode (or in the backstop round): a PR title line, then a PR body built per the developing skill's PR Creation Requirements (the repo's pull request template, else a short Summary and How to Test); the body carries no story reference unless the template asks for one. The fixer never edits it. The body holds no session links or attribution lines. The API-contract rationale and any proto dependency go in its body.
 
-Fixer output in Local Mode: everything the fixer would post to the PR (the Changes Addressed summary, any API-contract rationale, the resource-limit root-cause assessment) goes into that round's fix note instead, and the fixer posts nothing to GitHub.
+Fixer output in Local Mode: everything the fixer would post to the PR (the Changes Addressed summary, the Disputed Findings section, any API-contract rationale, the resource-limit root-cause assessment) goes into that round's fix note instead, and the fixer posts nothing to GitHub.
 
 These notes replace GitHub as the decision source and the resume source for that repo.
 
