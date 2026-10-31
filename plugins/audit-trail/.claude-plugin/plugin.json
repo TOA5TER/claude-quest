@@ -3,7 +3,7 @@
   "description": "Logs every Claude Code tool call (input and output) to JSON files in ~/.claude/logs/ for auditability and debugging",
   "version": "1.0.1",
   "author": {
-    "name": "MechanicalTyler"
+    "name": "TOA5TER"
   },
   "license": "MIT",
   "keywords": ["audit", "logging", "debugging", "hooks"]

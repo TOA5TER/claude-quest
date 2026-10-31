@@ -3,7 +3,7 @@
   "version": "1.1.0",
   "description": "Skills and utilities for maintaining and integrating with the claude-quest plugin marketplace",
   "author": {
-    "name": "MechanicalTyler"
+    "name": "TOA5TER"
   },
   "license": "MIT",
   "keywords": ["marketplace", "plugins", "version-sync"]

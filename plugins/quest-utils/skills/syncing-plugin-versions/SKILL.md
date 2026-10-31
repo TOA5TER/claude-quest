@@ -62,7 +62,7 @@ jobs:
           github-token: ${{ secrets.MARKETPLACE_DISPATCH_TOKEN }}
           script: |
             await github.rest.repos.createDispatchEvent({
-              owner: 'MechanicalTyler',
+              owner: 'TOA5TER',
               repo: 'claude-quest',
               event_type: 'plugin-version-bump',
               client_payload: {
@@ -83,7 +83,7 @@ git commit -m "feat: add automated marketplace version notification"
 
 After committing, surface the prerequisite they'll need to verify:
 
-> The `MARKETPLACE_DISPATCH_TOKEN` secret must exist at your GitHub org level — it's a fine-grained PAT scoped to `MechanicalTyler/claude-quest` with `Actions: write` permission. If it's not already set up, ask the claude-quest maintainer.
+> The `MARKETPLACE_DISPATCH_TOKEN` secret must exist at your GitHub org level — it's a fine-grained PAT scoped to `TOA5TER/claude-quest` with `Actions: write` permission. If it's not already set up, ask the claude-quest maintainer.
 >
 > Once the secret is in place: push a tag like `v1.8.0` and claude-quest will automatically open and merge a PR updating your plugin's version within ~60 seconds.
 

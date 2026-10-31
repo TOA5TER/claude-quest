@@ -3,7 +3,7 @@
   "description": "Passively watches every session for moments the agent didn't meet expectations, logs them, nudges /reflecting at session start, and synthesizes root-cause-attributed improvement reports",
   "version": "0.10.0",
   "author": {
-    "name": "MechanicalTyler"
+    "name": "TOA5TER"
   },
   "license": "MIT",
   "keywords": ["reflection", "logging", "hooks", "self-improvement", "root-cause-analysis"]
