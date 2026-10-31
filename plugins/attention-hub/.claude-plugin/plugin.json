@@ -3,7 +3,7 @@
   "description": "Self-hosted, zero-dependency dashboard server that tracks which coding-agent sessions are waiting on you, for any agent that reports to it",
   "version": "1.6.0",
   "author": {
-    "name": "MechanicalTyler"
+    "name": "TOA5TER"
   },
   "license": "MIT",
   "keywords": ["dashboard", "monitoring", "hooks"]

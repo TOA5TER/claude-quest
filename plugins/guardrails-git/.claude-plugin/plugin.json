@@ -3,7 +3,7 @@
   "description": "Git and GitHub safety guards for Claude: branch protection (checkout/switch/branch forms), commit boilerplate blocking, PR boilerplate blocking, timeout enforcement for git/gh commands, worktree placement under .worktrees, session-link blocking in commits and PR text, including prefixed and nested shell forms (timeout, env, sudo, find -exec, xargs, ssh, sh -c) and command strings handed to launchers and interpreters (parallel, tmux, screen, python -c, git rebase --exec)",
   "version": "1.5.0",
   "author": {
-    "name": "MechanicalTyler"
+    "name": "TOA5TER"
   },
   "license": "MIT",
   "keywords": ["guardrails", "safety", "git", "github", "hooks", "branch-protection"]
