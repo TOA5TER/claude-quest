@@ -42,9 +42,9 @@ require() {
   has "$text" "$needle" || fail "$label: missing '$needle'"
 }
 
-# The R-10 checks, written the way the toiling Verification section describes them. Prints the failing check letters; empty output means all pass.
+# Why: the Verification copy-control checks are the only proof a written file carries the control, so this runs them exactly as SKILL.md words them. Prints the failing check letters; empty output means all pass.
 check_file() {
-  local file="$1" tag count lines script_line pre_line
+  local file="$1" tag count script_line pre_line
   for tag in "$STYLE_OPEN" "$SCRIPT_OPEN"; do
     count="$(grep -c -x -F "$tag" "$file")"
     [ "$count" = "1" ] || echo "a"
@@ -59,7 +59,7 @@ check_file() {
   fi
 }
 
-# T-1: the mode regions and the new section name the control.
+# Why: if a mode section stops requiring <pre> blocks with the control, runs would leave commands uncopyable and the user would have to ask again.
 RUNBOOK_REGION="$(region "$SKILL" '^## Runbook mode' '^## Operations Standards')"
 AGENT_REGION="$(region "$SKILL" '^## Agent-executed mode' '^## Runbook mode')"
 SECTION="$(region "$SKILL" '^## Command blocks and the copy control' '^## Agent-executed mode')"
@@ -73,12 +73,12 @@ for needle in "copy-control.html" "clipboard SVG icon" "no text label" "check" "
   require "T-1 new section" "$SECTION" "$needle"
 done
 
-# T-2: the new section states the technical constraints.
+# Why: the control must keep working from a file:// page and in dark mode, so those constraints are pinned in the skill wording.
 for needle in "inline CSS and JS only" "navigator.clipboard.writeText" "document.execCommand('copy')" "file://" "theme-aware"; do
   require "T-2 new section" "$SECTION" "$needle"
 done
 
-# T-3: the snippet.
+# Why: runs must emit identical markup, so the shipped snippet's tag lines, icon data and its no-network, no-markup-block limits are pinned.
 if [ ! -f "$SNIPPET" ]; then
   fail "T-3: copy-control.html does not exist"
 else
@@ -102,15 +102,15 @@ else
   done
 fi
 
-# T-4: the Verification region carries the checks.
+# Why: without the Verification wording a drifted or missing control would pass unnoticed, so the checks, their commands and the early stop are pinned.
 VERIFY="$(region "$SKILL" '^\*\*Verification\.\*\*' '^\*\*Completion comment')"
-for needle in "toiling-copy-control-style" "toiling-copy-control-script" "diff" "<pre" "early stop" "runbook.html" "record.html"; do
+for needle in "toiling-copy-control-style" "toiling-copy-control-script" "compared with diff" "<pre" "early stop" "runbook.html" "record*.html"; do
   require "T-4 Verification" "$VERIFY" "$needle"
 done
 COMPLETION="$(region "$SKILL" '^\*\*Completion Criteria\.\*\*' '^\*\*Final response')"
 require "T-4 Completion Criteria" "$COMPLETION" "copy-control"
 
-# T-5: the R-10 checks pass on a good page and fail on each broken copy.
+# Why: the checks must pass on a correct page and fail on a missing script, an edited style line and a <pre> after the script, or they prove nothing.
 if [ -f "$SNIPPET" ]; then
   TMP="$(mktemp -d)"
   trap 'rm -rf "$TMP"' EXIT

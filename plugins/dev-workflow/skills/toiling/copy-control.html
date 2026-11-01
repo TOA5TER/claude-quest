@@ -37,6 +37,7 @@
   function fallbackCopy(text) {
     var ta = document.createElement('textarea');
     var done = false;
+    var prior = document.activeElement;
     ta.value = text;
     ta.style.position = 'fixed';
     ta.style.opacity = '0';
@@ -44,6 +45,7 @@
     ta.select();
     try { done = document.execCommand('copy') === true; } catch (e) { done = false; }
     document.body.removeChild(ta);
+    if (prior && prior.focus) { prior.focus(); }
     return done;
   }
   function copyText(text) {
