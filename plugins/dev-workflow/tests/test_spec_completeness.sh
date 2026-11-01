@@ -294,6 +294,7 @@ require "spec-writer agent" "$(whole "$AGENT")" "Decide and Record"
 forbid "adversarial-review.md" "$ADV_TEXT" "a new BLOCKER sits in text edited in round N-1"
 require "adversarial-review.md C15" "$ADV_TEXT" "N is at least 2 rounds past the baseline"
 require "adversarial-review.md C14" "$ADV_TEXT" "follows \"Decide and Record\""
+require "adversarial-review.md C14 fresh writer" "$(sub "$ADV" '^\*\*Fresh writer\.\*\*')" "which follows \"Decide and Record\""
 P11_TEXT="$(region "$SKILL" '^## Phase 11:')"
 require "SKILL.md Phase 11" "$P11_TEXT" "sets data-extension to granted"
 require "SKILL.md Phase 11" "$P11_TEXT" "without sending a blocked"
@@ -303,7 +304,6 @@ require "SKILL.md Phase 11" "$P11_TEXT" "A recommended split is a real gate"
 require "adversarial-review.md C12" "$ADV_TEXT" "behaviour the story or its acceptance criteria require"
 require "adversarial-review.md C12" "$ADV_TEXT" "scope trim"
 require "adversarial-review.md checklist" "$ADV_TEXT" "RC-9 | Every rule, table and step traces to a story requirement?"
-P7_TEXT="$(region "$SKILL" '^## Phase 7:')"
 require "SKILL.md C6" "$(sub "$SKILL" '^### C6 Input Classes')" "never creates a rule"
 require "SKILL.md C7" "$(sub "$SKILL" '^### C7 Pre-mortem')" "never creates a rule"
 C10_TEXT="$(sub "$SKILL" '^### C10 Length Caps')"
@@ -313,7 +313,16 @@ require "SKILL.md C10" "$C10_TEXT" "drop a story requirement"
 # Why: a single-reading rule and a clean gate message stop the answer handling from re-asking the user.
 require "SKILL.md Decide and Record" "$DR_TEXT" "reading consistent with the story"
 require "SKILL.md Decide and Record" "$DR_TEXT" "listed once"
-require "SKILL.md Phase 11" "$(region "$SKILL" '^## User Approval Gate')" 'must never contain "two readings" or "decisions to check"'
+
+# Why: the scope ceiling must not let a review delete an authorization, input-validation or data-loss safeguard on required behaviour, in every place that states the ceiling.
+for pair in "C12:$(sub "$ADV" '^\*\*Scope ceiling\.\*\*')" "RC-9:$(grep -F '| RC-9 |' "$ADV" | normalise)" "C6:$(sub "$SKILL" '^### C6 Input Classes')" "C7:$(sub "$SKILL" '^### C7 Pre-mortem')" "Phase 11:$(sub "$SKILL" '^\*\*Scope ceiling\.\*\*')"; do
+  require "scope ceiling ${pair%%:*}" "${pair#*:}" "input-validation"
+done
+
+# Why: an approved story is never re-split, so the restructure report may propose a split only for a story that is neither marked nor approved.
+require "SKILL.md Phase 11" "$(sub "$SKILL" '^\*\*Restructure report\.\*\*')" "neither marked nor an approved story"
+require "adversarial-review.md C15" "$ADV_TEXT" "A split is proposed only for a story that is neither marked nor an approved story"
+require "SKILL.md relay gate" "$(region "$SKILL" '^## User Approval Gate')" 'The result must never contain "two readings" or "decisions to check"'
 
 # Why: the version bump must land in both manifests together and not fall below the release that carries these rules.
 PLUGIN_VERSION="$(jq -r '.version' "$PLUGIN_ROOT/.claude-plugin/plugin.json")"

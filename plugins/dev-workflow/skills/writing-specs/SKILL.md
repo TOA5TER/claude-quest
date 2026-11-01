@@ -85,7 +85,7 @@ This section applies in interactive and relay mode. Where a question has a recom
 - **Single reading.** When the user's verbatim answers admit two readings, the writer picks the reading consistent with the story and the user's standing rules (CLAUDE.md and memory), records it as `[Inference]` and continues. A reading that would be a real gate goes through the table.
 - **Output.** A relay result or interactive gate message must never contain "two readings" or "decisions to check", and no question is raised about a MAJOR. Unfixed MAJORs are listed once per review cycle.
 
-**Question routing (DT-1, hit policy: first)**
+**Question routing (hit policy: first)**
 
 | Question | Interactive or relay | Autonomous |
 |----------|----------------------|------------|
@@ -356,7 +356,7 @@ Read `skills/shared/size-gate.md`: it holds every class definition, threshold, c
 
 First check the story description for a size-accepted marker line (table below): a marked story gets `data-cap-accepted="true"` whatever the gate result, so check it before the trip test. Then check whether the story is an approved story (the "Approved Story" section of the shared file). Apply the "Counting" and "Thresholds" sections to decide whether the gate trips: the count comes from the request and the acceptance criteria only, so investigation never changes it and the gate is not re-run at Phase 7. When it trips on a story that is neither marked nor approved, propose sequenced sub-specs split by the "Split Patterns" section before Phase 9, sent at once rather than held for the Phase 7 batch. The gate runs once for the story, in the first repo's Phase 5, before any spec is written. A split the user declined is never proposed again in the same run; a later over-cap result goes through the C10 acceptance question.
 
-The outcome follows this table (DT-2, hit policy: first). writing-specs never creates, archives or re-parents a story.
+The outcome follows this table (hit policy: first). writing-specs never creates, archives or re-parents a story.
 
 | Mode | User answer | Writer action |
 |------|-------------|---------------|
@@ -496,13 +496,13 @@ Mark Clear, Partial or Missing for each spec-kit clarify category (Functional Sc
 
 ### C6 Input Classes
 
-For each input the change reads, list its equivalence classes and boundaries plus these states: empty, missing, max size, invalid, duplicate, forbidden, concurrent edit, timeout, partial failure, retry, time zone. Each row gives a behavior and an R or AC ID, or `out of scope: reason`, or `N/A: reason` when the state cannot occur. A state the story requires cannot be put out of scope except by the "Required edge cases" route above. A state the story does not require reads `out of scope: reason`, and a row never creates a rule.
+For each input the change reads, list its equivalence classes and boundaries plus these states: empty, missing, max size, invalid, duplicate, forbidden, concurrent edit, timeout, partial failure, retry, time zone. Each row gives a behavior and an R or AC ID, or `out of scope: reason`, or `N/A: reason` when the state cannot occur. A state the story requires cannot be put out of scope except by the "Required edge cases" route above. A state the story does not require reads `out of scope: reason`, and a row never creates a rule. The exception is a forbidden, invalid-input or data-loss state of behavior the story requires: its authorization, input-validation or data-loss safeguard is part of that behavior and is never out of scope.
 
 **S:** touched inputs only.
 
 ### C7 Pre-mortem
 
-Assume the change failed in production. List the likely causes, each with effect, severity (High, Medium or Low) and what detects it: an AC or T link, or an alert written as `alert: <name>`. A High row with no detection gets a new AC, T or alert, except a High row on behavior the story does not require: it is removed along with that behavior. A row never creates a rule.
+Assume the change failed in production. List the likely causes, each with effect, severity (High, Medium or Low) and what detects it: an AC or T link, or an alert written as `alert: <name>`. A High row with no detection gets a new AC, T or alert, except a High row on behavior the story does not require: it is removed along with that behavior, unless the row is an authorization, input-validation or data-loss safeguard on required behavior. A row never creates a rule.
 
 **S:** 3 rows.
 
@@ -762,13 +762,13 @@ parentheses is the reviewer checklist item that owns it):
 
 This instruction comes from this skill; the shared review procedure holds the Spec Document Regime for spec targets beside its unchanged code-target regime.
 
-**Rounds.** The cap is 3 rounds per review cycle; a user's "continue" never resets the round count. After each round apply the stopping table (DT-3) in the regime. The rework that precedes round 3, and the rework that precedes each extension round, runs in a fresh general-purpose subagent (model resolved `models.stages.writing-specs` → `models.reasoning` → `opus`), which receives only the spec path, the review record path, the open BLOCKERs, the story ID (in a replay, the local story file path instead, with no PM fetch), the writer-handling rules, the requirement-quality, traceability and length-cap rules and the lint command. When a fix needs a decision the story, the Clarifications and the repo cannot settle, follow "Decide and Record": only a question its table marks as ask goes to the mode's ask route; every other decision is recorded as `[Inference]` before the next round.
+**Rounds.** The cap is 3 rounds per review cycle; a user's "continue" never resets the round count. After each round apply the C15 stopping table in the regime. The rework that precedes round 3, and the rework that precedes each extension round, runs in a fresh general-purpose subagent (model resolved `models.stages.writing-specs` → `models.reasoning` → `opus`), which receives only the spec path, the review record path, the open BLOCKERs, the story ID (in a replay, the local story file path instead, with no PM fetch), the writer-handling rules, the requirement-quality, traceability and length-cap rules and the lint command. When a fix needs a decision the story, the Clarifications and the repo cannot settle, follow "Decide and Record": only a question its table marks as ask goes to the mode's ask route; every other decision is recorded as `[Inference]` before the next round.
 
-**Scope ceiling.** The regime's C12 accepts a finding as a BLOCKER only when it concerns behaviour the story or its acceptance criteria require. A finding about an added mechanism (retry, timeout or failure-mode text beyond the criteria) is a scope trim, reported with severity NOTE. The writer resolves a scope trim by deleting or shrinking the added text and logs it in the review record. A scope trim starts no round and never adds a rule, table or test.
+**Scope ceiling.** The regime's C12 holds the rule: only a finding about behaviour the story or its acceptance criteria require is a BLOCKER, and a finding about an added mechanism is a scope trim reported as a NOTE. Authorization, input-validation and data-loss safeguards on required behaviour are never trims. The writer resolves a scope trim by deleting or shrinking the added text and logs it in the review record. A scope trim is followed by a lint re-run, starts no round and never adds a rule, table or test.
 
-**Restructure report.** A stop by the stopping table (DT-3) produces a restructure report: the BLOCKER count per round, the stopping-table row that fired, the failing IDs and a proposed restructure (a split, a section rewrite or a table conversion). Its routing depends on the mode and on the record's `data-extension`:
+**Restructure report.** A stop by the C15 stopping table produces a restructure report: the BLOCKER count per round, the stopping-table row that fired, the failing IDs and a proposed restructure (a split, a section rewrite or a table conversion). A split is proposed only for a story that is neither marked nor an approved story and whose shared count exceeds a threshold; for any other story the proposal is a section rewrite or a table conversion. Its routing depends on the mode and on the record's `data-extension`:
 
-- **Relay, `data-extension` is `none`, and the recommended restructure is not a real gate:** the writer writes the report to the review record, sets `data-extension` to `granted`, applies the restructure in a fresh writer, runs round 4 and, unless DT-3 stops the review at round 4, round 5, without sending a `blocked`. It carries the report once in the next `result`.
+- **Relay, `data-extension` is `none`, and the recommended restructure is not a real gate:** the writer writes the report to the review record, sets `data-extension` to `granted`, applies the restructure in a fresh writer, runs round 4 and, unless the C15 stopping table stops the review at round 4, round 5, without sending a `blocked`. It carries the report once in the `message` key of the next `result`.
 - **A recommended split is a real gate:** it goes out through the mode's ask route, never self-applied. When the approved restructure is a split, the C1 "accepts split" row applies instead of an extension: no further round runs, the written spec stays on disk unchanged, the split plan names it as superseded and the review record's state becomes `stopped`.
 - **A report that fires once `data-extension` is `granted`:** the writer sets it to `used`, never self-applies it, and offers only accept with the open BLOCKERs listed, or stop, through the mode's ask route.
 - **Interactive mode:** asks on every report. The options are approve the restructure and its extension (at most 2 more rounds, once per review cycle), accept the spec with its open BLOCKERs listed for the approver, or stop.

@@ -14,7 +14,7 @@ Count rules as Example Mapping does, from the request and the acceptance criteri
 
 ## Approved Story
 
-An approved story is a story whose description has `## Original Request` and `## Story` as line-start headings, in that order, with a `---` line between them (the format every PM adapter writes), and no size-accepted marker line. creating-stories writes those headings only after the user approves the draft. Heading text inside the quoted request does not count.
+An approved story is a story whose description has `## Original Request` and `## Story` as line-start headings, in that order, with a `---` line between them (the format every PM adapter writes), and no size-accepted marker line. creating-stories writes those headings only after the user approves the draft. This signal is the story's format, not an authenticated approval: it only stops a re-split, and the prose cap and the user approval gate still apply.
 
 An approved story never gets a split proposal. Its class comes from the S and M rows of Size Classes, and its prose cap stays enforced. A user's answer of "accept the length" to the writing-specs C10 length question is the only exception. A story with the marker follows the marker rules instead.
 
