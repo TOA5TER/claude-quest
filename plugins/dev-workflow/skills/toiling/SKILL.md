@@ -132,17 +132,29 @@ A step's target (host, context, namespace, resource name, database) is resolved 
 
 ---
 
+## Command blocks and the copy control
+
+Every command or SQL statement the reader would run or re-run, in `runbook.html` or `record.html`, sits in a `<pre>` block: a runbook's prerequisite, step, check and rollback commands, and a record's action commands. Inline `<code>` stays only for names and paths mentioned in a sentence.
+- **Block content:** each command `<pre>` holds only what the reader pastes: no prompt character and no expected output. Commands meant to be pasted together share one block; any others get their own. The text is HTML-escaped (`&amp;`, `&lt;`, `&gt;`) so the clipboard receives the real command.
+- **The snippet:** `copy-control.html`, located in this skill's own directory next to `SKILL.md`, holds the one implementation of the copy control as two blocks: a style block and a script block. Copy both byte for byte, never write your own version: the style block in `<head>` and the script block directly before `</body>`, present from the file's first write and kept last as the file grows.
+- **What the control does:** at page load the script adds one button to every `<pre>`, at the block's top-right corner, showing a clipboard SVG icon with no text label. A click copies the block's text with trailing line breaks removed. The icon then shows a check on success or an X on failure for 2 seconds before returning to the clipboard. It uses inline CSS and JS only (no external asset or network request), tries `navigator.clipboard.writeText` first and falls back to `document.execCommand('copy')` so a `file://` page still copies, and its colours are theme-aware (light and dark).
+- **Scope:** the plan file `<slug>-plan.html` gets no control, and existing files are not retrofitted.
+
+---
+
 ## Agent-executed mode
 
 - Before each mutating step, resolve the target fresh and re-state it (see "Resolve the target fresh" under Production Boundary). Production steps go to the runbook instead.
 - Execute the plan's steps in order. On a failure, stop, diagnose per "Debugging and Problem Solving", and record the failure. Never silently skip a step. A failure still unresolved after diagnosis, where the fix needs something the skill may not do (a tracked-file edit, a production action, access it lacks), is an early stop with the failing step named as the stop reason.
-- `record.html` is created before the first task step runs and updated after each step, so an early stop leaves a record of every step already run.
+- `record.html` is created before the first task step runs, carrying the copy-control snippet from its first write, and updated after each step, so an early stop leaves a record of every step already run. The script block stays last as steps are added.
+- Every command or SQL block in `record.html` is a `<pre>` with the copy control, per "Command blocks and the copy control".
 - `record.html` contains: date, story ID or task name, mode, and an ordered list of every action taken. Each action lists the command or tool used, the target and environment, the outcome, and the evidence (key output lines). Evidence never contains tokens, keys, passwords or connection strings: redact or omit them and record where the value lives instead. The same applies to the completion comment. After the actions come the verification results and a link to the runbook for any handed-off production steps.
 
 ## Runbook mode
 
 - **Runs no task step and no mutating command.** Read-only investigation needed to write accurate steps is allowed: reading files, read-only status, log and describe commands. The skill's own bookkeeping is exempt (see Production Boundary).
 - **`runbook.html` contains:** purpose; target environment; prerequisites and access needed; numbered steps, each with the exact command or console action, the expected result, a check that proves it worked, and a rollback for every mutating step not tagged `irreversible`. An irreversible step has no rollback (irreversible toil is allowed); in its place it carries a danger callout reading "No rollback: irreversible". Production steps carry a danger callout. A closing verification section completes the file.
+- **Command blocks:** every command or SQL block in `runbook.html` is a `<pre>` with the copy control, per "Command blocks and the copy control".
 - **No placeholder steps:** every command is complete, with every target resolved (see "Unresolved target"). Secrets are never written into the file; the step names where the user obtains the value.
 - **Example step** (non-production service restart):
   - Step 3 — Restart the staging worker. Target: `staging`, mutating.
@@ -150,6 +162,7 @@ A step's target (host, context, namespace, resource name, database) is resolved 
   - Expected result: the command returns with no output and exit code 0.
   - Check: `ssh staging-host-1 systemctl is-active app-worker.service` prints `active`, and `ssh staging-host-1 journalctl -u app-worker.service -n 20` shows a fresh start line.
   - Rollback: `ssh staging-host-1 sudo systemctl restart app-worker.service` again after restoring the previous config from the backup taken in step 2 (`ssh staging-host-1 sudo cp /etc/app-worker/config.yaml.bak /etc/app-worker/config.yaml`). A restart does not change data, so reverting the config and restarting returns the service to its prior state.
+  - In the file, the command, each check command and each rollback command are separate `<pre>` blocks.
 
 ---
 
@@ -170,11 +183,17 @@ A step's target (host, context, namespace, resource name, database) is resolved 
 - Runbook: the runbook file exists at its path, and inside a git repo `git check-ignore -q` on it exits 0.
 - Both modes, inside a git repo: before its first action the skill captures a baseline: the current branch, `git rev-parse HEAD`, `git status --porcelain`, and the SHA-256 of `git diff --binary HEAD`. At the end it checks that the branch and HEAD are unchanged, that the tracked-file entries of `git status --porcelain` (every line not starting `??`) match the baseline, and that the diff hash is the same. A tracked entry added, removed or changed fails. Untracked (`??`) entries follow the mode, and entries under `.scratch/` never count in either direction. In runbook mode, any new untracked entry outside `.scratch/` fails. In agent-executed mode, a new or removed untracked path passes only if `record.html` lists it under the step that made it. Changes the user had in progress before the run are part of the baseline and never count against the run.
 - Both modes, outside a git repo: no git command runs. The record or runbook lists every file the run wrote, and every one is under `<base>/.scratch/`, unless written by an agent-executed task step the record documents.
+- Both modes: copy-control checks on every `runbook*.html` and `record*.html` the run wrote (`runbook.html` and `record.html`, and suffixed forms such as `runbook-2.html`), because the script attaching to every `<pre>` at load is what gives each one its control. Run with the file and `copy-control.html`:
+  - (a) `grep -c -x -F` on each exact opening tag line, `<style id="toiling-copy-control-style">` and `<script id="toiling-copy-control-script">`, prints 1.
+  - (b) `sed -n` over the range from each opening tag line to its closing tag line, in both files, compared with `diff`, shows no difference.
+  - (c) `grep -n '<pre[ >]'` and `grep -n -x -F` on the script's opening tag line: every `<pre` line number is lower than the script's.
+  - (d) reading the file back finds no runnable command outside a `<pre>`.
+  A failed check is an early stop (see "Early stops"), naming the check and the file.
 
 **Completion comment (story ID given).** One comment through the adapter's Post comment, with the mode, a short summary of what was done or documented, the record and/or runbook path, and any production steps handed to the user.
 
 **Completion Criteria.**
-- Mode chosen per the rules; record and/or runbook written and ignored (on an early stop, only what "Early stops" says).
+- Mode chosen per the rules; record and/or runbook written and ignored (on an early stop, only what "Early stops" says), and each written file passes the copy-control checks.
 - No branch, commit, push or PR; no tracked-file change; no mutating production action executed.
 - Story moved to the in-development state (`story_states.in_development`, default "In Development") and commented on when a story ID was given.
 - Final response lists the file paths.
