@@ -59,7 +59,7 @@ else
     else prev="$line"; fi
   done
   GATE_TEXT="$(normalise < "$GATE")"
-  for needle in "Example Mapping" "above 5" "at most 3 acceptance criteria" "1,500" "4,000" "SPIDR" "Humanizing Work"; do
+  for needle in "Example Mapping" "above 10 rules" "above 10 examples" "at most 3 acceptance criteria" "1,500" "4,000" "SPIDR" "Humanizing Work"; do
     require "size-gate.md" "$GATE_TEXT" "$needle"
   done
 fi
@@ -70,7 +70,7 @@ C10_TEXT="$(region "$WS" '^### C10 Length Caps' '^### |^## ')"
 for pair in "C1:$C1_TEXT" "C10:$C10_TEXT"; do
   label="${pair%%:*}"; text="${pair#*:}"
   require "writing-specs $label" "$text" "skills/shared/size-gate.md"
-  for s in "1,500" "4,000" "exceeds 5" "more than 5" "at most 3 acceptance criteria"; do
+  for s in "1,500" "4,000" "above 10" "exceeds 10" "more than 10" "at most 3 acceptance criteria"; do
     forbid "writing-specs $label" "$text" "$s"
   done
 done
