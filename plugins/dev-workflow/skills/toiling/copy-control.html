@@ -1,0 +1,79 @@
+<style id="toiling-copy-control-style">
+.toiling-copy-wrap{position:relative;margin:1em 0}
+.toiling-copy-wrap>pre{margin:0;padding:.7em 3em .7em 1em;min-height:40px;box-sizing:border-box;font-size:13px;border-radius:4px;overflow-x:auto;background:#f6f8fa;color:#1f2328}
+.toiling-copy-btn{position:absolute;top:6px;right:6px;width:28px;height:28px;padding:0;display:flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:4px;cursor:pointer;background:#f6f8fa;color:#59636e}
+.toiling-copy-btn:hover{background:#e6eaef}
+.toiling-copy-btn:focus-visible{outline:2px solid currentColor;outline-offset:1px}
+.toiling-copy-btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.toiling-copy-btn.toiling-copy-ok{color:#1a7f37}
+.toiling-copy-btn.toiling-copy-fail{color:#cf222e}
+@media (prefers-color-scheme: dark){
+.toiling-copy-wrap>pre{background:#1f242d;color:#e6edf3}
+.toiling-copy-btn{background:#1f242d;color:#9198a1}
+.toiling-copy-btn:hover{background:#2a303a}
+.toiling-copy-btn.toiling-copy-ok{color:#3fb950}
+.toiling-copy-btn.toiling-copy-fail{color:#f85149}
+}
+</style>
+<script id="toiling-copy-control-script">
+(function () {
+  var ICON_OPEN = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">';
+  var ICONS = {
+    copy: ICON_OPEN + '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>',
+    ok: ICON_OPEN + '<polyline points="20 6 9 17 4 12"/></svg>',
+    fail: ICON_OPEN + '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
+  };
+  var LABELS = {
+    copy: 'Copy to clipboard',
+    ok: 'Copied',
+    fail: 'Copy failed: select the text and press Ctrl/Cmd+C'
+  };
+  function show(btn, state) {
+    btn.className = 'toiling-copy-btn' + (state === 'ok' ? ' toiling-copy-ok' : state === 'fail' ? ' toiling-copy-fail' : '');
+    btn.innerHTML = ICONS[state];
+    btn.title = LABELS[state];
+    btn.setAttribute('aria-label', LABELS[state]);
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    var done = false;
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { done = document.execCommand('copy') === true; } catch (e) { done = false; }
+    document.body.removeChild(ta);
+    return done;
+  }
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      var attempt;
+      try { attempt = Promise.resolve(navigator.clipboard.writeText(text)); } catch (e) { return Promise.resolve(fallbackCopy(text)); }
+      return attempt.then(function () { return true; }, function () { return fallbackCopy(text); });
+    }
+    return Promise.resolve(fallbackCopy(text));
+  }
+  function attach(block) {
+    if (block.parentNode && block.parentNode.className === 'toiling-copy-wrap') { return; }
+    var wrap = document.createElement('div');
+    var btn = document.createElement('button');
+    var timer = null;
+    wrap.className = 'toiling-copy-wrap';
+    btn.type = 'button';
+    show(btn, 'copy');
+    block.parentNode.insertBefore(wrap, block);
+    wrap.appendChild(block);
+    wrap.appendChild(btn);
+    btn.addEventListener('click', function () {
+      var text = block.textContent.replace(/[\r\n]+$/, '');
+      copyText(text).then(function (ok) {
+        show(btn, ok ? 'ok' : 'fail');
+        if (timer) { clearTimeout(timer); }
+        timer = setTimeout(function () { show(btn, 'copy'); }, 2000);
+      });
+    });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('pre'), attach);
+})();
+</script>

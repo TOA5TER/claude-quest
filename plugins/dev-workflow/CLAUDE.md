@@ -79,6 +79,7 @@ skills/
   addressing-pr-comments/ # Address review feedback in current session
   dev-verify/          # Developer dev deploy + verification gate on an existing PR (verify mode, deferred gates)
   toiling/             # Operations work with no branch or PR: agent-executed record or runbook under .scratch/, production never mutated
+    copy-control.html  # Copy-icon control snippet copied byte for byte into every runbook.html and record.html
   pm-adapter/          # PM tool adapters + interface spec
   notes-adapter/       # Notes storage adapters + interface spec
   shared/              # Shared protocol docs (standards, adapter-loading, context-compaction, dev-deploy, ...)
@@ -118,6 +119,7 @@ Content is mostly Markdown skill definitions, plus a small number of static asse
 - `bash tests/test_review_verification.sh` — after touching Phases 5 to 6 of skills/reviewing-prs/SKILL.md or any file under skills/subagents/
 - `bash tests/test_test_integrity.sh` — after touching the Test Integrity, precision or dispute wording of `skills/testing-prs/SKILL.md`, `skills/reviewing-prs/SKILL.md`, `skills/addressing-pr-comments/SKILL.md`, `skills/shared/local-mode.md`, the Workspace Isolation section of `skills/shared/standards.md`, `agents/reviewer.md`, `agents/tester.md`, or the README's Review Precision section
 - `bash tests/test_local_mode.sh` — after touching `skills/shared/local-mode.md`, `skills/shared/pre-release-pin.md`, the Local Mode section of `skills/full-cycle/SKILL.md`, the `base-root:` dispatch rule in `skills/full-cycle/SKILL.md`, or the Local Mode and pin sections of `agents/developer.md` and `agents/pr-state-reader.md`
+- `bash tests/test_toiling_copy_control.sh` — after touching `skills/toiling/SKILL.md` or `skills/toiling/copy-control.html`
 - `bash tests/test_agent_names.sh` and `bash tests/test_pr_story_resolution.sh` — after any version bump (each pins the exact plugin version)
 
 Changes are made by editing `.md` files (and the occasional asset file) in `skills/` and `commands/`.
