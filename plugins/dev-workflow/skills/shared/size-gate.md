@@ -24,8 +24,8 @@ The gate trips when any row below is true.
 
 | Check | Trips when | Applied by |
 |-------|------------|------------|
-| Rule count | above 5 rules | writing-specs and creating-stories |
-| Examples for any one rule | above 5 examples | writing-specs and creating-stories |
+| Rule count | above 10 rules | writing-specs and creating-stories |
+| Examples for any one rule | above 10 examples | writing-specs and creating-stories |
 
 ## Size Classes
 
