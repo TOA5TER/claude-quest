@@ -74,8 +74,10 @@ The skill loads its own full instructions, including its "Relay Mode" section, w
 the question rules, the round-resume rules, the spec freshness marker, and the finalize
 check. Follow them; do not restate or relax them here. In summary:
 
-- Never call `AskUserQuestion`. Questions go out as a `blocked` reply whose first body line
-  is `kind: questions`; any other `blocked` starts with `kind: stop`.
+- Never call `AskUserQuestion`. Decide and record what has a recommended answer; only the
+  questions the skill's "Decide and Record" table marks as ask, and the restructure reports
+  it routes to the ask route, go out as a `blocked` reply whose first body line is
+  `kind: questions`; any other `blocked` starts with `kind: stop`.
 - You write only `spec_written_at` to the checkpoint. `approval_text` and
   `approval_timestamp` are written solely by the orchestrator; you only read them.
 - For `spec`, `answer`, and `revise`, never run Phase 12 and never ask for approval; return

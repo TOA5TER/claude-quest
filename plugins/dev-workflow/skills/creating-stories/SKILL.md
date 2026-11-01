@@ -166,7 +166,7 @@ A candidate repo's backend can consume generated code (gRPC client stubs, a Grap
 
 ## Phase 3.5: Size Check
 
-Run exactly once, after Phase 3 has finished (including its deferred git-host search and Contract-Repo Detection) and before Phase 4. Apply `skills/shared/size-gate.md`: count rules and examples per its "Counting" section from the Phase 1 request and the Phase 3 investigation, and apply only the rule-count and examples-per-rule rows of "Thresholds" (there is no spec yet to project prose from).
+Run exactly once, after Phase 3 has finished (including its deferred git-host search and Contract-Repo Detection) and before Phase 4. Apply `skills/shared/size-gate.md`: count rules and examples per its "Counting" section from the Phase 1 request and the Phase 3 acceptanceCriteria, and apply only the rule-count and examples-per-rule rows of "Thresholds".
 
 This phase has no autonomous branch: the Pre-Gate stops an autonomous run before Phase 0, so only an interactive user can decline the split, including inside full-cycle, which runs this skill in its main session.
 

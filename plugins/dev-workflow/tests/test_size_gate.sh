@@ -116,6 +116,22 @@ if [ -f "$GATE" ]; then
   require "size-gate.md" "$GATE_TEXT" "outside the ## Original Request section"
 fi
 
+# Why: both skills must count the same way, from the request and criteria only, so investigation never re-opens an approved story.
+COUNT_TEXT="$(region "$GATE" '^## Counting$' '^## Approved Story$|^## Thresholds$')"
+require "size-gate.md Counting" "$COUNT_TEXT" "acceptance criteria only"
+require "size-gate.md Counting" "$COUNT_TEXT" "never adds a rule"
+require "creating-stories Phase 3.5" "$P35_TEXT" "Phase 3 acceptanceCriteria"
+forbid "creating-stories Phase 3.5" "$P35_TEXT" "Phase 3 investigation"
+
+# Why: an approved story is recognised by its format, so the definition, its exception and the removed prose row must stay.
+APPROVED_TEXT="$(region "$GATE" '^## Approved Story$' '^## Thresholds$')"
+require "size-gate.md Approved Story" "$APPROVED_TEXT" "no size-accepted marker line"
+require "size-gate.md Approved Story" "$APPROVED_TEXT" "accept the length"
+require "size-gate.md Approved Story" "$APPROVED_TEXT" "only exception"
+forbid "size-gate.md" "$GATE_TEXT" "Projected spec prose"
+require "writing-specs C1" "$C1_TEXT" "approved story"
+forbid "writing-specs C1" "$C1_TEXT" "projected prose"
+
 # Why: full-cycle drives one story, so it must say what happens to the later parts of a split.
 FC_TEXT="$(region "$FC" '^## Stage — creating-stories' '^## ')"
 require "full-cycle creating-stories stage" "$FC_TEXT" "Phase 3.5"
