@@ -191,6 +191,8 @@ Every finding carries one severity.
 | MAJOR | A real defect outside the four BLOCKER classes, with the same evidence. | Never fails a review or starts a round. The writer fixes it in any round that runs; unfixed MAJORs are listed for the approver. |
 | NOTE | An observation, or any finding that lacks the evidence a BLOCKER or MAJOR needs. | Never starts a round. |
 
+**Scope ceiling.** A finding is a BLOCKER only when it concerns behaviour the story or its acceptance criteria require, or a wrong repo fact or open decision in text that serves such behaviour. A finding about an added mechanism (retry, timeout or failure-mode text beyond the criteria) is a scope trim, reported with severity NOTE. The writer resolves a scope trim by deleting or shrinking the added text and logs it in the review record. It starts no round and never adds a rule, table or test.
+
 Evidence requirement: a BLOCKER or MAJOR must quote the spec text, name the spec ID or section anchor, and give a failing input (a concrete case where the spec as written leads to a wrong or undecidable outcome). A finding missing any of the three is recorded as a NOTE.
 
 ### C13 Partitioned First Pass
@@ -221,8 +223,9 @@ Round 1 is a full first pass. The reviewer layout is decided by size class and v
 | RC-6 | Every step leaves no choice open about behavior, scope, file locations, values, interfaces or approach? (Code-level how is excluded.) | open decision |
 | RC-7 | Every story-required edge case is covered by a requirement, an input-class row or a test? | dropped or contradicted requirement |
 | RC-8 | Every term a reader outside the project would not know is defined in the glossary? | none: a no is a MAJOR |
+| RC-9 | Every rule, table and step traces to a story requirement? | none: a no is a scope trim, not a BLOCKER |
 
-**Fundamentals first.** A fundamental BLOCKER is wrong story or repo scope, an approach that contradicts the story's intent, a size class that should have tripped the size gate, or a missing required section. A reviewer that finds one reports it first and stops its detail review. The round still counts. After the fix, the next round is a full first pass, not verify-only.
+**Fundamentals first.** A fundamental BLOCKER is wrong story or repo scope, an approach that contradicts the story's intent, a size class that should have tripped the size gate (judged on the shared count in `skills/shared/size-gate.md`, and never for an approved story), or a missing required section. A reviewer that finds one reports it first and stops its detail review. The round still counts. After the fix, the next round is a full first pass, not verify-only.
 
 **Report format.** Each reviewer returns the checklist table followed by its findings. One row per finding:
 
@@ -243,7 +246,7 @@ Round 1 is a full first pass. The reviewer layout is decided by size class and v
 
 From round 2, one verify reviewer runs instead of a full first pass, unless the previous round halted on a fundamental BLOCKER (then run a full first pass). A round-1 result whose BLOCKERs were all rejected still gets one verify round before acceptance.
 
-**Writer handling between rounds.** The writer checks each BLOCKER against the spec, the story and the repo before changing anything. A false BLOCKER is rejected with evidence (a quote or file:line). A real BLOCKER is fixed by class: every sibling instance in the spec, plus every element that references a touched ID. When a fix needs a decision the story, the clarifications and the repo cannot settle, the writer asks through the mode's ask route before the next round (autonomous mode records an inference-labeled decision instead). Accepted and rejected verdicts, evidence and the fix list go in the review record.
+**Writer handling between rounds.** The writer checks each BLOCKER against the spec, the story and the repo before changing anything. A false BLOCKER is rejected with evidence (a quote or file:line). A real BLOCKER is fixed by class: every sibling instance in the spec, plus every element that references a touched ID. When a fix needs a decision the story, the clarifications and the repo cannot settle, the writer follows "Decide and Record" in `skills/writing-specs/SKILL.md`: only a question that section's table marks as ask goes to the mode's ask route before the next round, and every other decision is recorded as an `[Inference]` decision (autonomous mode records an inference-labeled decision as before). Accepted and rejected verdicts, evidence and the fix list go in the review record.
 
 **Verify reviewer prompt.** The prompt holds only: these regime instructions, the story ID, the open BLOCKERs, the rejected BLOCKERs with the writer's evidence, the diff between the last two round snapshots, and the ripple set (plus the local story file path in a replay). No other spec content.
 
@@ -251,26 +254,27 @@ From round 2, one verify reviewer runs instead of a full first pass, unless the 
 
 **Verify report.** For each open BLOCKER: RESOLVED or OPEN. For each rejected BLOCKER: CONFIRMED-FALSE or REINSTATED (a reinstated BLOCKER counts as open). New BLOCKERs may be raised only inside the diff or the ripple set.
 
-**Fresh writer.** The rework that precedes round 3, and the rework that precedes each extension round, runs in a fresh general-purpose subagent, using the same model chain the full-cycle skill uses for the spec writer. It receives only: the spec path, the review record path, the open BLOCKERs, the story ID (in a replay, the local story file path instead, with no PM fetch), the writer handling rules above, the spec writing rules for requirement form, IDs, traceability and length caps, and the lint command. It checks, rejects or fixes each BLOCKER by class and logs its verdicts in the review record. When a fix needs a decision, it stops and returns the question to the writer, which asks through the mode's ask route and re-dispatches it with the answer.
+**Fresh writer.** The rework that precedes round 3, and the rework that precedes each extension round, runs in a fresh general-purpose subagent, using the same model chain the full-cycle skill uses for the spec writer. It receives only: the spec path, the review record path, the open BLOCKERs, the story ID (in a replay, the local story file path instead, with no PM fetch), the writer handling rules above, the spec writing rules for requirement form, IDs, traceability and length caps, and the lint command. It checks, rejects or fixes each BLOCKER by class and logs its verdicts in the review record. When a fix needs a decision, it stops and returns the question to the writer, which follows "Decide and Record" (only a question marked as ask goes to the mode's ask route; every other is recorded as an `[Inference]` decision) and re-dispatches it with the answer or the recorded decision.
 
 ### C15 Stopping Rules
 
-**Review record state.** The review record's body carries four attributes: `data-cycle` (1 on the first write, plus 1 for each revise or gate change request), `data-round` (rounds run in this cycle), `data-extension` (`none`, `granted` or `used`) and `data-state` (`in-review`, `awaiting-answer`, `accepted` or `stopped`). The record is the only source of round state. When an answer arrives and the state is `awaiting-answer`, resume the review at the stored round with the stored extension state: skip spec drafting, apply the answer to the spec, and continue. An approved restructure sets the extension to `granted`, and the next rounds are 4 and 5.
+**Review record state.** The review record's body carries four attributes: `data-cycle` (1 on the first write, plus 1 for each revise or gate change request), `data-round` (rounds run in this cycle), `data-extension` (`none`, `granted` or `used`) and `data-state` (`in-review`, `awaiting-answer`, `accepted` or `stopped`). The record is the only source of round state. When an answer arrives and the state is `awaiting-answer`, resume the review at the stored round with the stored extension state: skip spec drafting, apply the answer to the spec, and continue. An approved or self-applied restructure sets the extension to `granted`, and the next rounds are 4 and 5.
 
-**Cap.** The cap is 3 rounds per review cycle. A user's "continue" never resets the round count: the count never decreases. One extension of at most 2 rounds is allowed per review cycle, and only after the user approves a restructure from a restructure report. Each review cycle therefore runs at most 5 rounds. A new cycle starts only from a revise request or a change request at the user approval gate.
+**Cap.** The cap is 3 rounds per review cycle. A user's "continue" never resets the round count: the count never decreases. One extension of at most 2 rounds is allowed per review cycle, and only after a user approval of a restructure from a restructure report, or a relay self-application of one (see `skills/writing-specs/SKILL.md` → Phase 11). Each review cycle therefore runs at most 5 rounds. A new cycle starts only from a revise request or a change request at the user approval gate.
 
 After each round, apply this table. The first matching row applies.
 
 | Condition after round N | Action |
 |-------------------------|--------|
 | Open BLOCKERs = 0 and no unadjudicated rejection | ACCEPTABLE: go to the user approval gate, listing unfixed MAJORs. |
-| Round N is the full first pass that follows a round halted by a fundamental BLOCKER, and N is below the cap | Round N's BLOCKER count becomes the baseline for round N+1. Fix and run round N+1. |
-| N is 2 or more, round N does not follow a fundamental halt, and a new BLOCKER sits in text edited in round N-1 | Stop early: restructure report. |
-| N is 2 or more, round N does not follow a fundamental halt, and open BLOCKERs are at least the count after round N-1 | Stop early: restructure report. |
+| Round N is the full first pass that follows a round halted by a fundamental BLOCKER, and N is below the cap | Round N's BLOCKER count becomes the new baseline. Fix and run round N+1. |
+| N is at least 2 rounds past the baseline, and open BLOCKERs after N are at least the count after N-1, and that count is at least the count after N-2 | Stop: restructure report. Once an extension is granted, the options are accept with open BLOCKERs listed, or stop. |
 | N is 3 with no extension, or N is the extension's last round | Stop: restructure report. After an extension the only options are accept with open BLOCKERs listed, or stop. |
-| Any other | Fix by class per the writer handling rules (in a fresh writer when N+1 is 3, 4 or 5) and run round N+1. |
+| Any other, including a new BLOCKER in text edited last round | Fix by class per the writer handling rules (in a fresh writer when N+1 is 3, 4 or 5) and run round N+1. |
 
-**Restructure report.** It lists the BLOCKER count per round, the table row that fired, the failing IDs, a proposed restructure (a split, a section rewrite or a table conversion) and the options: approve the restructure and its extension, accept the spec with its open BLOCKERs listed for the approver, or stop. It goes out through the mode's ask route. A "continue" answer that does not approve the restructure runs no new round; re-send the options.
+The baseline is round 1, or the full first pass that follows a fundamental halt. A report before the cap therefore needs two consecutive rounds with no decrease.
+
+**Restructure report.** It lists the BLOCKER count per round, the table row that fired, the failing IDs, a proposed restructure (a split, a section rewrite or a table conversion) and the options: approve the restructure and its extension, accept the spec with its open BLOCKERs listed for the approver, or stop. It goes out as `skills/writing-specs/SKILL.md` → Phase 11 "Restructure report" routes it: a relay report whose recommended restructure is not a real gate is self-applied once, and every other report goes through the mode's ask route. A "continue" answer that does not approve the restructure runs no new round; re-send the options.
 
 - When the approved restructure is a split, no extension runs: the written spec stays on disk unchanged, the split plan names it as superseded, and the review record's state becomes `stopped`.
 - In autonomous mode there is no user to approve: the run ends with an error status carrying the report and never proceeds to publishing the spec.

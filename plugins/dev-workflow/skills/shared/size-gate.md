@@ -4,13 +4,19 @@ The single definition of the size gate: how big a story or spec may be before it
 
 ## Who Reads This
 
-- `skills/writing-specs/SKILL.md`, C1 Size Gate and C10 Length Caps: applies every threshold, assigns the size class and proposes the split plan at spec time.
+- `skills/writing-specs/SKILL.md`, C1 Size Gate and C10 Length Caps: applies both thresholds, assigns the size class and proposes the split plan at spec time.
 - `skills/creating-stories/SKILL.md`, Phase 3.5 Size Check: applies the rule-count and examples-per-rule thresholds before any story exists, and writes the marker.
 - `skills/writing-specs/spec-lint.py` keeps its own copy of the S and M prose caps so the lint never fails to run; `tests/test_size_gate.sh` fails when that copy differs from the Size Classes table below.
 
 ## Counting
 
-Count rules as Example Mapping does: one rule per distinct business rule the request or its acceptance criteria imply, never one per acceptance-criterion line. Count each rule's concrete examples under that rule.
+Count rules as Example Mapping does, from the request and the acceptance criteria only. One acceptance criterion is at most one rule, and its sub-clauses refine that rule. Two criteria that state the same rule count once. A rule in the request that no criterion covers adds one. Detail found only by investigation (edge cases, retry behaviour, failure modes, mechanics) never adds a rule. Count each rule's concrete examples under that rule.
+
+## Approved Story
+
+An approved story is a story whose description has `## Original Request` and `## Story` as line-start headings, in that order, with a `---` line between them (the format every PM adapter writes), and no size-accepted marker line. creating-stories writes those headings only after the user approves the draft. Heading text inside the quoted request does not count.
+
+An approved story never gets a split proposal. Its class comes from the S and M rows of Size Classes, and its prose cap stays enforced. A user's answer of "accept the length" to the writing-specs C10 length question is the only exception. A story with the marker follows the marker rules instead.
 
 ## Thresholds
 
@@ -20,14 +26,13 @@ The gate trips when any row below is true.
 |-------|------------|------------|
 | Rule count | above 5 rules | writing-specs and creating-stories |
 | Examples for any one rule | above 5 examples | writing-specs and creating-stories |
-| Projected spec prose | above the M prose cap | writing-specs only, because creating-stories has no spec to project |
 
 ## Size Classes
 
 | Class | Applies when | Prose cap (words) |
 |-------|--------------|-------------------|
 | **S** | The story has at most 3 acceptance criteria for the repo, one repo is in scope and the change adds no new rule or state logic. | 1,500 |
-| **L** | The gate trips. The spec always carries `data-cap-accepted="true"`. | none |
+| **L** | The gate trips on a story that is not an approved story. The spec always carries `data-cap-accepted="true"`. | none |
 | **M** | Otherwise. | 4,000 |
 
 Prose words are counted as C10 Length Caps defines them.

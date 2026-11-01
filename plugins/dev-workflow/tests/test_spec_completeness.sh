@@ -265,6 +265,56 @@ for id in UI-1 UI-2 UI-3 UI-4 UI-5 UI-6 UI-7 API-1 API-2 API-3 API-4 API-5 BUG-1
   require "type-checklists.md" "$TYPES_TEXT" "$id"
 done
 
+# sub FILE START_REGEX : prints the normalised text from the first match to the next level-2 or level-3 heading.
+sub() {
+  awk -v start="$2" '
+    !on && $0 ~ start { on = 1; print; next }
+    on {
+      if ($0 ~ /^##+ /) exit
+      print
+    }
+  ' "$1" | normalise
+}
+
+# Why: decide-and-record is one named section between the standard and Phase 1, so every phase can point at it and the real-gate classes cannot drift.
+DR_LINE="$(grep -n '^## Decide and Record' "$SKILL" | head -n1 | cut -d: -f1)"
+if [ -z "$DR_LINE" ]; then fail "SKILL.md: missing '## Decide and Record' heading"
+elif [ "$DR_LINE" -le "$STD_LINE" ] || [ "$DR_LINE" -ge "$PHASE1_LINE" ]; then fail "SKILL.md: Decide and Record is not between the standard and Phase 1"; fi
+DR_TEXT="$(region "$SKILL" '^## Decide and Record')"
+for needle in "Product-scope change that contradicts the story" "Irreversible or destructive choice" "Conflict between two of the user's own stated rules" "[Inference]" "never inferred" "Record [Inference] and continue"; do
+  require "SKILL.md Decide and Record" "$DR_TEXT" "$needle"
+done
+
+# Why: the old ask-by-default phrase would contradict decide-and-record if it survived anywhere a writer reads.
+forbid "SKILL.md" "$SKILL_TEXT" "ask rather than assume"
+forbid "standards.md" "$(whole "$PLUGIN_ROOT/skills/shared/standards.md")" "ask rather than assume"
+require "spec-writer agent" "$(whole "$AGENT")" "Decide and Record"
+
+# Why: the stopping table must measure convergence, not punish a fix for introducing one new finding.
+forbid "adversarial-review.md" "$ADV_TEXT" "a new BLOCKER sits in text edited in round N-1"
+require "adversarial-review.md C15" "$ADV_TEXT" "N is at least 2 rounds past the baseline"
+require "adversarial-review.md C14" "$ADV_TEXT" "follows \"Decide and Record\""
+P11_TEXT="$(region "$SKILL" '^## Phase 11:')"
+require "SKILL.md Phase 11" "$P11_TEXT" "sets data-extension to granted"
+require "SKILL.md Phase 11" "$P11_TEXT" "without sending a blocked"
+require "SKILL.md Phase 11" "$P11_TEXT" "A recommended split is a real gate"
+
+# Why: the scope ceiling keeps review findings from growing a spec beyond what the story asked for.
+require "adversarial-review.md C12" "$ADV_TEXT" "behaviour the story or its acceptance criteria require"
+require "adversarial-review.md C12" "$ADV_TEXT" "scope trim"
+require "adversarial-review.md checklist" "$ADV_TEXT" "RC-9 | Every rule, table and step traces to a story requirement?"
+P7_TEXT="$(region "$SKILL" '^## Phase 7:')"
+require "SKILL.md C6" "$(sub "$SKILL" '^### C6 Input Classes')" "never creates a rule"
+require "SKILL.md C7" "$(sub "$SKILL" '^### C7 Pre-mortem')" "never creates a rule"
+C10_TEXT="$(sub "$SKILL" '^### C10 Length Caps')"
+require "SKILL.md C10" "$C10_TEXT" "first convert prose to tables"
+require "SKILL.md C10" "$C10_TEXT" "drop a story requirement"
+
+# Why: a single-reading rule and a clean gate message stop the answer handling from re-asking the user.
+require "SKILL.md Decide and Record" "$DR_TEXT" "reading consistent with the story"
+require "SKILL.md Decide and Record" "$DR_TEXT" "listed once"
+require "SKILL.md Phase 11" "$(region "$SKILL" '^## User Approval Gate')" 'must never contain "two readings" or "decisions to check"'
+
 # Why: the version bump must land in both manifests together and not fall below the release that carries these rules.
 PLUGIN_VERSION="$(jq -r '.version' "$PLUGIN_ROOT/.claude-plugin/plugin.json")"
 MARKET_VERSION="$(jq -r '.plugins[] | select(.name == "dev-workflow") | .version' "$REPO_ROOT/.claude-plugin/marketplace.json")"

@@ -36,7 +36,7 @@ Relay mode is active when the invoking prompt or message says `mode: relay` (the
 
 **Mode detection fails closed.** Relay mode is forced, whatever the prompt says, when the env var `DEV_WORKFLOW_ROLE` is `spec-writer` or the message is a `DWF/1 …>spec-writer` envelope. Autonomous mode requires an explicit `mode: autonomous`. Without it and with no `mode: relay`, a run that cannot ask the user (an autonomous trigger is present) never runs Phase 12 and is never treated as autonomous: reply `blocked` with `kind: stop` naming the missing mode signal. An interactive run (the user invoked the skill directly and `AskUserQuestion` is available) is unaffected and follows the User Approval Gate and Phase 12 as before.
 
-In relay mode the interactive content rules apply (the full-understanding mandate in Phase 4, met through the Phase 7 question batch, ask rather than assume), and delivery is autonomous. "Ask the user" always means: collect the open questions, send them as one `blocked` reply whose first body line is `kind: questions`, followed by the numbered questions (in a fresh dispatch, return `status: blocked` with the same body), end the body with a `written:` line listing every spec path written so far in this run (empty when none), and stop; continue when the `answer` arrives. Any other `blocked` (a failed finalize check, a missing mode signal, a would-be deviation) starts with `kind: stop`; the orchestrator resolves a `kind: stop` with the user itself and never routes it through `answer`. **Never call `AskUserQuestion` in relay mode**: no human is watching a background session.
+In relay mode the interactive content rules apply (the full-understanding mandate in Phase 4, met by deciding and recording what has a recommended answer and asking the rest through the Phase 7 question batch, per "Decide and Record"), and delivery is autonomous. "Ask the user" always means: collect the open questions, send them as one `blocked` reply whose first body line is `kind: questions`, followed by the numbered questions (in a fresh dispatch, return `status: blocked` with the same body), end the body with a `written:` line listing every spec path written so far in this run (empty when none), and stop; continue when the `answer` arrives. Any other `blocked` (a failed finalize check, a missing mode signal, a would-be deviation) starts with `kind: stop`; the orchestrator resolves a `kind: stop` with the user itself and never routes it through `answer`. **Never call `AskUserQuestion` in relay mode**: no human is watching a background session.
 
 **Where a round resumes.** Every round restarts from what its message carries; a role session may also use its own context but never needs it.
 
@@ -45,7 +45,7 @@ In relay mode the interactive content rules apply (the full-understanding mandat
 - `finalize`: go straight to "Finalize check" below.
 - **Phase 2 rule (no exceptions):** a spec path on the carried "written this run" list is the run's own work in progress, never a pre-existing spec. Phase 2 never asks about it and never applies the non-interactive *Skip* default to it. Phase 2 relays a `blocked` existing-spec question only for a spec that exists and is not on that list.
 
-**Ask-points.** Each of these uses the relay rule above: the Phase 2 existing-spec choice, the Phase 3 image description, the size-gate split proposal ("C1 Size Gate"), the one Phase 7 question batch (it carries the Phase 4, 5, 6 and 7 questions and the descope confirmations), the length-cap acceptance question ("C10 Length Caps"), and the Phase 11 restructure reports. Process Fidelity applies: the spec-writer never deviates on a relayed answer. A would-be deviation is reported as a `kind: stop` `blocked` naming what would be skipped and why, which the orchestrator resolves with the user itself; it is never a `kind: questions` and its resolution never comes back as an `answer`.
+**Ask-points.** Only the questions "Decide and Record" marks as ask use the relay rule above: the Phase 2 existing-spec choice, the Phase 3 image description, the size-gate split proposal ("C1 Size Gate"), the one Phase 7 question batch (the ask rows from Phases 4, 5, 6 and 7, including the descope confirmations), the length-cap acceptance question ("C10 Length Caps") and the Phase 11 restructure reports that Phase 11 routes to the ask route. Every other question is decided and recorded. Process Fidelity applies: the spec-writer never deviates on a relayed answer. A would-be deviation is reported as a `kind: stop` `blocked` naming what would be skipped and why, which the orchestrator resolves with the user itself; it is never a `kind: questions` and its resolution never comes back as an `answer`.
 
 **User Approval Gate.** Do not ask. Return a `result` with every repo's spec path, the Phase 4 design summary, and the Viability List outcome, then stop. Do not run Phase 12.
 
@@ -69,9 +69,32 @@ This standard applies in every mode (interactive, relay and autonomous). A finis
 - **Quoted mentions are not violations.** A phrase in quotation marks or a code span, cited as an example of the phrase itself, does not count. This covers a spec that describes this very rule. A quoted or code-spanned phrase used as an instruction (for example, run `grep foo` to "confirm whether" it is used) is still a violation.
 - **The verification sections are limited to checks.** They may use "verify" and "confirm" wording only for checks against the finished change. Open decisions, conditional "developer decides" branches and open questions stay banned there too.
 
-`[Inference]` is allowed only on a recorded autonomous-mode decision that has its rationale.
+`[Inference]` is allowed only on a recorded decision that has its rationale: an autonomous-mode decision, or an interactive or relay decision made under "Decide and Record".
 
-**Residual doubts.** Any doubt left after investigation is resolved before the spec is written. In interactive mode, ask the user. In relay mode, send a `blocked` reply with `kind: questions`. In autonomous mode, record a decision with `[Inference]` rationale. A doubt is never passed to the approver or the developer. For specs, this section narrows the Reality Filter, Autonomy First ("label it `[Inference]` if uncertain") and Scope Discipline ("flag it as an `[Open Question]`") in `skills/shared/standards.md`: any such item is resolved through the mode's ask, relay or `[Inference]`-decision route, not labelled and shipped.
+**Residual doubts.** Any doubt left after investigation is resolved before the spec is written. In interactive and relay mode, a doubt with a recommended option is decided and recorded with `[Inference]` rationale per "Decide and Record", and a doubt that section marks as ask goes to the mode's ask route. In autonomous mode, record a decision with `[Inference]` rationale. A recorded decision with its rationale is a resolved item in every mode: it satisfies this rule and is never an open decision under reviewer item RC-5. A doubt is never passed to the approver or the developer. For specs, this section narrows the Reality Filter, Autonomy First ("label it `[Inference]` if uncertain") and Scope Discipline ("flag it as an `[Open Question]`") in `skills/shared/standards.md`: any such item is resolved through the mode's decide-and-record, ask or `[Inference]`-decision route, not labelled and shipped.
+
+
+---
+
+## Decide and Record
+
+This section applies in interactive and relay mode. Where a question has a recommended option and is neither a real gate nor the length question of C10, the writer records the decision as `[Inference]` with its rationale in Clarifications and continues without asking. The table below routes every question except restructure reports, which Phase 11 routes. Autonomous mode keeps its own routes from the same table.
+
+- **One batch.** The writer sends only the questions the table marks as ask, as one batch at Phase 7. The asks that fire outside that batch (Phase 2, Phase 3, C1, C10 in Phase 10 and C14 in Phase 11) keep their existing timing. Restructure reports stay outside this batch. An ask row the user leaves unanswered is never inferred.
+- **Recorded is resolved.** A recorded `[Inference]` decision with its rationale is a resolved item in every mode. It satisfies the Residual doubts rule and is never an open decision under reviewer item RC-5.
+- **Single reading.** When the user's verbatim answers admit two readings, the writer picks the reading consistent with the story and the user's standing rules (CLAUDE.md and memory), records it as `[Inference]` and continues. A reading that would be a real gate goes through the table.
+- **Output.** A relay result or interactive gate message must never contain "two readings" or "decisions to check", and no question is raised about a MAJOR. Unfixed MAJORs are listed once per review cycle.
+
+**Question routing (DT-1, hit policy: first)**
+
+| Question | Interactive or relay | Autonomous |
+|----------|----------------------|------------|
+| Product-scope change that contradicts the story: a capability descope, a required edge-case descope, or a split | Real gate: ask | Existing route: never descope, keep one spec |
+| Irreversible or destructive choice, including the Phase 2 overwrite of an existing spec | Real gate: ask | Existing route: skip and notify |
+| Conflict between two of the user's own stated rules | Real gate: ask | Existing route: `[Inference]` decision |
+| No recommended option can be formed, such as an unreadable story image | Ask | Existing route: `[Inference]` decision |
+| Length cap still exceeded, and further trimming would drop a story requirement (C10) | Ask | Existing route: C10 fallback |
+| Otherwise: a recommended option exists | Record `[Inference]` and continue | Record `[Inference]` and continue |
 
 ---
 
@@ -221,14 +244,15 @@ Before the ULTRATHINK deep-dive, invoke brainstorming to surface unclear require
 > OVERRIDE: After brainstorming completes, do NOT invoke `superpowers:writing-plans`.
 > Return to Phase 5 (ULTRATHINK) — the brainstorming output informs that analysis.
 >
-> OVERRIDE (relay mode only): Never call `AskUserQuestion`. Hold every clarifying
-> question for the single Phase 7 batch (see "Phase 7"), which goes out as one `blocked`
-> reply per "Relay Mode"; continue when the `answer` arrives.
+> OVERRIDE (relay mode only): Never call `AskUserQuestion`. Decide and record every
+> question that "Decide and Record" routes to a recorded `[Inference]`, and hold only the
+> questions it marks as ask for the single Phase 7 batch (see "Phase 7"), which goes out as
+> one `blocked` reply per "Relay Mode"; continue when the `answer` arrives.
 >
 > OVERRIDE (interactive mode only — collapse the redundant gate): When running
 > interactively, run brainstorming's investigation normally — explore context and collect
 > however many clarifying questions are needed, including zero, holding them for the
-> single Phase 7 batch rather than asking one at a time — but ALWAYS skip
+> single Phase 7 batch (ask rows only, per "Decide and Record") rather than asking one at a time — but ALWAYS skip
 > brainstorming's standalone design-approval stop, regardless of question count.
 > Never ask the user to approve a design before a finished spec document exists for
 > them to read. Instead, produce a short design summary (chosen approach plus
@@ -240,7 +264,7 @@ Before the ULTRATHINK deep-dive, invoke brainstorming to surface unclear require
 > autonomous-mode handling today (unlike Phases 6 and 7), and this override does not
 > add, remove, or resolve that pre-existing gap.
 
-**Interactive mode — full-understanding mandate:** When running in interactive mode (you can ask the user questions), it is your job to fully understand the entire feature before writing the spec. Collect clarifying questions and send them in the Phase 7 batch (one numbered list in one message, ranked by impact, each with a recommended option and the consequence of each option), then send a further batch only for questions the previous answers opened, until no material ambiguity about scope, behavior, edge cases, or intent remains. The exceptions sent at once are the Phase 2 existing-spec choice, the Phase 3 image request and the C1 split proposal. A spec you do not fully understand is a spec you cannot write correctly. This overrides the general "questions are a last resort" posture in `standards.md` *for spec writing specifically*: still investigate the codebase first, but where investigation cannot settle a question and you are interactive, **ask rather than assume**, through the Phase 7 batch. Do not move past this phase with an understanding you would describe as partial.
+**Interactive mode — full-understanding mandate:** When running in interactive mode (you can ask the user questions), it is your job to fully understand the entire feature before writing the spec. Decide and record every question that has a recommended option, collect the questions "Decide and Record" marks as ask and send them in the Phase 7 batch (one numbered list in one message, ranked by impact, each with the consequence of each option), then send a further batch only for ask-row questions the previous answers opened, until no material ambiguity about scope, behavior, edge cases, or intent remains. The exceptions sent at once are the Phase 2 existing-spec choice, the Phase 3 image request and the C1 split proposal. A spec you do not fully understand is a spec you cannot write correctly. This overrides the general "questions are a last resort" posture in `standards.md` *for spec writing specifically*: still investigate the codebase first, but where investigation cannot settle a question and you are interactive, **decide and record** when you can form a recommended option, and ask only the questions "Decide and Record" marks as ask, through the Phase 7 batch. Do not move past this phase with an understanding you would describe as partial.
 
 ---
 
@@ -328,16 +352,18 @@ story's `story_type`, title, or other metadata.
 
 ### C1 Size Gate
 
-Read `skills/shared/size-gate.md`: it holds every class definition, threshold, counting rule, split pattern and prose cap. Assign one size class from its "Size Classes" section at the end of this phase. Write the class on `<body>` as `data-size-class` and as a header pill.
+Read `skills/shared/size-gate.md`: it holds every class definition, threshold, counting rule, the approved-story definition, split pattern and prose cap. Assign one size class from its "Size Classes" section at the end of this phase. Write the class on `<body>` as `data-size-class` and as a header pill.
 
-First check the story description for a size-accepted marker line (table below): a marked story gets `data-cap-accepted="true"` whatever the gate result, so check it before the trip test. Apply the "Counting" and "Thresholds" sections to decide whether the gate trips. When it trips, propose sequenced sub-specs split by the "Split Patterns" section before Phase 9, sent at once rather than held for the Phase 7 batch. Re-run the gate at Phase 7. The gate runs once for the story, in the first repo's Phase 5, before any spec is written; each later repo's Phase 7 re-check covers only that repo's projected prose against the cap. A split the user declined is never proposed again in the same run; a later over-cap result goes through the C10 acceptance question.
+First check the story description for a size-accepted marker line (table below): a marked story gets `data-cap-accepted="true"` whatever the gate result, so check it before the trip test. Then check whether the story is an approved story (the "Approved Story" section of the shared file). Apply the "Counting" and "Thresholds" sections to decide whether the gate trips: the count comes from the request and the acceptance criteria only, so investigation never changes it and the gate is not re-run at Phase 7. When it trips on a story that is neither marked nor approved, propose sequenced sub-specs split by the "Split Patterns" section before Phase 9, sent at once rather than held for the Phase 7 batch. The gate runs once for the story, in the first repo's Phase 5, before any spec is written. A split the user declined is never proposed again in the same run; a later over-cap result goes through the C10 acceptance question.
 
-The outcome follows this table (hit policy: first). writing-specs never creates, archives or re-parents a story.
+The outcome follows this table (DT-2, hit policy: first). writing-specs never creates, archives or re-parents a story.
 
 | Mode | User answer | Writer action |
 |------|-------------|---------------|
 | any | story description carries a size-accepted marker line, one starting `Size accepted by user:` in the description text, outside the `## Original Request` section (size-gate.md) | Propose no split. Set `data-cap-accepted="true"` and, when the gate trips, class L (otherwise the class "Size Classes" assigns). Log one Clarifications entry citing the marker as story text, and continue. |
-| relay | split proposal not yet answered | Send `blocked` with `kind: questions` carrying the proposal, the recommended option and the consequence. |
+| any | story is an approved story (no size-accepted marker line) | Propose no split, whatever the count. Set no `data-cap-accepted`. The class is S or M from "Size Classes". Log one Clarifications line stating the count, and continue. |
+| any | any other story, count within both thresholds | Propose no split. The class is S or M from "Size Classes". |
+| relay | other story, threshold exceeded, split proposal not yet answered | Send `blocked` with `kind: questions` carrying the proposal, the recommended option and the consequence. |
 | relay | accepts split | Write no spec. Send `blocked` with `kind: stop` whose body is the split plan. |
 | interactive | accepts split | Write no spec. Show the split plan and end the run. |
 | relay or interactive | declines split | Log the decline as explicit size acceptance (a Q-n), set class L and `data-cap-accepted="true"`, continue. |
@@ -356,7 +382,7 @@ Tag the change with every matching type from `skills/writing-specs/type-checklis
 
 ### C3 Evidence Ledger
 
-Every behavioral fact the spec states (input values, payload shapes, current behavior, volumes, defaults) gets an Evidence Ledger row with a source: a `file:line`, a fixture path, a capture path, or `story text`. A row that cites a fixture names a value that occurs in that fixture. Matchers and integrations list the real input values they will see, each with its source. A fact that cannot be cited goes in the Assumptions table and is resolved by the mode's route: asked in the Phase 7 batch (interactive or relay) or decided with `[Inference]` (autonomous). Each Assumptions row links a Q-n or carries `[Inference]`. An expected input value absent from every cited fixture is such a fact.
+Every behavioral fact the spec states (input values, payload shapes, current behavior, volumes, defaults) gets an Evidence Ledger row with a source: a `file:line`, a fixture path, a capture path, or `story text`. A row that cites a fixture names a value that occurs in that fixture. Matchers and integrations list the real input values they will see, each with its source. A fact that cannot be cited goes in the Assumptions table and is resolved by the mode's route: decided and recorded with `[Inference]` per "Decide and Record" (any mode), or asked in the Phase 7 batch only when that section marks the question as ask. Each Assumptions row links a Q-n or carries `[Inference]`. An expected input value absent from every cited fixture is such a fact.
 
 **S:** the line `Assumptions: none` is allowed.
 
@@ -381,8 +407,8 @@ For each significant technical decision:
    - Research shows clear best practice → follow it
    - Ambiguous but not high-stakes → pick the most reasonable option, document the trade-off, and move on
 5. **Asking the user:**
-   - **Interactive mode:** Per the full-understanding mandate in Phase 4, ask whenever investigation cannot resolve a question that affects scope, behavior, edge cases, or intent — the high-stakes bar does not apply to spec writing. Always investigate the codebase, docs, and git history first; ask about what investigation genuinely cannot settle. Hold the questions for the Phase 7 batch. Do not leave a question unresolved by choosing not to ask.
-   - **Relay mode:** Hold the questions for the Phase 7 batch, which goes out through `blocked` per "Relay Mode" instead of labelling `[Inference]`; never call `AskUserQuestion`.
+   - **Interactive mode:** Per the full-understanding mandate in Phase 4, resolve every question that affects scope, behavior, edge cases, or intent. Always investigate the codebase, docs, and git history first. A question investigation cannot settle is decided and recorded as `[Inference]` when it has a recommended option, and held for the Phase 7 batch only when "Decide and Record" marks it as ask. Do not leave a question unresolved.
+   - **Relay mode:** The same routing: decide and record, and hold only the ask-row questions for the Phase 7 batch, which goes out through `blocked` per "Relay Mode"; never call `AskUserQuestion`.
    - **Autonomous mode (no AskUserQuestion available, and not in relay mode):** You cannot ask. Resolve every question by investigation. Where investigation cannot fully settle a question, make the most reasonable decision, label it `[Inference]` with rationale, and proceed. Never emit an `[Open Question]` — see Phase 7.
 
 The Cold-Start Completeness Standard and its Deferral ban apply to every decision made here: each decision block names exactly one chosen approach, and no decision is handed to the approver or the developer.
@@ -415,8 +441,7 @@ After deep research, assess whether you have enough information to write a spec 
 - [ ] No unknowns about behavior, scope, file locations, values, interfaces or approach remain
 - [ ] The spec can meet the Cold-Start Completeness Standard: every claim is verified and nothing the Deferral ban forbids would remain
 - [ ] Every entry on Phase 4's Viability List is resolved — none remain `open`
-- [ ] The C1 size gate is re-run on the rules, examples and projected prose now known; if it trips, the split proposal is sent through the C1 outcome table
-- [ ] The C5 coverage scan, C6 input classes and C7 pre-mortem are complete, and every question they raise is in the batch below
+- [ ] The C5 coverage scan, C6 input classes and C7 pre-mortem are complete, and every question they raise is decided and recorded or, when "Decide and Record" marks it as ask, in the batch below
 
 **Viability List resolution:** Phase 6 investigation resolves each Viability List
 entry to one of two states:
@@ -449,15 +474,15 @@ Per-Repo Sequential Loop" above), this criterion is a cheap re-check of the
 already-resolved list, filtered to this repo's capabilities by repo tag — not a
 fresh judgment.
 
-**No open questions in the final spec.** A finished spec must never contain `[Open Question]` items. Every question must be resolved before the spec is written — either automatically through investigation, or, in interactive mode, through the Phase 7 question batches. Resolve them; do not defer them. The Cold-Start Completeness Standard and its Deferral ban make this absolute: nothing is left for the approver or the developer to settle.
+**No open questions in the final spec.** A finished spec must never contain `[Open Question]` items. Every question must be resolved before the spec is written — either automatically through investigation, or, in interactive mode, through a recorded `[Inference]` decision or the Phase 7 question batches. Resolve them; do not defer them. The Cold-Start Completeness Standard and its Deferral ban make this absolute: nothing is left for the approver or the developer to settle.
 
 **Decision:**
-- **Interactive mode** — If any criterion cannot be met after research, do not write a partial spec. Take the unresolved gaps back to the user in the Phase 7 batch (re-enter the Phase 4 brainstorm if the gaps are substantial). Only proceed to write the spec once every criterion is met and no open questions remain:
+- **Interactive mode** — If any criterion cannot be met after research, do not write a partial spec. Decide and record each gap that has a recommended option, and take the gaps "Decide and Record" marks as ask back to the user in the Phase 7 batch (re-enter the Phase 4 brainstorm if the gaps are substantial). Only proceed to write the spec once every criterion is met and no open questions remain:
   > "Before I can write a complete spec, I need to resolve these with you:
   > - [list specific gaps]
   >
   > [Ask the specific questions needed to close each gap.]"
-- **Relay mode** — Take the unresolved gaps to the user in the Phase 7 batch, through a `blocked` reply per "Relay Mode" instead of labelling them `[Inference]`; never call `AskUserQuestion`.
+- **Relay mode** — Decide and record each gap that has a recommended option, and take the gaps "Decide and Record" marks as ask to the user in the Phase 7 batch, through a `blocked` reply per "Relay Mode"; never call `AskUserQuestion`.
 - **Autonomous mode (cannot ask, not relay mode)** — Resolve every gap by investigation. For any gap investigation cannot fully close, make the most reasonable decision, document it as a `[Decision]` with `[Inference]`-labeled rationale and the trade-off, and proceed. Never emit `[Open Question]` — a documented inferred decision is required instead.
 - If **all criteria are met** — proceed immediately.
 
@@ -465,19 +490,19 @@ fresh judgment.
 
 Mark Clear, Partial or Missing for each spec-kit clarify category (Functional Scope & Behavior; Domain & Data Model; Interaction & UX Flow; Non-Functional Quality Attributes; Integration & External Dependencies; Edge Cases & Failure Handling; Constraints & Tradeoffs; Terminology & Consistency; Completion Signals; Misc / Placeholders), each ISO/IEC 25010:2023 characteristic (functional suitability, performance efficiency, compatibility, interaction capability, reliability, security, maintainability, flexibility, safety) and each scenario class (primary, alternate, exception, recovery). A Partial or Missing row whose gap would change any behavior, value, interface, file location or scope of the change links a Q-n. Only a row whose gap changes none of those may instead say `out of scope, no behavior change: reason`; a reviewer who finds that claim false records an open-decision BLOCKER.
 
-**One question batch.** Questions from Phases 4, 5, 6 and 7 are held and sent as one batch at this phase, ranked by impact, each with a recommended option and the consequence of each option. The exceptions sent at once are the Phase 2 existing-spec choice, the Phase 3 image request and the C1 split proposal. Each later batch holds only questions that the previous batch's answers opened. Interactive mode sends each batch as one numbered list in one message. Log every question and answer in Clarifications with the answer's source (the user's words or `[Inference]`). In the per-repo loop, the first repo's Phase 7 batch carries the story-wide Phase 4 questions plus its own; each later repo's Phase 7 sends its own first batch holding only questions that repo's investigation raised and earlier answers did not settle.
+**One question batch.** Questions from Phases 4, 5, 6 and 7 that "Decide and Record" marks as ask are held and sent as one batch at this phase, ranked by impact, each with a recommended option where one exists and the consequence of each option. Every other question is decided and recorded and never enters the batch. The exceptions sent at once are the Phase 2 existing-spec choice, the Phase 3 image request and the C1 split proposal. Each later batch holds only questions that the previous batch's answers opened. Interactive mode sends each batch as one numbered list in one message. Log every question and answer, and every recorded decision, in Clarifications with its source (the user's words or `[Inference]`). In the per-repo loop, the first repo's Phase 7 batch carries the story-wide Phase 4 questions plus its own; each later repo's Phase 7 sends its own first batch holding only questions that repo's investigation raised and earlier answers did not settle.
 
 **S:** one line `Coverage scan: N/A: reason` when every row would be Clear.
 
 ### C6 Input Classes
 
-For each input the change reads, list its equivalence classes and boundaries plus these states: empty, missing, max size, invalid, duplicate, forbidden, concurrent edit, timeout, partial failure, retry, time zone. Each row gives a behavior and an R or AC ID, or `out of scope: reason`, or `N/A: reason` when the state cannot occur. A state the story requires cannot be put out of scope except by the "Required edge cases" route above.
+For each input the change reads, list its equivalence classes and boundaries plus these states: empty, missing, max size, invalid, duplicate, forbidden, concurrent edit, timeout, partial failure, retry, time zone. Each row gives a behavior and an R or AC ID, or `out of scope: reason`, or `N/A: reason` when the state cannot occur. A state the story requires cannot be put out of scope except by the "Required edge cases" route above. A state the story does not require reads `out of scope: reason`, and a row never creates a rule.
 
 **S:** touched inputs only.
 
 ### C7 Pre-mortem
 
-Assume the change failed in production. List the likely causes, each with effect, severity (High, Medium or Low) and what detects it: an AC or T link, or an alert written as `alert: <name>`. A High row with no detection gets a new AC, T or alert.
+Assume the change failed in production. List the likely causes, each with effect, severity (High, Medium or Low) and what detects it: an AC or T link, or an alert written as `alert: <name>`. A High row with no detection gets a new AC, T or alert, except a High row on behavior the story does not require: it is removed along with that behavior. A row never creates a rule.
 
 **S:** 3 rows.
 
@@ -657,7 +682,7 @@ Give acceptance criteria, rules, tests, steps and table rows stable IDs: AC, R, 
 
 Prose words, excluding tables, code, `pre`, the table of contents, the header, scripts, styles and comments, must not exceed the prose cap of the spec's size class in the "Size Classes" section of `skills/shared/size-gate.md`. An L spec has no numeric cap and always carries `data-cap-accepted="true"`. No `<p>`, `<li>` or table cell may exceed 150 words at any size, and no table may have more than 20 columns.
 
-When the lint reports `cap` for an S or M spec, first convert prose to tables and cut repetition. If the spec is still over, interactive and relay mode ask one question (relay: `kind: questions` with the `written:` line): accept the length, or split per C1. Acceptance sets `data-cap-accepted="true"` and is logged as a Q-n. Autonomous mode sets the attribute itself, logs an `[Inference]` entry and names the overrun in the Phase 12 PM comment. A story carrying the size-accepted marker (C1) gets no length-cap question.
+When the lint reports `cap` for an S or M spec, first convert prose to tables, cut repetition and apply scope trims (Phase 11 → "Scope ceiling"). Interactive and relay mode ask the length question only when further trimming would drop a story requirement (relay: `kind: questions` with the `written:` line). The question always offers "accept the length", and offers "split per C1" only when the story is neither marked nor an approved story and the shared count exceeds a threshold. Acceptance sets `data-cap-accepted="true"` and is logged as a Q-n. Autonomous mode sets the attribute itself, logs an `[Inference]` entry and names the overrun in the Phase 12 PM comment. A story carrying the size-accepted marker (C1) gets no length-cap question.
 
 **S:** the S prose cap in `skills/shared/size-gate.md`.
 
@@ -737,9 +762,19 @@ parentheses is the reviewer checklist item that owns it):
 
 This instruction comes from this skill; the shared review procedure holds the Spec Document Regime for spec targets beside its unchanged code-target regime.
 
-**Rounds.** The cap is 3 rounds per review cycle; a user's "continue" never resets the round count. After each round apply the stopping table in the regime. The rework that precedes round 3, and the rework that precedes each extension round, runs in a fresh general-purpose subagent (model resolved `models.stages.writing-specs` → `models.reasoning` → `opus`), which receives only the spec path, the review record path, the open BLOCKERs, the story ID (in a replay, the local story file path instead, with no PM fetch), the writer-handling rules, the requirement-quality, traceability and length-cap rules and the lint command. When a fix needs a decision the story, the Clarifications and the repo cannot settle, ask through the mode's ask route (autonomous: an `[Inference]` decision) before the next round.
+**Rounds.** The cap is 3 rounds per review cycle; a user's "continue" never resets the round count. After each round apply the stopping table (DT-3) in the regime. The rework that precedes round 3, and the rework that precedes each extension round, runs in a fresh general-purpose subagent (model resolved `models.stages.writing-specs` → `models.reasoning` → `opus`), which receives only the spec path, the review record path, the open BLOCKERs, the story ID (in a replay, the local story file path instead, with no PM fetch), the writer-handling rules, the requirement-quality, traceability and length-cap rules and the lint command. When a fix needs a decision the story, the Clarifications and the repo cannot settle, follow "Decide and Record": only a question its table marks as ask goes to the mode's ask route; every other decision is recorded as `[Inference]` before the next round.
 
-**Restructure report.** A stop at the cap, or an early stop, produces a restructure report: the BLOCKER count per round, the stopping-table row that fired, the failing IDs, a proposed restructure (a split, a section rewrite or a table conversion) and the options: approve the restructure and its extension (at most 2 more rounds, once per review cycle), accept the spec with its open BLOCKERs listed for the approver, or stop. It goes out through the mode's ask route (relay: `kind: questions`). When the approved restructure is a split, the C1 "accepts split" row applies instead of an extension: no further round runs, the written spec stays on disk unchanged, the split plan names it as superseded and the review record's state becomes `stopped`. In autonomous mode the run returns `status: error` with the report and never runs Phase 12. While a relay report awaits its answer, the record's `data-state` is `awaiting-answer`.
+**Scope ceiling.** The regime's C12 accepts a finding as a BLOCKER only when it concerns behaviour the story or its acceptance criteria require. A finding about an added mechanism (retry, timeout or failure-mode text beyond the criteria) is a scope trim, reported with severity NOTE. The writer resolves a scope trim by deleting or shrinking the added text and logs it in the review record. A scope trim starts no round and never adds a rule, table or test.
+
+**Restructure report.** A stop by the stopping table (DT-3) produces a restructure report: the BLOCKER count per round, the stopping-table row that fired, the failing IDs and a proposed restructure (a split, a section rewrite or a table conversion). Its routing depends on the mode and on the record's `data-extension`:
+
+- **Relay, `data-extension` is `none`, and the recommended restructure is not a real gate:** the writer writes the report to the review record, sets `data-extension` to `granted`, applies the restructure in a fresh writer, runs round 4 and, unless DT-3 stops the review at round 4, round 5, without sending a `blocked`. It carries the report once in the next `result`.
+- **A recommended split is a real gate:** it goes out through the mode's ask route, never self-applied. When the approved restructure is a split, the C1 "accepts split" row applies instead of an extension: no further round runs, the written spec stays on disk unchanged, the split plan names it as superseded and the review record's state becomes `stopped`.
+- **A report that fires once `data-extension` is `granted`:** the writer sets it to `used`, never self-applies it, and offers only accept with the open BLOCKERs listed, or stop, through the mode's ask route.
+- **Interactive mode:** asks on every report. The options are approve the restructure and its extension (at most 2 more rounds, once per review cycle), accept the spec with its open BLOCKERs listed for the approver, or stop.
+- **Autonomous mode:** returns `status: error` with the report and never runs Phase 12.
+
+While a relay report awaits its answer, the record's `data-state` is `awaiting-answer`.
 
 **Relay mode:** record `spec_written_at` after each spec write, per "Relay Mode". In replay, record nothing in the checkpoint.
 
@@ -755,7 +790,7 @@ This instruction comes from this skill; the shared review procedure holds the Sp
 
 **Interactive mode:**
 
-Present all generated specs to the user in a summary table:
+Present all generated specs to the user in a summary table (the gate message must never contain "two readings" or "decisions to check", and lists unfixed MAJORs once per review cycle):
 
 | Repo | Spec Path |
 |------|-----------|
@@ -778,7 +813,7 @@ Ask:
 
 **Relay mode:**
 
-Do not ask and do not run Phase 12. Return a `result` with every repo's spec path, the Phase 4 design summary, and the Viability List outcome, then stop. The orchestrator relays the specs to the user; on a change request a `revise` message arrives and this gate's "requests changes" branch applies (re-run Phases 5–10 for the affected repos, re-run Phase 11, return a fresh `result`); on approval a `finalize` message arrives (see "Relay Mode" → "Finalize check").
+Do not ask and do not run Phase 12. Return a `result` with every repo's spec path, the Phase 4 design summary, and the Viability List outcome, then stop. The result must never contain "two readings" or "decisions to check", and unfixed MAJORs are listed once per review cycle with no question about them. The orchestrator relays the specs to the user; on a change request a `revise` message arrives and this gate's "requests changes" branch applies (re-run Phases 5–10 for the affected repos, re-run Phase 11, return a fresh `result`); on approval a `finalize` message arrives (see "Relay Mode" → "Finalize check").
 
 **Autonomous mode (cannot ask, not relay mode):**
 
