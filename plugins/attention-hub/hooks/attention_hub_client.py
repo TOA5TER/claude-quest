@@ -310,17 +310,95 @@ def background_work_entries(background_tasks, session_crons):
     return entries
 
 
-def get_dev_workflow_stage(cwd):
-    """Pipeline stage line for cwd's repo from dev-workflow checkpoint files.
+PER_REPO_ROLES = frozenset({"developer", "reviewer", "tester"})
+RELAUNCH_SUFFIX_RE = re.compile(r"(.+)-([0-9]+)")
 
-    Every call stat()s the full checkpoint directory unconditionally — that
-    sweep's cost scales with directory size, not age. Only the read/parse
-    phase is bounded by STAGE_MAX_AGE_SECONDS, sorted newest-first so it
-    stops at the first match; a stat() is cheap enough not to need an age
-    guard, json.loads() is not. Returns "" when nothing matches. Never
-    raises.
+
+def parse_story_name(name):
+    """Story id, role and repo of a story-named session, or None.
+
+    Mirrors parse_story_name in hub/attention_hub.py; keep both in step.
+    """
+    if not isinstance(name, str):
+        return None
+    match = STORY_NAME_RE.fullmatch(name)
+    if not match:
+        return None
+    story_id, remainder = match.groups()
+    role, _, repo = remainder.partition("-")
+    return {"story_id": story_id, "role": role, "repo": repo}
+
+
+def story_id_from_name(session_name):
+    """Story id the hub groups this session name under, or "" when it never groups."""
+    parsed = parse_story_name(session_name)
+    return parsed["story_id"] if parsed else ""
+
+
+def _card_repo(repo_part, repos):
+    """Repo key a per-repo card shows: the exact key, else the key before a relaunch suffix."""
+    if repo_part in repos:
+        return repo_part
+    match = RELAUNCH_SUFFIX_RE.fullmatch(repo_part)
+    if match and int(match.group(2)) >= 2 and match.group(1) in repos:
+        return match.group(1)
+    return ""
+
+
+def _stage_line(repo, entry):
+    stage = entry.get("stage") if isinstance(entry, dict) else None
+    return f"{repo}:{stage}" if isinstance(stage, str) else ""
+
+
+def _read_story_checkpoint(story_id):
+    """The story's checkpoint dict, or None on a bad id or any read or parse problem."""
+    try:
+        if not isinstance(story_id, str) or not SAFE_STORY_ID_RE.fullmatch(story_id):
+            return None
+        path = Path.home() / ".claude" / "dev-workflow" / "state" / f"{story_id}.json"
+        checkpoint = json.loads(path.read_text(encoding="utf-8"))
+        return checkpoint if isinstance(checkpoint, dict) else None
+    except Exception:
+        return None
+
+
+def get_story_stage(parsed):
+    """Stage line from the session's own story checkpoint.
+
+    Callers wrap this in their never-raise guard. A per-repo role with a repo part gets one line for its repo; every other
+    story-named session gets one line per repo of the story. No age cutoff and
+    no terminal filter, since the file is chosen by story id. Any read or parse
+    problem gives "", never a fallback to another story's checkpoint.
+    """
+    checkpoint = _read_story_checkpoint(parsed["story_id"])
+    if checkpoint is None:
+        return ""
+    repos = checkpoint.get("repos")
+    if not isinstance(repos, dict):
+        return ""
+    if parsed["role"].lower() in PER_REPO_ROLES and parsed["repo"]:
+        repo = _card_repo(parsed["repo"], repos)
+        return _stage_line(repo, repos[repo]) if repo else ""
+    lines = (_stage_line(repo, entry) for repo, entry in repos.items())
+    return "\n".join(line for line in lines if line)
+
+
+def get_dev_workflow_stage(cwd, session_name=""):
+    """Pipeline stage line for a session, from dev-workflow checkpoint files.
+
+    A story-named session reads only its own story's checkpoint (see
+    get_story_stage). Any other session takes the cwd path: every call stat()s
+    the full checkpoint directory unconditionally, so that sweep's cost scales
+    with directory size, not age. Only the read/parse phase is bounded by
+    STAGE_MAX_AGE_SECONDS, sorted newest-first so it stops at the first match;
+    a stat() is cheap enough not to need an age guard, json.loads() is not. The
+    line is the one repo:stage entry for the cwd candidate that matched. Returns
+    "" when nothing matches. Never raises.
     """
     try:
+        parsed = parse_story_name(session_name)
+        if parsed:
+            return get_story_stage(parsed)
         if not cwd:
             return ""
         path = os.path.normpath(cwd)
@@ -355,7 +433,6 @@ def get_dev_workflow_stage(cwd):
                 repos = checkpoint.get("repos")
                 if not isinstance(repos, dict):
                     continue
-                matched = False
                 for candidate in candidates:
                     if candidate not in repos:
                         continue
@@ -363,27 +440,12 @@ def get_dev_workflow_stage(cwd):
                     stage_value = entry.get("stage") if isinstance(entry, dict) else None
                     if not isinstance(stage_value, str) or stage_value in STAGE_TERMINAL_STAGES:
                         continue
-                    matched = True
-                    break
-                if not matched:
-                    continue
+                    return f"{candidate}:{stage_value}"
             except Exception:
                 continue
-            return "\n".join(
-                f"{repo}:{entry['stage']}" for repo, entry in repos.items()
-                if isinstance(entry, dict) and isinstance(entry.get("stage"), str)
-            )
         return ""
     except Exception:
         return ""
-
-
-def story_id_from_name(session_name):
-    """Story id the hub groups this session name under, or "" when it never groups."""
-    if not isinstance(session_name, str):
-        return ""
-    match = STORY_NAME_RE.fullmatch(session_name)
-    return match.group(1) if match else ""
 
 
 def get_story_title(story_id):
@@ -393,11 +455,8 @@ def get_story_title(story_id):
     Never raises.
     """
     try:
-        if not isinstance(story_id, str) or not SAFE_STORY_ID_RE.fullmatch(story_id):
-            return ""
-        path = Path.home() / ".claude" / "dev-workflow" / "state" / f"{story_id}.json"
-        checkpoint = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(checkpoint, dict):
+        checkpoint = _read_story_checkpoint(story_id)
+        if checkpoint is None:
             return ""
         title = checkpoint.get("story_title")
         return title.strip()[:SESSION_NAME_MAX] if isinstance(title, str) else ""
@@ -516,15 +575,16 @@ def build_event_payload(session_id, cwd, state, message=None, session_name=None,
     snippet = (message or "").strip()
     if len(snippet) > MESSAGE_SNIPPET_MAX:
         snippet = snippet[: MESSAGE_SNIPPET_MAX - 3] + "..."
+    clean_name = (session_name or "").strip()[:SESSION_NAME_MAX]
     payload = {
         "session_id": session_id,
-        "session_name": (session_name or "").strip()[:SESSION_NAME_MAX],
+        "session_name": clean_name,
         "project": os.path.basename(os.path.normpath(cwd)) if cwd else "unknown",
         "cwd": os.path.normpath(cwd) if cwd else "",
         "host": get_host_label(),
         "state": state,
         "message": snippet,
-        "stage": get_dev_workflow_stage(cwd),
+        "stage": get_dev_workflow_stage(cwd, clean_name),
         "is_container": detect_container(),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
