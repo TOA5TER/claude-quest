@@ -10,7 +10,7 @@ Many concurrent agent sessions (local, docker, remote servers) make per-machine 
 - **Gray** — `done` (nothing in flight, waiting for you to start the next turn)
 - **Green** — `working` (busy, or work such as a background shell or a scheduled wakeup is still in flight)
 
-Each ungrouped card's title is the session name if one was reported, falling back to the session ID (a row inside a group shows its role and repo label instead) — and, when a recent dev-workflow checkpoint has the session's own repo at a non-terminal stage (checkpoints older than about a week are ignored), a second line showing that checkpoint's stage(s), one `repo:stage` entry per line for a multi-repo story. Cards show time in state, the latest message snippet, and last-update age, refresh every 3 seconds, and have a per-card dismiss control for crashed/abandoned sessions. Sessions silent for over 24 hours are pruned automatically.
+Each ungrouped card's title is the session name if one was reported, falling back to the session ID (a row inside a group shows its role and repo label instead) — and, when a dev-workflow checkpoint has stage data for it, a second line showing the stage. A session named `{story-id}-{role}-{repo}` reads only its own story's checkpoint: a developer, reviewer or tester card shows one `repo:stage` line for its repo, and the orchestrator and spec-writer cards show one line per repo of that story. An unnamed session shows its own repo's single line from the most recent matching checkpoint that is recent and not at a terminal stage. Cards show time in state, the latest message snippet, and last-update age, refresh every 3 seconds, and have a per-card dismiss control for crashed/abandoned sessions. Sessions silent for over 24 hours are pruned automatically.
 
 ### Story groups
 
@@ -147,7 +147,7 @@ Reports (creates or updates) a session's state. Body is a JSON object:
 | `host` | no | Machine/host name |
 | `cwd` | no | Full working directory, stored and returned by the API; sticky across events that omit it. Not used to match superseded sessions, which key on `session_name` and `host` (see [Story groups](#story-groups)) |
 | `message` | no | Short status message shown on the card (truncated to 200 chars) |
-| `stage` | no | Dev-workflow stage line (`repo:stage`, newline-joined); shown as a second card line when non-empty; not sticky — an event omitting it clears the stored value |
+| `stage` | no | Dev-workflow stage line: one `repo:stage` line per repo shown, newline-joined; shown as a second card line when non-empty; not sticky — an event omitting it clears the stored value |
 | `timestamp` | no | ISO-8601 timestamp of the event |
 | `session_name` | no | Friendly display name; falls back to `session_id` when omitted. A name that starts with a story id groups the session (see [Story groups](#story-groups)) |
 | `is_container` | no | Boolean; badges the card when the session runs inside a container |
@@ -175,7 +175,7 @@ Returns `{"sessions": [...], "groups": [...], "layout": [...]}`, all built from 
 
 ## Security
 
-The hub has **no authentication or TLS** and is intended for a trusted private network only (localhost, LAN, VPN/tailnet). Dashboard rows expose session names, story titles, project names, and message snippets. The unauthenticated `GET /api/sessions` endpoint returns each session record verbatim — including `project`, `host`, `session_id`, `story_title`, full state `history`, and `active_work` labels — along with the group list (each story's id, title, member session IDs and row labels), regardless of what the card renders. Active work labels are user-authored text: cron prompts and task descriptions (shell commands, subagent descriptions) are sent to the hub over plain HTTP, served by the unauthenticated `GET /api/sessions` endpoint, and written to the state file. The stage line discloses the dev-workflow story most recently active for this repo, which may not be the story this session is working on — including, for a multi-repo story, the names and pipeline stages of its other repos. If remote machines do not need direct access, bind to localhost (`--bind 127.0.0.1`) or a VPN interface.
+The hub has **no authentication or TLS** and is intended for a trusted private network only (localhost, LAN, VPN/tailnet). Dashboard rows expose session names, story titles, project names, and message snippets. The unauthenticated `GET /api/sessions` endpoint returns each session record verbatim — including `project`, `host`, `session_id`, `story_title`, full state `history`, and `active_work` labels — along with the group list (each story's id, title, member session IDs and row labels), regardless of what the card renders. Active work labels are user-authored text: cron prompts and task descriptions (shell commands, subagent descriptions) are sent to the hub over plain HTTP, served by the unauthenticated `GET /api/sessions` endpoint, and written to the state file. The stage line of a story-named session discloses only its own story's repos and stages; the line of an unnamed session may come from a checkpoint of a story it is not working on. If remote machines do not need direct access, bind to localhost (`--bind 127.0.0.1`) or a VPN interface.
 
 ## Requirements
 
