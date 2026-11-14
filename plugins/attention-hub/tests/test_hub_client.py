@@ -1027,10 +1027,10 @@ def test_stage_relaunch_suffix_resolves_to_base_repo(tmp_path):
     seed_story_scope(state_dir)
     assert client.get_dev_workflow_stage("/w", "sc-1000-developer-api-2") == "api:developing"
     assert client.get_dev_workflow_stage("/w", "sc-1000-tester-web-3") == "web:spec"
+    assert client.get_dev_workflow_stage("/w", "sc-1000-developer-api-x") == ""
     write_checkpoint(state_dir, "sc-1000.json",
                      {"repos": {"api": {"stage": "developing"}, "api-2": {"stage": "review"}}})
     assert client.get_dev_workflow_stage("/w", "sc-1000-developer-api-2") == "api-2:review"
-    assert client.get_dev_workflow_stage("/w", "sc-1000-developer-api-x") == ""
     assert client.get_dev_workflow_stage("/w", "sc-1000-developer-api-1") == ""
 
 
@@ -1047,9 +1047,8 @@ def test_parse_story_name_rejects_ungrouped_names(name):
     # Why: names the hub never groups must report no story id.
     assert load_client().parse_story_name(name) is None
 
+
 # --- Story title lookup ---
-
-
 
 @pytest.mark.parametrize("name,story_id,role,repo,label", GROUPED_NAMES)
 def test_story_id_from_name_matches_hub_rule(name, story_id, role, repo, label):

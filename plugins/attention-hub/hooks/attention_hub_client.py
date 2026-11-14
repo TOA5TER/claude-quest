@@ -350,31 +350,37 @@ def _stage_line(repo, entry):
     return f"{repo}:{stage}" if isinstance(stage, str) else ""
 
 
-def get_story_stage(parsed):
-    """Stage line from the session's own story checkpoint. Never raises.
+def _read_story_checkpoint(story_id):
+    """The story's checkpoint dict, or None on a bad id or any read or parse problem."""
+    try:
+        if not isinstance(story_id, str) or not SAFE_STORY_ID_RE.fullmatch(story_id):
+            return None
+        path = Path.home() / ".claude" / "dev-workflow" / "state" / f"{story_id}.json"
+        checkpoint = json.loads(path.read_text(encoding="utf-8"))
+        return checkpoint if isinstance(checkpoint, dict) else None
+    except Exception:
+        return None
 
-    A per-repo role with a repo part gets one line for its repo; every other
+
+def get_story_stage(parsed):
+    """Stage line from the session's own story checkpoint.
+
+    Callers wrap this in their never-raise guard. A per-repo role with a repo part gets one line for its repo; every other
     story-named session gets one line per repo of the story. No age cutoff and
     no terminal filter, since the file is chosen by story id. Any read or parse
     problem gives "", never a fallback to another story's checkpoint.
     """
-    try:
-        story_id = parsed["story_id"]
-        if not SAFE_STORY_ID_RE.fullmatch(story_id):
-            return ""
-        path = Path.home() / ".claude" / "dev-workflow" / "state" / f"{story_id}.json"
-        checkpoint = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(checkpoint, dict):
-            return ""
-        repos = checkpoint.get("repos")
-        if not isinstance(repos, dict):
-            return ""
-        if parsed["role"].lower() in PER_REPO_ROLES and parsed["repo"]:
-            repo = _card_repo(parsed["repo"], repos)
-            return _stage_line(repo, repos[repo]) if repo else ""
-        return "\n".join(line for line in (_stage_line(r, e) for r, e in repos.items()) if line)
-    except Exception:
+    checkpoint = _read_story_checkpoint(parsed["story_id"])
+    if checkpoint is None:
         return ""
+    repos = checkpoint.get("repos")
+    if not isinstance(repos, dict):
+        return ""
+    if parsed["role"].lower() in PER_REPO_ROLES and parsed["repo"]:
+        repo = _card_repo(parsed["repo"], repos)
+        return _stage_line(repo, repos[repo]) if repo else ""
+    lines = (_stage_line(repo, entry) for repo, entry in repos.items())
+    return "\n".join(line for line in lines if line)
 
 
 def get_dev_workflow_stage(cwd, session_name=""):
@@ -449,11 +455,8 @@ def get_story_title(story_id):
     Never raises.
     """
     try:
-        if not isinstance(story_id, str) or not SAFE_STORY_ID_RE.fullmatch(story_id):
-            return ""
-        path = Path.home() / ".claude" / "dev-workflow" / "state" / f"{story_id}.json"
-        checkpoint = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(checkpoint, dict):
+        checkpoint = _read_story_checkpoint(story_id)
+        if checkpoint is None:
             return ""
         title = checkpoint.get("story_title")
         return title.strip()[:SESSION_NAME_MAX] if isinstance(title, str) else ""
