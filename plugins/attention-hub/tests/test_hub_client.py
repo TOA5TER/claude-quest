@@ -598,8 +598,7 @@ def test_stage_single_repo_checkpoint(tmp_path):
 
 
 def test_stage_multi_repo_checkpoint_shows_only_cwd_repo(tmp_path):
-    # Why: an unnamed session's card must show its own repo only, never the
-    # other repos that share the checkpoint.
+    # Why: an unnamed session's card shows only its own repo, never the other repos in the checkpoint.
     client, state_dir = make_stage_client(tmp_path)
     write_checkpoint(state_dir, "story-1.json",
                      {"repos": {"my-project": {"stage": "review"},
@@ -892,8 +891,7 @@ def seed_story_scope(state_dir):
 
 
 def test_stage_developer_card_reads_only_own_story_and_repo(tmp_path):
-    # Why: a newer checkpoint of another story naming the same repo must never
-    # leak into a per-repo card.
+    # Why: a newer checkpoint of another story naming the same repo must not leak into a per-repo card.
     client, state_dir = make_stage_client(tmp_path)
     seed_story_scope(state_dir)
     assert client.get_dev_workflow_stage("/w/api", "sc-1000-developer-api") == "api:developing"
@@ -901,16 +899,14 @@ def test_stage_developer_card_reads_only_own_story_and_repo(tmp_path):
 
 @pytest.mark.parametrize("name", ["sc-1000-reviewer-web", "sc-1000-tester-web"])
 def test_stage_reviewer_and_tester_use_repo_from_name_not_cwd(tmp_path, name):
-    # Why: reviewer and tester launch in the orchestrator's folder, so the cwd
-    # carries no repo; only the session name does.
+    # Why: reviewer and tester run in the orchestrator's folder, so only the session name carries the repo.
     client, state_dir = make_stage_client(tmp_path)
     seed_story_scope(state_dir)
     assert client.get_dev_workflow_stage("/w", name) == "web:spec"
 
 
 def test_stage_per_repo_card_without_entry_or_string_stage_is_empty(tmp_path):
-    # Why: a repo absent from the story checkpoint, or with a non-string stage,
-    # must not borrow another story's entry for that repo.
+    # Why: a repo missing from the story checkpoint, or lacking a string stage, must not borrow another story's entry.
     client, state_dir = make_stage_client(tmp_path)
     seed_story_scope(state_dir)
     assert client.get_dev_workflow_stage("/w", "sc-1000-developer-legacy") == ""
@@ -919,8 +915,7 @@ def test_stage_per_repo_card_without_entry_or_string_stage_is_empty(tmp_path):
 
 
 def test_stage_orchestrator_lists_only_own_story_repos(tmp_path):
-    # Why: the orchestrator card lists every repo of its own story and nothing
-    # from the cwd's repo or an older story.
+    # Why: the orchestrator card lists its own story's repos only, not the cwd's repo or an older story.
     client, state_dir = make_stage_client(tmp_path)
     seed_story_scope(state_dir)
     assert (client.get_dev_workflow_stage("/w/legacy", "sc-1000-orchestrator")
@@ -928,8 +923,7 @@ def test_stage_orchestrator_lists_only_own_story_repos(tmp_path):
 
 
 def test_stage_spec_writer_is_story_wide_not_repo_writer(tmp_path):
-    # Why: the hub splits a spec-writer session name into role "spec" and repo
-    # "writer"; the spec-writer must still get the story-wide list.
+    # Why: the hub splits the spec-writer name into role "spec" and repo "writer", yet it must get the story-wide list.
     client, state_dir = make_stage_client(tmp_path)
     seed_story_scope(state_dir)
     assert (client.get_dev_workflow_stage("/w", "sc-1000-spec-writer")
@@ -937,8 +931,7 @@ def test_stage_spec_writer_is_story_wide_not_repo_writer(tmp_path):
 
 
 def test_stage_per_repo_role_with_empty_repo_is_story_wide(tmp_path):
-    # Why: a bare role name has no repo to narrow to, so it takes the
-    # story-wide row.
+    # Why: a bare role name has no repo to narrow to, so it takes the story-wide row.
     client, state_dir = make_stage_client(tmp_path)
     seed_story_scope(state_dir)
     assert (client.get_dev_workflow_stage("/w", "sc-1000-developer")
@@ -946,8 +939,7 @@ def test_stage_per_repo_role_with_empty_repo_is_story_wide(tmp_path):
 
 
 def test_stage_story_checkpoint_problems_give_empty_without_fallback(tmp_path):
-    # Why: a missing or malformed story checkpoint must not fall back to the
-    # cwd scan, or an older story's lines come back.
+    # Why: a missing or malformed story checkpoint must not fall back to the cwd scan and revive older stories.
     client, state_dir = make_stage_client(tmp_path)
     write_checkpoint(state_dir, "sc-0999.json", {"repos": {"api": {"stage": "review"}}})
     name = "sc-1000-developer-api"
@@ -960,8 +952,7 @@ def test_stage_story_checkpoint_problems_give_empty_without_fallback(tmp_path):
 
 
 def test_stage_story_scope_ignores_age_and_terminal_stage(tmp_path):
-    # Why: the file is chosen by story id, so the age cutoff and the terminal
-    # filter that guard the cwd scan do not apply and finished repos show.
+    # Why: the file is chosen by story id, so the cwd scan's age and terminal filters do not apply.
     client, state_dir = make_stage_client(tmp_path)
     path = write_checkpoint(
         state_dir, "sc-1000.json",
@@ -972,8 +963,7 @@ def test_stage_story_scope_ignores_age_and_terminal_stage(tmp_path):
 
 
 def test_stage_story_wide_list_skips_entries_without_string_stage(tmp_path):
-    # Why: an entry with no usable stage has no line to show on the
-    # orchestrator card.
+    # Why: an entry with no usable stage has no line to show on the orchestrator card.
     client, state_dir = make_stage_client(tmp_path)
     write_checkpoint(state_dir, "sc-1000.json",
                      {"repos": {"api": {"stage": "review"}, "web": {"stage": 5},
@@ -982,8 +972,7 @@ def test_stage_story_wide_list_skips_entries_without_string_stage(tmp_path):
 
 
 def test_stage_worktree_cwd_shows_only_matched_candidate(tmp_path):
-    # Why: the worktree parent candidate must still match, and still yield one
-    # line for that candidate only.
+    # Why: the worktree parent candidate must still match and yield a single line.
     client, state_dir = make_stage_client(tmp_path)
     write_checkpoint(state_dir, "story-1.json",
                      {"repos": {"my-repo": {"stage": "review"},
@@ -993,8 +982,7 @@ def test_stage_worktree_cwd_shows_only_matched_candidate(tmp_path):
 
 
 def test_stage_unmatched_name_takes_cwd_path(tmp_path):
-    # Why: a name outside the story pattern has no story id, so the cwd scan
-    # applies, with one line.
+    # Why: a name outside the story pattern has no story id, so the cwd scan applies with one line.
     client, state_dir = make_stage_client(tmp_path)
     write_checkpoint(state_dir, "story-1.json",
                      {"repos": {"my-project": {"stage": "review"},
@@ -1004,8 +992,7 @@ def test_stage_unmatched_name_takes_cwd_path(tmp_path):
 
 
 def test_stage_payload_passes_session_name_to_lookup(tmp_path):
-    # Why: every hook builds its event here, so the name must reach the lookup
-    # for story scoping to apply everywhere.
+    # Why: every hook builds its event here, so the name must reach the lookup for scoping to apply.
     client, state_dir = make_stage_client(tmp_path)
     seed_story_scope(state_dir)
     payload = client.build_event_payload("s", "/w/api", "working",
@@ -1021,8 +1008,7 @@ def test_stage_role_match_ignores_letter_case(tmp_path):
 
 
 def test_stage_relaunch_suffix_resolves_to_base_repo(tmp_path):
-    # Why: a relaunched worker is named {name}-2; its card must still show the
-    # base repo, and an exact key wins over the suffix strip.
+    # Why: a relaunched worker is named {name}-2 yet shows the base repo, and an exact key beats the suffix strip.
     client, state_dir = make_stage_client(tmp_path)
     seed_story_scope(state_dir)
     assert client.get_dev_workflow_stage("/w", "sc-1000-developer-api-2") == "api:developing"
@@ -1036,8 +1022,7 @@ def test_stage_relaunch_suffix_resolves_to_base_repo(tmp_path):
 
 @pytest.mark.parametrize("name,story_id,role,repo,label", GROUPED_NAMES)
 def test_parse_story_name_matches_hub_split(name, story_id, role, repo, label):
-    # Why: the client's role/repo split must equal the hub's for every shared
-    # name, or a card's label and its stage repo disagree.
+    # Why: the client's role/repo split must equal the hub's, or a card's label and stage repo disagree.
     assert load_client().parse_story_name(name) == {
         "story_id": story_id, "role": role, "repo": repo}
 
