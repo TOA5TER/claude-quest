@@ -78,7 +78,7 @@ need "$DEV" "developer.md" "mode: complete" "## Complete mode (develop with mode
   "dev-workflow:dev-verify" "mode: local" "full branch diff" "skipped-steps: none" \
   "Internal Code Review, Adversarial Review and the Dev Deploy & Verify gate all ran" \
   "skipped: <step names>" "A documented conditional skip is not a skipped step and reports none" \
-  "In Local Mode skip this step" "Load the story and spec"
+  "In Local Mode skip this step" "Load the story and spec" "a story: <id> line" "before any mandatory step ran"
 
 need "$ST" "standards.md" "which is never omitted" "skipped-steps" "Any value other than none requires status: error" \
   "A worker's rule break is the orchestrator's to enforce" "without asking the user"
