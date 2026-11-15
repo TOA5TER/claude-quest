@@ -98,7 +98,7 @@ hooks/
 ```
 
 Runtime state (not committed): `~/.claude/dev-workflow/state/`
-- `{story-id}.json` — per-story checkpoint (stage, PR numbers, loop counts, next action, and an optional display-only story title)
+- `{story-id}.json` — per-story checkpoint (stage, PR numbers, loop counts, next action, launched role-session identities, and an optional display-only story title)
 - `.compact-request` — sentinel written by full-cycle at a high-context handoff (inside tmux only)
 - `.compact-request.failed` — written by compact-injector on injection failure
 - `context-meter-tier.txt` — last announced meter tier (prevents repeat emissions)

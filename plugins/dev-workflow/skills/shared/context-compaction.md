@@ -33,6 +33,15 @@ Schema:
   "approval_text": "Approved — proceed with the spec as written.",
   "approval_timestamp": "2026-06-10T16:05:00Z",
   "spec_written_at": "2026-06-10T16:00:00Z",
+  "sessions": {
+    "spec-writer": {
+      "name": "sc-1043-spec-writer",
+      "id": "5221bc61",
+      "sessionId": "5221bc61-582a-425c-aa72-6e256a095890",
+      "cwd": "/Users/dev/projects",
+      "launched_at": "2026-06-10T15:40:00Z"
+    }
+  },
   "updated_at": "2026-06-10T17:30:00Z"
 }
 ```
@@ -47,6 +56,8 @@ read by attention-hub's reporting client for its story group header. It is never
 signal and nothing in the pipeline branches on it. Only "Seed or Refresh Stage" writes it,
 when a caller passes a non-empty title (see `checkpoint-seeding.md`); a checkpoint without it
 is valid, and the hub then shows the bare story id.
+
+`sessions` is an optional top-level map recording the role sessions the orchestrator launched. Its keys are `spec-writer`, `developer-{repo}`, `reviewer-{repo}` and `tester-{repo}`. Each value holds exactly `name`, `id`, `sessionId`, `cwd` and `launched_at`: the first four are copied from the session's `claude agents --json --all` entry, and `launched_at` is the UTC ISO-8601 time of the launch with a `Z` suffix. The record is the session's identity, not its send address: `role-sessions.md` → "Send address" resolves it to a `name [ref]` right before each send, and a resolved `[ref]` is never written here. A checkpoint without `sessions` is valid; the lookup rebuilds the record.
 
 **No worktree path is ever stored in the checkpoint.** A stage or subagent that needs a
 repo's worktree resolves it live via `git worktree list --porcelain` (matching the entry
@@ -122,6 +133,7 @@ map, except where noted as a top-level field:
   self-seed already recorded `stage: "writing-specs"` when writing-specs started, and
   developing's own PM Context self-seed is what advances `stage` to `"developing"` once
   developing actually starts.
+- **When the orchestrator launches or respawns a role session:** in the same turn as each launch or respawn, read that session's entry from `claude agents --json --all` and write the role's `sessions` entry, replacing any earlier entry for that key, under the lock and atomic-write rules of `checkpoint-seeding.md`. After a respawn, match the session's entry by the recorded `sessionId` and, when no entry has it, by the recorded `name`, and rewrite the entry before the next send, because `claude respawn` may or may not keep the `sessionId`. A failed write follows "Checkpoint write failure": surface it and continue. No other write point touches `sessions`.
 - **After each review-loop / test-loop iteration:** increment that PR's repo entry's
   `review_loop_count` / `test_loop_count`.
 - **After a DT-1 re-request is sent** (a `mode: complete` or `mode: verify` request to the developer from the full-cycle hand-off check): increment that PR's repo entry's `review_loop_count` or `test_loop_count`, per the loop the re-request counts toward in full-cycle's Loop Safety Guard.
@@ -173,7 +185,7 @@ exists. It deliberately does not write a real checkpoint entry at Phase 6 on sto
 success; `writing-specs`' own Phase 3 self-seed is what eventually supersedes the placeholder,
 once a real entry exists to replace it. "Seed or Refresh Stage" shares the exact merge-upsert
 semantics described above (upsert only the fields it's given; never touch
-`review_loop_count`, `test_loop_count`, `approval_text`, or `approval_timestamp`; and never
+`review_loop_count`, `test_loop_count`, `approval_text`, `approval_timestamp`, or `sessions`; and never
 clear `story_title`, which it sets only when given a non-empty title), so a
 stage's own self-seed and full-cycle's own writes to the same repo entry can never clobber
 each other's fields, regardless of which one runs first or last within the same pipeline
