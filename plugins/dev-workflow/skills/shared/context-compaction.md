@@ -124,6 +124,7 @@ map, except where noted as a top-level field:
   developing actually starts.
 - **After each review-loop / test-loop iteration:** increment that PR's repo entry's
   `review_loop_count` / `test_loop_count`.
+- **After a DT-1 re-request is sent** (a `mode: complete` or `mode: verify` request to the developer from the full-cycle hand-off check): increment that PR's repo entry's `review_loop_count` or `test_loop_count`, per the loop the re-request counts toward in full-cycle's Loop Safety Guard.
 - **After a given PR's testing-prs passes:** advance that repo's entry's `stage` to `"done"`.
   Other repos' entries are untouched and continue independently — this is the terminal
   state a fully finished repo reaches while a sibling repo can still be mid-loop.
