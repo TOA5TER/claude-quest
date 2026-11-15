@@ -143,7 +143,7 @@ The orchestrator tracks cycle counts exactly as before, under the Loop Safety Gu
 
 **Hub rules.**
 
-- A worker replies only to the `from` address of the latest orchestrator message, and never messages any other session or worker. A session's address changes when it is respawned, so the orchestrator caches no address and no `[ref]`.
+- A worker replies only to the `from` address of the latest orchestrator message, and never messages any other session or worker. A session's address changes when it is respawned, so the orchestrator caches no `[ref]` and resolves the address again before each send ("Send address"; row 4 reuses the worker's latest `from` address, which is read from the message and never stored).
 - Every message is self-contained so a compacted or respawned worker can act on it plus the role's recovery source alone (GitHub for the PR roles; the checkpoint, spec files, and PM story for the spec-writer).
 - At most one request is outstanding per worker.
 - Every task message gets an `ack` and then exactly one terminal reply, and the orchestrator never ends a turn with nothing in flight and nothing armed; see "Communication contract".
@@ -193,16 +193,16 @@ Every orchestrator send to a role session (`ping`, every task message, `shutdown
 
 | Row | Condition | Action |
 |-----|-----------|--------|
-| 1 | The recorded `id` is absent from the CLI list | Run the lookup (the Target table) before sending |
+| 1 | No record, or the recorded `id` is absent from the CLI list | Run the lookup (the Target table) before sending |
 | 2 | Exactly one `ListAgents` row of kind `bg` has the recorded `name` | Send to that row's `name [ref]` |
 | 3 | No `ListAgents` row of kind `bg` has the recorded `name` | Handle as "not reachable" under "Waiting and liveness": respawn once, then re-send |
 | 4 | Otherwise (several `bg` rows share the name) | Send to the `from` address of the latest message received from this worker since its last launch or respawn. With no such message: report the rows without asking, launch under a new name (the New name rule), `ping`, record it, send to it after its `ready`, and list the old rows as left over |
 
-Rows of any kind other than `bg` (Remote Control, cloud, `interactive`) are never a send target. After a respawn, re-read the session's CLI entry, matched by the recorded `sessionId` and, when no entry has it, by the recorded `name`, and rewrite the role's `sessions` entry before the next send.
+Rows of any kind other than `bg` (Remote Control, cloud, `interactive`) are never a send target. After a respawn, re-read the session's CLI entry, matched by the recorded `sessionId` and, when no entry has it, by the recorded `name` (`claude respawn` may or may not keep the `sessionId`), and rewrite the role's `sessions` entry before the next send.
 
 **Name collision on send.** If a send result reports a name collision (it lists other candidate names, asks to disambiguate, or asks for confirmation), do not confirm and do not ask the user: re-read the CLI list, take the checkpoint `id`, resolve the address again by the table above, and re-send once. A second failed send follows the "Failed, stopped, or no process" row under "Waiting and liveness".
 
-**When to ask the user.** For session lookup, naming, addressing and collisions, Ask the user only for: an `interactive` entry holding the role's candidate name (Target row 1); permission before `shutdown`, `claude stop` or `claude rm`; or a failed later launch. Every other outcome is decided by the tables above, and sessions left over are reported without a question. Other asks (a Blocked permission prompt, a round timeout, the Loop Safety Guard) are unchanged.
+**When to ask the user.** For session lookup, naming, addressing and collisions the user is asked about nothing else. Ask the user only for: an `interactive` entry holding the role's candidate name (Target row 1); permission before `shutdown`, `claude stop` or `claude rm`; or a failed later launch. Every other outcome is decided by the tables above, and sessions left over are reported without a question. Other asks (a Blocked permission prompt, a round timeout, the Loop Safety Guard) are unchanged.
 
 ## Waiting and liveness
 

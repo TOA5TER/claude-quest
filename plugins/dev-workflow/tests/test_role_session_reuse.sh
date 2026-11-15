@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests that every role-session launch is preceded by a by-name lookup and that implementation work stays with the developer session.
+# Tests that every role-session launch is preceded by a lookup, that sends are addressed through the checkpoint sessions record, and that implementation work stays with the developer session.
 set -uo pipefail
 
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -65,8 +65,7 @@ need_text "$rs_text" "role-sessions.md" \
   "Lookup before every launch" \
   "including a lazy mid-run launch" \
   "name family" \
-  "candidate name" \
-  "name [ref]"
+  "candidate name"
 
 # Why: Remote Control and cloud rows mirror the user's own sessions; calling them another machine made the orchestrator ask the user about its own sessions.
 need_text "$rs_text" "role-sessions.md" \
@@ -80,7 +79,9 @@ forbid_text "$rs_text" "role-sessions.md" \
 # Why: a send to a bare name can land on a stale row with the same name, so every send is addressed to the resolved name [ref] of the recorded session.
 need_text "$rs_text" "role-sessions.md" \
   "never by bare name" \
-  "name [ref]"
+  "name [ref]" \
+  "## Send address" \
+  "Rows of any kind other than"
 
 # Why: a name collision on send must be resolved from the recorded identity, and the user is asked only in the closed cases.
 need_text "$rs_text" "role-sessions.md" \
@@ -107,15 +108,13 @@ forbid_text "$lookup_bullet" "Lookup bullet" \
 # Why: the checkpoint must hold each launched session's identity, written in the turn of the launch, or the address cannot be resolved later.
 cc_text="$(whole "$CC")"
 need_text "$cc_text" "context-compaction.md" \
-  "sessions" \
   "launched_at" \
   "sessionId" \
   "in the same turn as each launch or respawn"
 
 # Why: seeding rewrites the checkpoint, so it must be told to leave the session records alone.
-seed_never="$(bullet_block "$CS" 'This procedure never touches')"
-[ -n "$seed_never" ] || fail "checkpoint-seeding.md: never-touches paragraph not found"
-need_text "$seed_never" "checkpoint-seeding.md never-touches paragraph" "sessions"
+cs_text="$(whole "$CS")"
+need_text "$cs_text" "checkpoint-seeding.md" "approval_timestamp, or sessions"
 
 # Why: the host-rename remark must not read as permission to launch a duplicate.
 names_bullet="$(line_starting "$RS" '- **Names.**')"
