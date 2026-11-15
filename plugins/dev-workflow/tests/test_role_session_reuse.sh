@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Tests that every role-session launch is preceded by a by-name lookup and that implementation work stays with the developer session.
+# Tests that every role-session launch is preceded by a lookup, that sends are addressed through the checkpoint sessions record, and that implementation work stays with the developer session.
 set -uo pipefail
 
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RS="$PLUGIN_ROOT/skills/shared/role-sessions.md"
 FC="$PLUGIN_ROOT/skills/full-cycle/SKILL.md"
+CC="$PLUGIN_ROOT/skills/shared/context-compaction.md"
+CS="$PLUGIN_ROOT/skills/shared/checkpoint-seeding.md"
 
 FAILURES=0
 fail() {
@@ -54,31 +56,65 @@ stage_section() {
 
 [ -f "$RS" ] || { fail "role-sessions.md missing"; exit 1; }
 [ -f "$FC" ] || { fail "full-cycle/SKILL.md missing"; exit 1; }
+[ -f "$CC" ] || { fail "context-compaction.md missing"; exit 1; }
+[ -f "$CS" ] || { fail "checkpoint-seeding.md missing"; exit 1; }
 
-# Why: the lookup rule is the single source of the by-name match, so its name family, candidate name and exemptions must be spelled out in role-sessions.md.
+# Why: the lookup rule is the single source of the session match, so its name family, candidate name and exemptions must be spelled out in role-sessions.md.
 rs_text="$(whole "$RS")"
 need_text "$rs_text" "role-sessions.md" \
   "Lookup before every launch" \
   "including a lazy mid-run launch" \
   "name family" \
-  "candidate name" \
+  "candidate name"
+
+# Why: Remote Control and cloud rows mirror the user's own sessions; calling them another machine made the orchestrator ask the user about its own sessions.
+need_text "$rs_text" "role-sessions.md" \
+  "bridge or stale copies of the user's own sessions" \
+  "never counting entries"
+forbid_text "$rs_text" "role-sessions.md" \
+  "another machine" \
   "offline Remote Control" \
-  "name [ref]"
+  "For other machines"
+
+# Why: a send to a bare name can land on a stale row with the same name, so every send is addressed to the resolved name [ref] of the recorded session.
+need_text "$rs_text" "role-sessions.md" \
+  "never by bare name" \
+  "name [ref]" \
+  "## Send address" \
+  "Rows of any kind other than"
+
+# Why: a name collision on send must be resolved from the recorded identity, and the user is asked only in the closed cases.
+need_text "$rs_text" "role-sessions.md" \
+  "do not confirm and do not ask" \
+  "Ask the user only for"
 
 # Why: the rule must name the commands it runs and ban a duplicate launch; these phrases exist elsewhere in the file, so they are checked only inside the bullet.
 lookup_bullet="$(bullet_block "$RS" '- **Lookup before every launch.**')"
 [ -n "$lookup_bullet" ] || fail "role-sessions.md: Lookup before every launch bullet not found"
 need_text "$lookup_bullet" "Lookup bullet" \
+  "The CLI list is the only source" \
   "claude agents --json --all" \
-  "ListAgents" \
   "claude respawn" \
   "ping" \
   "Never launch under a name that a counting entry already has" \
   "Unresponsive." \
-  "Ambiguous." \
   "An interactive entry is never offered for reuse" \
   "one higher than the highest family number" \
   "skipping any number whose name is excluded from the family"
+forbid_text "$lookup_bullet" "Lookup bullet" \
+  "ListAgents" \
+  "Ambiguous."
+
+# Why: the checkpoint must hold each launched session's identity, written in the turn of the launch, or the address cannot be resolved later.
+cc_text="$(whole "$CC")"
+need_text "$cc_text" "context-compaction.md" \
+  "launched_at" \
+  "sessionId" \
+  "in the same turn as each launch or respawn"
+
+# Why: seeding rewrites the checkpoint, so it must be told to leave the session records alone.
+cs_text="$(whole "$CS")"
+need_text "$cs_text" "checkpoint-seeding.md" "approval_timestamp, or sessions"
 
 # Why: the host-rename remark must not read as permission to launch a duplicate.
 names_bullet="$(line_starting "$RS" '- **Names.**')"
@@ -114,8 +150,13 @@ done
 # Why: the resume paragraph must respawn every finished state and name the matching rule.
 resume_para="$(line_starting "$FC" '**Role sessions on resume.**')"
 [ -n "$resume_para" ] || fail "full-cycle: Role sessions on resume paragraph not found"
-need_text "$resume_para" "Role sessions on resume" "respawn a done, stopped, failed, or crashed one" "Lookup before every launch" "ListAgents"
-forbid_text "$resume_para" "Role sessions on resume" "list sessions with claude agents --json --all"
+need_text "$resume_para" "Role sessions on resume" "respawn a done, stopped, failed, or crashed one" "Lookup before every launch"
+forbid_text "$resume_para" "Role sessions on resume" "list sessions with claude agents --json --all" "ListAgents" "checks both"
+
+# Why: an orchestrator that still sends by bare name anywhere recreates the misdelivery, so the hand-off rule must name the checkpoint record.
+hand_off="$(line_starting "$FC" '- **Hand-off discipline.**')"
+[ -n "$hand_off" ] || fail "full-cycle: Hand-off discipline bullet not found"
+need_text "$hand_off" "Hand-off discipline bullet" "addressed by the checkpoint sessions record"
 
 # Why: implementation work must never bypass an existing developer session.
 scope="$(line_starting "$FC" '**SCOPE BOUNDARY:**')"

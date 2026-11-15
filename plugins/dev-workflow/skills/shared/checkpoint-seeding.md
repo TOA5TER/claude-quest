@@ -105,8 +105,8 @@ tool).
    write failure", and continue — never block or abort the caller's real work over a
    checkpoint write failure.
 
-This procedure never touches `review_loop_count`, `test_loop_count`, `approval_text`, or
-`approval_timestamp` — those remain exclusively full-cycle's own writes (see
+This procedure never touches `review_loop_count`, `test_loop_count`, `approval_text`, `approval_timestamp`, or `sessions` —
+those remain exclusively full-cycle's own writes (see
 `context-compaction.md` → "Write points"). Nor does it touch `story_title`, beyond setting a
 supplied non-empty title in step 5: it never clears or blanks one. A dispatched subagent's own standalone self-seed
 (this procedure) and full-cycle's post-return write to the same repo entry can therefore
