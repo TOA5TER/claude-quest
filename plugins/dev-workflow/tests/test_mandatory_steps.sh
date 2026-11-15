@@ -72,7 +72,8 @@ before "$DV" "developing" "## Debugging and Problem Solving" "## Internal Code R
 need "$DEV" "developer.md" "mode: complete" "## Complete mode (develop with mode: complete)" \
   "dev-workflow:dev-verify" "mode: local" "full branch diff" "skipped-steps: none" \
   "Internal Code Review, Adversarial Review and the Dev Deploy & Verify gate all ran" \
-  "skipped: <step names>"
+  "skipped: <step names>" "A documented conditional skip is not a skipped step and reports none" \
+  "In Local Mode skip this step"
 
 need "$ST" "standards.md" "skipped-steps" "Any value other than none requires status: error" \
   "A worker's rule break is the orchestrator's to enforce" "without asking the user"
@@ -80,7 +81,8 @@ need "$ST" "standards.md" "skipped-steps" "Any value other than none requires st
 need "$FC" "full-cycle" "mode: complete" "without asking the user" "Counts one cycle" \
   "else, when the key is absent or names nothing, both \"Internal Code Review\" and \"Adversarial Review\"" \
   "skipped: none" "rows 2 and 3 count" "DT-1 rows 1, 2 and 4 apply" "skipped-steps, plus" \
-  "does not count against the Loop Safety Guard" "A draft PR still blocks"
+  "does not count against the Loop Safety Guard" "A draft PR still blocks" \
+  "Row 2 reads only develop-type results"
 forbid "$FC" "full-cycle" "only as a hint" "A round blocked at the hand-off check does not count as a cycle" \
   "a failed check surfaces a developer block and does not increment the loop counter"
 if grep -qi "skip the PR-number read and the hand-off check for Local Mode repos" "$FC"; then
