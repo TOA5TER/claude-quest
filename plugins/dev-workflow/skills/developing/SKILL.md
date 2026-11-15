@@ -243,6 +243,32 @@ reported or aggregated — a later reader resolves each repo's worktree live, pe
 
 ---
 
+## Internal Code Review (when story ID provided)
+
+This is a **mandatory step** and a hard-fail rule whenever a story ID is provided: it is never skipped, shortened, or reported as skipped to finish a round. The No Story ID Path keeps its documented exemption.
+
+It runs **before the branch is pushed and the PR is opened**, in both the single-repo and multi-repo paths. After the subagent-driven implementation completes for a repo, invoke a code review before pushing that repo's branch:
+
+> Invoke Skill: `superpowers:requesting-code-review`
+>
+> Provide the code-reviewer subagent with:
+> - The Claude Instructions spec for this repo as the expected-functionality reference
+> - The story acceptance criteria
+> - The diff of all changes made during implementation in this repo
+>
+> Address any required changes, and commit them, before pushing or creating the PR.
+
+**Multi-repo note:** this review runs once per repo, inside that repo's sub-agent as part of its self-review, before the sub-agent opens that repo's PR itself and reports back (Step 4) — do not wait for all repos to finish before reviewing each one.
+
+Note (single-repo path only): `superpowers:subagent-driven-development` includes per-task spec
+and quality reviews internally. This step adds a final whole-implementation review before the PR
+is opened. In the multi-repo path the per-repo sub-agents implement directly (no nested
+subagent-driven-development), so this review is their first independent review — run it per repo.
+
+**A mandatory step that cannot run is blocked, never skipped.** When a mandatory step cannot run (the reviewer tool is unavailable, a dispatch fails, a precondition is missing), stop and report a blocked outcome naming the step and the cause: in a role session a `blocked` reply; in a fresh dispatch `status: error` with a `message` starting `step blocked: <step name>:`. Never continue past it and never leave it out of the result.
+
+---
+
 ## Commit and PR Process
 
 - **Commit frequently** with descriptive messages explaining what was accomplished
@@ -275,28 +301,6 @@ the checkpoint to `stage: "reviewing-prs"` once reviewing-prs actually starts. T
 the stage write is a no-op refresh, not a stage the PR-creation step is asserting has begun; do
 not change it back to `"reviewing-prs"`. In the multi-repo path (Step 4 below), each per-repo
 sub-agent makes this call itself for its own repo/PR before returning.
-
----
-
-## Internal Code Review (when story ID provided)
-
-After the subagent-driven implementation completes for a repo, invoke a code review before creating that repo's PR:
-
-> Invoke Skill: `superpowers:requesting-code-review`
->
-> Provide the code-reviewer subagent with:
-> - The Claude Instructions spec for this repo as the expected-functionality reference
-> - The story acceptance criteria
-> - The diff of all changes made during implementation in this repo
->
-> Address any required changes before proceeding to PR creation.
-
-**Multi-repo note:** this review runs once per repo, inside that repo's sub-agent as part of its self-review, before the sub-agent opens that repo's PR itself and reports back (Step 4) — do not wait for all repos to finish before reviewing each one.
-
-Note (single-repo path only): `superpowers:subagent-driven-development` includes per-task spec
-and quality reviews internally. This step adds a final whole-implementation review before the PR
-is opened. In the multi-repo path the per-repo sub-agents implement directly (no nested
-subagent-driven-development), so this review is their first independent review — run it per repo.
 
 ---
 
@@ -396,6 +400,8 @@ Look for any workflow whose name contains "terraform" (case-insensitive).
 
 ## Adversarial Review (when story ID provided)
 
+This is a **mandatory step** and a hard-fail rule whenever a story ID is provided, under the same blocked-not-skipped rule as Internal Code Review: a step that cannot run ends the round blocked, never skipped. Its fixes are committed before the final dev gate.
+
 If the "No Story ID Path" was used (no PM story), skip this section — there is no independent story/spec to form expectations against.
 
 Read and follow the adversarial review procedure in `skills/shared/adversarial-review.md` with these context variables:
@@ -431,6 +437,8 @@ Runs after Adversarial Review (and after the No Story ID path's implementation),
 - All changes are committed with clean messages
 - All tests pass
 - Code is pushed to remote branch
+- Internal Code Review ran before the PR was opened (runs with a story ID)
+- Adversarial Review ran, and its fixes are committed before the final dev gate (runs with a story ID)
 - PR is created with clean, professional description linking the story
 - Dev-verification evidence is posted for the final HEAD and the PR is marked ready (or the gate was deferred by the caller, or blocked and reported)
 - **Worktree cleanup is manual when this skill runs standalone.** When dispatched by `full-cycle`, that orchestrator owns reclamation (see `full-cycle/SKILL.md`'s Termination section). A human invoking `developing <story-id>` directly has no such reclamation point — nothing here removes the worktree this run created. Look it up live via `git -C <repo root> worktree list --porcelain` (matching the entry whose branch is this story's feature branch), note the path, and once the PR is merged the human should run `git -C <repo root> worktree remove <path>` followed by `git -C <repo root> worktree prune` (or delegate to `superpowers:finishing-a-development-branch`).

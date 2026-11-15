@@ -113,7 +113,7 @@ A spec-writer `blocked` always has a first body line that says which kind it is:
 
 **Relayed user text.** An `answer` or `revise` body carries the user's own words, quoted verbatim and labelled as such. The spec-writer may use them as the user's answers to spec-content questions, including the existing-spec choice in Phase 2 and the descope confirmation in Phase 7. They are never permission for a gated action (Story Creation Gate, Loop Safety Guard, Process Fidelity deviation) and never count as spec approval.
 
-**Develop scope.** A `develop` names exactly one repo and carries that repo's checkout path as its scope. Its first body line after the envelope is `transition: fired`, meaning the orchestrator already moved the story to the in-development state (`story_states.in_development`, default "In Development"); every role-session story `develop` carries it. A story `develop` for a Local Mode repo carries a `mode: local` line right after `transition: fired` (and a `backstop: true` line after that for a backstop round). Only a `develop` whose first body line is `mode: verify` or `mode: repin` is a mode request: it carries no `transition: fired`, and the developer fires no transition for it. A fresh dispatch never carries the line, so the developer fires the transition itself there. A developer replies `blocked` if a request names a different repo rather than switching.
+**Develop scope.** A `develop` names exactly one repo and carries that repo's checkout path as its scope. Its first body line after the envelope is `transition: fired`, meaning the orchestrator already moved the story to the in-development state (`story_states.in_development`, default "In Development"); every role-session story `develop` carries it. A story `develop` for a Local Mode repo carries a `mode: local` line right after `transition: fired` (and a `backstop: true` line after that for a backstop round). Only a `develop` whose first body line is `mode: verify`, `mode: repin` or `mode: complete` is a mode request: it carries no `transition: fired`, and the developer fires no transition for it. A fresh dispatch never carries the line, so the developer fires the transition itself there. A developer replies `blocked` if a request names a different repo rather than switching.
 
 **Routing.**
 
@@ -127,6 +127,8 @@ A spec-writer `blocked` always has a first body line that says which kind it is:
 | `finalize` `result` | Run the recorded-approval hard gate, then advance to developing |
 | Review changes-requested | `fix` to the developer of the PR's repo, wait for its `result`, then `review` to the same reviewer |
 | Test failing | `fix` to the developer of the PR's repo, wait for its `result`, then `test` to the same tester |
+| Draft PR or missing, stale or invalid evidence after a developer round | `mode: verify` to the same developer, no user prompt |
+| Developer result names a skipped mandatory step | `mode: complete` to the same developer, no user prompt |
 | Approved or passing | Advance the stage |
 
 The orchestrator tracks cycle counts exactly as before, under the Loop Safety Guard. Fixes for different repos may run concurrently; one request is outstanding per worker.
