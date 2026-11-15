@@ -127,6 +127,7 @@ A spec-writer `blocked` always has a first body line that says which kind it is:
 | `finalize` `result` | Run the recorded-approval hard gate, then advance to developing |
 | Review changes-requested | `fix` to the developer of the PR's repo, wait for its `result`, then `review` to the same reviewer |
 | Test failing | `fix` to the developer of the PR's repo, wait for its `result`, then `test` to the same tester |
+| Draft PR or missing, stale or invalid evidence after a developer round | `mode: verify` to the same developer, no user prompt |
 | Developer result names a skipped mandatory step | `mode: complete` to the same developer, no user prompt |
 | Approved or passing | Advance the stage |
 

@@ -211,7 +211,7 @@ leave `tools` unrestricted; workers that never fan out (pr-state-reader) restric
 
 (In a role session this record travels as the body of the `result` message to the orchestrator, per `skills/shared/role-sessions.md`; the format is unchanged.)
 
-Required keys (omit only if genuinely empty/unknown):
+Required keys (omit only if genuinely empty/unknown, except `skipped-steps`, which is never omitted):
 - `service-name` — the service, repo, or project being acted on
 - `pm-key` — the PM ticket/story ID (e.g. `sc-1234`, `gh-42`)
 - `pr-number` — the GitHub PR number

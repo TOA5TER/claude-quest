@@ -66,6 +66,11 @@ TO="$S/toiling/SKILL.md"
 need "$DV" "developing" "mandatory step" "hard-fail rule" "Internal Code Review ran before the PR was opened" \
   "Adversarial Review ran, and its fixes are committed before the final dev gate" \
   "step blocked: <step name>:" "never skipped" "before the branch is pushed and the PR is opened"
+for sec in "## Internal Code Review" "## Adversarial Review"; do
+  body="$(awk -v h="$sec" 'index($0,h)==1{f=1;print;next} /^## /{f=0} f' "$DV" | normalise)"
+  has "$body" "mandatory step" || fail "developing: '$sec' lacks 'mandatory step'"
+  has "$body" "hard-fail" || fail "developing: '$sec' lacks 'hard-fail'"
+done
 before "$DV" "developing" "## Internal Code Review" "## Commit and PR Process"
 before "$DV" "developing" "## Debugging and Problem Solving" "## Internal Code Review"
 
@@ -73,23 +78,23 @@ need "$DEV" "developer.md" "mode: complete" "## Complete mode (develop with mode
   "dev-workflow:dev-verify" "mode: local" "full branch diff" "skipped-steps: none" \
   "Internal Code Review, Adversarial Review and the Dev Deploy & Verify gate all ran" \
   "skipped: <step names>" "A documented conditional skip is not a skipped step and reports none" \
-  "In Local Mode skip this step"
+  "In Local Mode skip this step" "Load the story and spec"
 
-need "$ST" "standards.md" "skipped-steps" "Any value other than none requires status: error" \
+need "$ST" "standards.md" "which is never omitted" "skipped-steps" "Any value other than none requires status: error" \
   "A worker's rule break is the orchestrator's to enforce" "without asking the user"
 
 need "$FC" "full-cycle" "mode: complete" "without asking the user" "Counts one cycle" \
   "else, when the key is absent or names nothing, both \"Internal Code Review\" and \"Adversarial Review\"" \
   "skipped: none" "rows 2 and 3 count" "DT-1 rows 1, 2 and 4 apply" "skipped-steps, plus" \
   "does not count against the Loop Safety Guard" "A draft PR still blocks" \
-  "Row 2 reads only develop-type results"
+  "Row 2 reads only develop-type results" "or any other status: error with skipped-steps: none"
 forbid "$FC" "full-cycle" "only as a hint" "A round blocked at the hand-off check does not count as a cycle" \
   "a failed check surfaces a developer block and does not increment the loop counter"
 if grep -qi "skip the PR-number read and the hand-off check for Local Mode repos" "$FC"; then
   fail "full-cycle: unqualified Local Mode hand-off skip remains"
 fi
 
-need "$RS" "role-sessions.md" "mode: complete" "Developer result names a skipped mandatory step"
+need "$RS" "role-sessions.md" "mode: complete" "Developer result names a skipped mandatory step" "mode: verify to the same developer"
 need "$CC" "context-compaction.md" "After a DT-1 re-request is sent" "review_loop_count"
 need "$TO" "toiling" "skipped-steps"
 
