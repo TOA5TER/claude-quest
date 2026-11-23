@@ -78,10 +78,10 @@ forbid_text "$rs_text" "role-sessions.md" \
 
 # Why: a send to a bare name can land on a stale row with the same name, so every send is addressed to the resolved name [ref] of the recorded session.
 need_text "$rs_text" "role-sessions.md" \
-  "never by bare name" \
+  "never to a bare name" \
   "name [ref]" \
   "## Send address" \
-  "Rows of any kind other than"
+  "Rows of any other type"
 
 # Why: a name collision on send must be resolved from the recorded identity, and the user is asked only in the closed cases.
 need_text "$rs_text" "role-sessions.md" \
@@ -92,13 +92,13 @@ need_text "$rs_text" "role-sessions.md" \
 lookup_bullet="$(bullet_block "$RS" '- **Lookup before every launch.**')"
 [ -n "$lookup_bullet" ] || fail "role-sessions.md: Lookup before every launch bullet not found"
 need_text "$lookup_bullet" "Lookup bullet" \
-  "The CLI list is the only source" \
-  "claude agents --json --all" \
-  "claude respawn" \
+  "The launcher list is the only source" \
+  "role-session.sh list" \
+  "role-session.sh respawn" \
   "ping" \
   "Never launch under a name that a counting entry already has" \
   "Unresponsive." \
-  "An interactive entry is never offered for reuse" \
+  "An entry the launcher did not start is never offered for reuse" \
   "one higher than the highest family number" \
   "skipping any number whose name is excluded from the family"
 forbid_text "$lookup_bullet" "Lookup bullet" \
@@ -151,7 +151,7 @@ done
 resume_para="$(line_starting "$FC" '**Role sessions on resume.**')"
 [ -n "$resume_para" ] || fail "full-cycle: Role sessions on resume paragraph not found"
 need_text "$resume_para" "Role sessions on resume" "respawn a done, stopped, failed, or crashed one" "Lookup before every launch"
-forbid_text "$resume_para" "Role sessions on resume" "list sessions with claude agents --json --all" "ListAgents" "checks both"
+forbid_text "$resume_para" "Role sessions on resume" "list sessions with claude agents --json --all" "claude agents" "ListAgents" "checks both"
 
 # Why: an orchestrator that still sends by bare name anywhere recreates the misdelivery, so the hand-off rule must name the checkpoint record.
 hand_off="$(line_starting "$FC" '- **Hand-off discipline.**')"
