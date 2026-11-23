@@ -122,6 +122,7 @@ case "$sub" in
     while [ $# -gt 0 ]; do
       case "$1" in
         -k) shift ;;
+        -c) shift 2 ;;
         -t) target="$2"; shift 2 ;;
         *) break ;;
       esac
@@ -211,7 +212,7 @@ sid="${OUT##*session-id=}"
 re='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 [[ "$sid" =~ $re ]] || fail "T-1: session id '$sid' is not a lowercase UUID"
 argv="$STATE/s/sc-1-developer-api/argv"
-want=$'claude\n--name\nsc-1-developer-api\n--agent\ndev-workflow:developer\n--model\nsonnet\n--effort\nmedium\n--settings\n{"env":{"DEV_WORKFLOW_ROLE":"developer"}}\n--session-id\n'"$sid"$'\nboot "now" it'"'"'s ok'
+want=$'claude\n--name\nsc-1-developer-api\n--agent\ndev-workflow:developer\n--model\nsonnet\n--effort\nmedium\n--settings\n{"env":{"DEV_WORKFLOW_ROLE":"developer"}}\n--session-id\n'"$sid"$'\n--\nboot "now" it'"'"'s ok'
 [ "$(cat "$argv")" = "$want" ] || fail "T-1: claude argv differs: $(cat "$argv")"
 log_has "T-1" "new-session -d -s sc-1-developer-api -c $WORK"
 [ "$(cat "$STATE/s/sc-1-developer-api/cwd")" = "$WORK" ] || fail "T-1: cwd not passed to tmux"

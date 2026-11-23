@@ -128,7 +128,7 @@ cmd_launch() {
   if [ -n "${OPT_permission_mode:-}" ]; then
     tmarg "$OPT_permission_mode"; v="$REPLY"; argv+=(--permission-mode "$v")
   fi
-  argv+=(--session-id "$session_id")
+  argv+=(--session-id "$session_id" --)
   tmarg "$OPT_prompt"; v="$REPLY"; argv+=("$v")
 
   tmux new-session -d -s "$OPT_name" -c "$cwd" "${argv[@]}" > /dev/null 2>&1 \
@@ -164,7 +164,7 @@ import json, sys
 for e in json.load(sys.stdin):
     if e.get("kind") not in (None, "interactive", "background"):
         continue
-    f = [str(e.get("pid", "-")), e.get("status") or e.get("state") or "unknown", e.get("name") or "-", e.get("cwd") or "-", e.get("sessionId") or "-"]
+    f = [str(e.get("pid") or "-"), e.get("status") or e.get("state") or "unknown", e.get("name") or "-", e.get("cwd") or "-", e.get("sessionId") or "-"]
     print("\x1f".join(f))
 ' 2> /dev/null
   else
@@ -253,7 +253,7 @@ cmd_send() {
   local buffer="dwf-send-$$"
   printf '%s\nReply to: %s' "$OPT_message" "$OPT_reply_to" | tmux load-buffer -b "$buffer" - > /dev/null 2>&1 \
     || die 8 "send: tmux could not load the message buffer"
-  tmux paste-buffer -p -d -b "$buffer" -t "=$OPT_name:" > /dev/null 2>&1 \
+  tmux paste-buffer -p -r -d -b "$buffer" -t "=$OPT_name:" > /dev/null 2>&1 \
     || die 8 "send: tmux could not paste into '$OPT_name'"
   sleep "${ROLE_SESSION_ENTER_DELAY:-0.3}"
   tmux send-keys -t "=$OPT_name:" Enter > /dev/null 2>&1 \
@@ -293,7 +293,9 @@ cmd_respawn() {
     tmarg "$permission"; v="$REPLY"; argv+=(--permission-mode "$v")
   fi
   argv+=(--resume "$session_id")
-  tmux respawn-pane -k -t "=$OPT_name:" "${argv[@]}" > /dev/null 2>&1 \
+  local rcwd; rcwd="$(stored_opt "$OPT_name" @dwf_cwd)"
+  local rargs=(-k -t "=$OPT_name:"); [ -n "$rcwd" ] && rargs+=(-c "$rcwd")
+  tmux respawn-pane "${rargs[@]}" "${argv[@]}" > /dev/null 2>&1 \
     || die 8 "respawn: tmux could not respawn the pane of '$OPT_name'"
   echo "respawned $OPT_name session-id=$session_id"
 }

@@ -163,6 +163,11 @@ scope="$(line_starting "$FC" '**SCOPE BOUNDARY:**')"
 [ -n "$scope" ] || fail "full-cycle: SCOPE BOUNDARY paragraph not found"
 need_text "$scope" "SCOPE BOUNDARY" "never to the orchestrator itself or a fresh subagent while that session exists"
 
+# Why: the five background-session commands must be gone from every file that describes how role sessions are run.
+for f in "$RS" "$FC" "$CC" "$PLUGIN_ROOT/agents/spec-writer.md" "$PLUGIN_ROOT/agents/developer.md" "$PLUGIN_ROOT/agents/reviewer.md" "$PLUGIN_ROOT/agents/tester.md" "$PLUGIN_ROOT/CLAUDE.md" "$PLUGIN_ROOT/README.md"; do
+  forbid_text "$(whole "$f")" "$(basename "$f")" "claude --bg" "claude agents" "claude respawn" "claude stop" "claude rm"
+done
+
 if [ "$FAILURES" -gt 0 ]; then
   echo "$FAILURES failure(s)" >&2
   exit 1
