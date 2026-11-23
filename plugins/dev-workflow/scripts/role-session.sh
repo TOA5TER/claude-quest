@@ -134,23 +134,58 @@ cmd_launch() {
   tmux new-session -d -s "$OPT_name" -c "$cwd" "${argv[@]}" > /dev/null 2>&1 \
     || die 8 "launch: tmux could not create session '$OPT_name'"
 
-  local pair ok=1
+  store_launch_opts "$session_id" "$effort" "$cwd"
+  echo "launched $OPT_name session-id=$session_id"
+}
+
+store_launch_opts() {
+  local session_id="$1" effort="$2" cwd="$3" pair ok=1
   tmux set-option -w -t "=$OPT_name:" remain-on-exit on > /dev/null 2>&1 || ok=0
   for pair in \
     "@dwf_session_id=$session_id" \
     "@dwf_name=$OPT_name" \
-    "@dwf_agent=$OPT_agent" \
-    "@dwf_model=$OPT_model" \
+    "@dwf_agent=${OPT_agent:-}" \
+    "@dwf_model=${OPT_model:-}" \
     "@dwf_effort=$effort" \
     "@dwf_permission_mode=${OPT_permission_mode:-}" \
-    "@dwf_settings=$OPT_settings" \
+    "@dwf_settings=${OPT_settings:-}" \
     "@dwf_cwd=$cwd"; do
     tmux set-option -t "=$OPT_name:" "${pair%%=*}" "${pair#*=}" > /dev/null 2>&1 || ok=0
   done
   if [ "$ok" -ne 1 ]; then
     tmux kill-session -t "=$OPT_name" > /dev/null 2>&1
-    die 8 "launch: tmux could not store the launch options for '$OPT_name'"
+    die 8 "$SUB: tmux could not store the launch options for '$OPT_name'"
   fi
+}
+
+cmd_resume() {
+  parse_opts "name session-id cwd agent model settings permission-mode effort" "$@"
+  require_opts name session-id cwd
+  check_name "$OPT_name"
+  local uuid_re='^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$'
+  [[ "$OPT_session_id" =~ $uuid_re ]] || usage_die "invalid --session-id '$OPT_session_id' (expected a UUID)"
+  local effort="${OPT_effort:-medium}"
+  check_effort "$effort"
+  [ -d "$OPT_cwd" ] || usage_die "--cwd '$OPT_cwd' is not a directory"
+  local cwd session_id v
+  cwd="$(cd "$OPT_cwd" && pwd)"
+  session_id="$(printf '%s' "$OPT_session_id" | tr 'A-Z' 'a-z')"
+  need_tmux
+  need_claude
+  session_exists "$OPT_name" && die 5 "resume: a tmux session named '$OPT_name' already exists"
+
+  local argv=(claude)
+  tmarg "$OPT_name"; v="$REPLY"; argv+=(--name "$v")
+  if [ -n "${OPT_agent:-}" ]; then tmarg "$OPT_agent"; v="$REPLY"; argv+=(--agent "$v"); fi
+  if [ -n "${OPT_model:-}" ]; then tmarg "$OPT_model"; v="$REPLY"; argv+=(--model "$v"); fi
+  argv+=(--effort "$effort")
+  if [ -n "${OPT_settings:-}" ]; then tmarg "$OPT_settings"; v="$REPLY"; argv+=(--settings "$v"); fi
+  if [ -n "${OPT_permission_mode:-}" ]; then tmarg "$OPT_permission_mode"; v="$REPLY"; argv+=(--permission-mode "$v"); fi
+  argv+=(--resume "$session_id")
+
+  tmux new-session -d -s "$OPT_name" -c "$cwd" "${argv[@]}" > /dev/null 2>&1 \
+    || die 8 "resume: tmux could not create session '$OPT_name'"
+  store_launch_opts "$session_id" "$effort" "$cwd"
   echo "launched $OPT_name session-id=$session_id"
 }
 
@@ -267,7 +302,7 @@ cmd_respawn() {
   check_name "$OPT_name"
   need_tmux
   need_claude
-  need_session "$OPT_name"
+  session_exists "$OPT_name" || die 6 "respawn: no tmux session named '$OPT_name' (the tmux server or session is gone); start it again with: $PROG resume --name $OPT_name --session-id <sessionId from the checkpoint sessions map> --cwd <dir>"
   local session_id agent model effort permission settings v
   session_id="$(stored_opt "$OPT_name" @dwf_session_id)"
   [ -n "$session_id" ] || die 8 "respawn: '$OPT_name' has no stored launch options"
@@ -280,15 +315,15 @@ cmd_respawn() {
   effort="$(stored_opt "$OPT_name" @dwf_effort)"
   permission="$(stored_opt "$OPT_name" @dwf_permission_mode)"
   settings="$(stored_opt "$OPT_name" @dwf_settings)"
-  if [ -z "$agent" ] || [ -z "$model" ] || [ -z "$effort" ] || [ -z "$settings" ]; then
+  if [ -z "$effort" ]; then
     die 8 "respawn: '$OPT_name' has incomplete stored launch options"
   fi
   local argv=(claude)
   tmarg "$OPT_name"; v="$REPLY"; argv+=(--name "$v")
-  tmarg "$agent"; v="$REPLY"; argv+=(--agent "$v")
-  tmarg "$model"; v="$REPLY"; argv+=(--model "$v")
+  if [ -n "$agent" ]; then tmarg "$agent"; v="$REPLY"; argv+=(--agent "$v"); fi
+  if [ -n "$model" ]; then tmarg "$model"; v="$REPLY"; argv+=(--model "$v"); fi
   argv+=(--effort "$effort")
-  tmarg "$settings"; v="$REPLY"; argv+=(--settings "$v")
+  if [ -n "$settings" ]; then tmarg "$settings"; v="$REPLY"; argv+=(--settings "$v"); fi
   if [ -n "$permission" ]; then
     tmarg "$permission"; v="$REPLY"; argv+=(--permission-mode "$v")
   fi
@@ -312,11 +347,12 @@ cmd_stop() {
 }
 
 main() {
-  [ $# -ge 1 ] || usage_die "missing subcommand (launch, list, status, send, respawn, stop)"
+  [ $# -ge 1 ] || usage_die "missing subcommand (launch, resume, list, status, send, respawn, stop)"
   SUB="$1"
   shift
   case "$SUB" in
     launch) cmd_launch "$@" ;;
+    resume) cmd_resume "$@" ;;
     list) cmd_list "$@" ;;
     status) cmd_status "$@" ;;
     send) cmd_send "$@" ;;

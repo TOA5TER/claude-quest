@@ -234,7 +234,7 @@ log_has "T-1 semicolon" "$(printf '%q' 'ends with a semicolon\;')"
 
 # T-2: no tmux on PATH.
 reset_state
-for sub in "launch --name n --cwd $WORK --agent a --model m --settings {} --prompt p" "list" "status --name n" "send --name n --reply-to r --message m" "respawn --name n" "stop --name n"; do
+for sub in "launch --name n --cwd $WORK --agent a --model m --settings {} --prompt p" "list" "status --name n" "send --name n --reply-to r --message m" "resume --name n --session-id 3f2b8a10-5c6d-4e7f-9a01-b2c3d4e5f607 --cwd $WORK" "respawn --name n" "stop --name n"; do
   rs_path "$NOTMUX_PATH" $sub
   expect_rc "T-2 $sub" 3
   expect_err "T-2 $sub"
@@ -405,6 +405,45 @@ if [ -d "$STATE/s/sc-1-developer-api" ]; then fail "T-10: session still present"
 [ -d "$STATE/s/sc-1-developer-api-2" ] || fail "T-10: the prefix-sharing session was stopped too"
 rs stop --name nobody --user-approved
 expect_rc "T-10 missing" 6
+
+# T-16: resume starts claude --resume in a new tmux session; respawn without a session points to it.
+UUID1=3f2b8a10-5c6d-4e7f-9a01-b2c3d4e5f607
+reset_state
+rs resume --name sc-1-developer-api --session-id "$UUID1" --cwd "$WORK" --agent dev-workflow:developer --model sonnet --settings '{"a":1}' --permission-mode acceptEdits
+expect_rc "T-16 resume" 0
+[ "$OUT" = "launched sc-1-developer-api session-id=$UUID1" ] || fail "T-16: resume output '$OUT'"
+want=$'claude\n--name\nsc-1-developer-api\n--agent\ndev-workflow:developer\n--model\nsonnet\n--effort\nmedium\n--settings\n{"a":1}\n--permission-mode\nacceptEdits\n--resume\n'"$UUID1"
+[ "$(cat "$STATE/s/sc-1-developer-api/argv")" = "$want" ] || fail "T-16: resume argv differs: $(cat "$STATE/s/sc-1-developer-api/argv")"
+if grep -q -- '--session-id' "$STATE/s/sc-1-developer-api/argv"; then fail "T-16: resume passed --session-id"; fi
+[ "$(cat "$STATE/s/sc-1-developer-api/opts/@dwf_session_id")" = "$UUID1" ] || fail "T-16: session id not stored"
+log_has "T-16 remain-on-exit" "remain-on-exit on"
+rs resume --name sc-1-developer-api --session-id "$UUID1" --cwd "$WORK"
+expect_rc "T-16 name taken" 5
+expect_err "T-16 name taken"
+reset_state
+rs resume --name sc-1-bare --session-id "$UUID1" --cwd "$WORK"
+expect_rc "T-16 bare" 0
+if grep -qE -- '^--(agent|model|settings|permission-mode)$' "$STATE/s/sc-1-bare/argv"; then fail "T-16: omitted option was passed"; fi
+rs resume --name sc-1-bad --session-id not-a-uuid --cwd "$WORK"
+expect_rc "T-16 bad uuid" 2
+expect_err "T-16 bad uuid"
+rs resume --name sc-1-bad --cwd "$WORK"
+expect_rc "T-16 missing id" 2
+if [ -d "$STATE/s/sc-1-bad" ]; then fail "T-16: a session was created on bad arguments"; fi
+reset_state
+rs respawn --name sc-1-gone
+expect_rc "T-16 respawn gone" 6
+case "$ERR" in *"resume --name sc-1-gone --session-id"*) ;; *) fail "T-16: respawn message does not point to resume: $ERR" ;; esac
+rs resume --name sc-1-r --session-id "$UUID1" --cwd "$WORK"
+printf '1' > "$STATE/s/sc-1-r/dead"
+rs respawn --name sc-1-r
+expect_rc "T-16 respawn after resume" 0
+grep -qx -- "$UUID1" "$STATE/s/sc-1-r/respawn-argv" || fail "T-16: respawn did not resume the stored id"
+
+# T-17: every doc that describes recovery names the resume path.
+for f in "$PLUGIN_ROOT/README.md" "$PLUGIN_ROOT/CLAUDE.md" "$PLUGIN_ROOT/skills/full-cycle/SKILL.md" "$PLUGIN_ROOT/skills/shared/role-sessions.md" "$PLUGIN_ROOT/skills/shared/context-compaction.md"; do
+  grep -qF 'resume' "$f" && grep -qF 'session-id' "$f" || fail "T-17: $f does not name resume --session-id"
+done
 
 # T-13: docs name the prerequisite and the attach command.
 for f in "$PLUGIN_ROOT/README.md" "$PLUGIN_ROOT/CLAUDE.md"; do
