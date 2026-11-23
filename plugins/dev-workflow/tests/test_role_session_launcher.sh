@@ -526,7 +526,6 @@ for a in spec-writer developer reviewer tester; do
 done
 
 
-# PM: permission mode follows the config (exit 10 on any mismatch).
 CFG=""
 pm_launch() {
   local role="$1" flag="$2" name="${3:-sc-9-$1-api}"

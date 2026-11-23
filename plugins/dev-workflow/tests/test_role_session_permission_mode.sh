@@ -68,7 +68,7 @@ need_text "$launch_contract" "Launch contract" "--permission-mode"
 # Why: the permission flag must come from a fresh config read, never from memory or a role pairing.
 need_text "$launch_contract" "Launch contract" "immediately before every launch" "after a context compaction" "exit 10"
 need_text "$optional_config" "Optional config" "When permission_mode is plan"
-handshake="$(awk '/^\*\*Per-session handshake\.\*\*/{p=1} /^\*\*Optional config\.\*\*/{p=0} p{print}' "$RS" | normalise)"
+handshake="$(awk '/^\*\*Per-session handshake\.\*\*/{p=1} /^\*\*`crossSessionInbound` prerequisite\.\*\*/{p=0} p{print}' "$RS" | normalise)"
 need_text "$handshake" "Per-session handshake" "from-mode" "--force"
 forbid_text "$rs_text" "role-sessions.md" "plan is passed to the reviewer and tester only"
 

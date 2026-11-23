@@ -79,8 +79,9 @@ check_permission_mode() {
     *-"$role"*)
       local prefix sessions sname stored
       prefix="${OPT_name%%-"$role"*}"
-      sessions="$(tmux list-sessions -F "#{session_name}${US}#{@dwf_session_id}" 2> /dev/null)" || sessions=""
-      while IFS="$US" read -r sname _; do
+      sessions="$(tmux list-sessions -F "#{session_name}" 2> /dev/null)" || sessions=""
+      while IFS= read -r sname; do
+        sname="${sname%%"$US"*}"
         [ -n "$sname" ] || continue
         case "$sname" in "$prefix"-*) ;; *) continue ;; esac
         stored="$(stored_opt "$sname" @dwf_config_mode)"
@@ -406,6 +407,11 @@ cmd_respawn() {
       new_config_mode="$EXP_MODE"
     fi
   fi
+  if [ -n "$new_config_mode" ]; then
+    tmux set-option -t "=$OPT_name:" @dwf_permission_mode "$permission" > /dev/null 2>&1 \
+      && tmux set-option -t "=$OPT_name:" @dwf_config_mode "$new_config_mode" > /dev/null 2>&1 \
+      || die 8 "respawn: tmux could not store the launch options for '$OPT_name'"
+  fi
   local argv=(claude)
   tmarg "$OPT_name"; v="$REPLY"; argv+=(--name "$v")
   if [ -n "$agent" ]; then tmarg "$agent"; v="$REPLY"; argv+=(--agent "$v"); fi
@@ -420,11 +426,6 @@ cmd_respawn() {
   local rargs=(-k -t "=$OPT_name:"); [ -n "$rcwd" ] && rargs+=(-c "$rcwd")
   tmux respawn-pane "${rargs[@]}" "${argv[@]}" > /dev/null 2>&1 \
     || die 8 "respawn: tmux could not respawn the pane of '$OPT_name'"
-  if [ -n "$new_config_mode" ]; then
-    tmux set-option -t "=$OPT_name:" @dwf_permission_mode "$permission" > /dev/null 2>&1 \
-      && tmux set-option -t "=$OPT_name:" @dwf_config_mode "$new_config_mode" > /dev/null 2>&1 \
-      || die 8 "respawn: tmux could not store the launch options for '$OPT_name'"
-  fi
   echo "respawned $OPT_name session-id=$session_id"
 }
 
