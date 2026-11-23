@@ -106,11 +106,14 @@ case "$sub" in
     echo
     ;;
   list-sessions)
+    fmt=""
+    while [ $# -gt 0 ]; do [ "$1" = "-F" ] && fmt="$2"; shift; done
     n=0
     for d in "$S"/*/; do
       [ -d "$d" ] || continue
       n=$((n + 1))
       nm="$(basename "$d")"
+      if [ "$fmt" = '#{session_name}' ]; then echo "$nm"; continue; fi
       sid=""
       [ -f "$d/opts/@dwf_session_id" ] && sid="$(cat "$d/opts/@dwf_session_id")"
       printf '%s%s%s%s%s%s%s%s%s%s%s\n' "$nm" "$US" "$sid" "$US" "$(cat "$d/dead")" "$US" "$(cat "$d/pid")" "$US" "$(cat "$d/cwd")" "$US" "$(cat "$d/opts/@dwf_cwd" 2> /dev/null)"
@@ -525,7 +528,7 @@ for a in spec-writer developer reviewer tester; do
   grep -qF 'ending in `Reply to: <address>`' "$PLUGIN_ROOT/agents/$a.md" || fail "T-14: agents/$a.md lacks the Reply to rule"
 done
 
-
+# PM-1: every DT-1 row yields exactly the config's flag for each role, and every other flag exits 10 with no session created.
 CFG=""
 pm_launch() {
   local role="$1" flag="$2" name="${3:-sc-9-$1-api}"
@@ -570,7 +573,7 @@ rm -f "$TMPD/no-such-config.json"
 CFG=""
 pm_launch developer ""
 expect_rc "PM-1 missing config file" 0
-[ "$(cat "$STATE/s/sc-9-developer-api/opts/@dwf_config_mode")" = "none" ] || fail "PM-4: missing config did not store config mode none"
+[ "$(cat "$STATE/s/sc-9-developer-api/opts/@dwf_config_mode")" = "none" ] || fail "PM-1: missing config did not store config mode none"
 
 # PM-2: a reviewer launched with plan under a bypass config is refused.
 reset_state

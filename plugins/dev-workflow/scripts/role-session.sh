@@ -25,6 +25,7 @@ tmarg() {
   esac
 }
 
+# Why: ROLE_SESSION_CONFIG lets tests point at a fixture instead of the real user config.
 config_read() {
   CONFIG_PATH="${ROLE_SESSION_CONFIG:-$HOME/.claude/dev-workflow/config.json}"
   CFG_PM="" CFG_OPT="false"
@@ -81,12 +82,11 @@ check_permission_mode() {
       prefix="${OPT_name%%-"$role"*}"
       sessions="$(tmux list-sessions -F "#{session_name}" 2> /dev/null)" || sessions=""
       while IFS= read -r sname; do
-        sname="${sname%%"$US"*}"
         [ -n "$sname" ] || continue
         case "$sname" in "$prefix"-*) ;; *) continue ;; esac
         stored="$(stored_opt "$sname" @dwf_config_mode)"
         if [ -n "$stored" ] && [ "$stored" != "$EXP_MODE" ]; then
-          die 10 "$SUB: config permission mode '$EXP_MODE' differs from '$stored' recorded by session '$sname'"
+          die 10 "$SUB: config permission mode '$EXP_MODE' differs from '$stored' recorded by session '$sname' (stop it with the user's permission, or run: $PROG respawn --name $sname --force)"
         fi
       done <<< "$sessions"
       ;;
