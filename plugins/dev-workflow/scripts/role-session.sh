@@ -139,7 +139,7 @@ cmd_launch() {
 }
 
 store_launch_opts() {
-  local session_id="$1" effort="$2" cwd="$3" pair ok=1
+  local session_id="$1" effort="$2" cwd="$3" resumed="${4:-}" pair ok=1
   tmux set-option -w -t "=$OPT_name:" remain-on-exit on > /dev/null 2>&1 || ok=0
   for pair in \
     "@dwf_session_id=$session_id" \
@@ -149,10 +149,12 @@ store_launch_opts() {
     "@dwf_effort=$effort" \
     "@dwf_permission_mode=${OPT_permission_mode:-}" \
     "@dwf_settings=${OPT_settings:-}" \
+    "@dwf_resumed=$resumed" \
     "@dwf_cwd=$cwd"; do
     tmux set-option -t "=$OPT_name:" "${pair%%=*}" "${pair#*=}" > /dev/null 2>&1 || ok=0
   done
   if [ "$ok" -ne 1 ]; then
+    session_exists "$OPT_name" || die 8 "$SUB: the session '$OPT_name' exited immediately (check the session id, the arguments and --cwd)"
     tmux kill-session -t "=$OPT_name" > /dev/null 2>&1
     die 8 "$SUB: tmux could not store the launch options for '$OPT_name'"
   fi
@@ -185,7 +187,7 @@ cmd_resume() {
 
   tmux new-session -d -s "$OPT_name" -c "$cwd" "${argv[@]}" > /dev/null 2>&1 \
     || die 8 "resume: tmux could not create session '$OPT_name'"
-  store_launch_opts "$session_id" "$effort" "$cwd"
+  store_launch_opts "$session_id" "$effort" "$cwd" 1
   echo "launched $OPT_name session-id=$session_id"
 }
 
@@ -315,7 +317,7 @@ cmd_respawn() {
   effort="$(stored_opt "$OPT_name" @dwf_effort)"
   permission="$(stored_opt "$OPT_name" @dwf_permission_mode)"
   settings="$(stored_opt "$OPT_name" @dwf_settings)"
-  if [ -z "$effort" ]; then
+  if [ -z "$effort" ] || { [ "$(stored_opt "$OPT_name" @dwf_resumed)" != "1" ] && { [ -z "$agent" ] || [ -z "$model" ] || [ -z "$settings" ]; }; }; then
     die 8 "respawn: '$OPT_name' has incomplete stored launch options"
   fi
   local argv=(claude)

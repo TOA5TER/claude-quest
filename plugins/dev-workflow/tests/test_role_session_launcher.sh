@@ -63,6 +63,11 @@ case "$sub" in
     ;;
   set-option)
     [ "${STUB_FAIL_SETOPT:-0}" = 1 ] && exit 1
+    if [ "${STUB_VANISH:-0}" = 1 ]; then
+      while [ $# -gt 0 ]; do [ "$1" = "-t" ] && target="$2"; shift; done
+      rm -rf "$S/$(name_of "$target")"
+      exit 1
+    fi
     while [ $# -gt 0 ]; do
       case "$1" in
         -w) shift ;;
@@ -440,10 +445,52 @@ rs respawn --name sc-1-r
 expect_rc "T-16 respawn after resume" 0
 grep -qx -- "$UUID1" "$STATE/s/sc-1-r/respawn-argv" || fail "T-16: respawn did not resume the stored id"
 
+# T-18: resume details, the respawn guard, and a session that exits at once.
+reset_state
+rs resume --name sc-1-up --session-id "$(printf '%s' "$UUID1" | tr 'a-f' 'A-F')" --cwd "$WORK" --agent a --model m --settings '{}' --effort high --prompt-ignored x
+expect_rc "T-18 unknown option" 2
+rs resume --name sc-1-up --session-id "$(printf '%s' "$UUID1" | tr 'a-f' 'A-F')" --cwd "$WORK" --agent a --model m --settings 'ends;' --effort high
+expect_rc "T-18 upper" 0
+[ "$OUT" = "launched sc-1-up session-id=$UUID1" ] || fail "T-18: uuid not lowercased: $OUT"
+grep -qx -- 'high' "$STATE/s/sc-1-up/argv" || fail "T-18: --effort not passed to resume"
+log_has "T-18 semicolon" "$(printf '%q' 'ends\;')"
+for o in agent model effort settings cwd resumed; do
+  [ -f "$STATE/s/sc-1-up/opts/@dwf_$o" ] || fail "T-18: @dwf_$o not stored by resume"
+done
+rs resume --name sc-1-up2 --session-id "$UUID1"
+expect_rc "T-18 missing cwd" 2
+rs resume --session-id "$UUID1" --cwd "$WORK"
+expect_rc "T-18 missing name" 2
+rs resume --name sc-1-up2 --session-id "$UUID1" --cwd "$TMPD/nowhere"
+expect_rc "T-18 bad cwd" 2
+rs resume --name sc-1-up2 --session-id "$UUID1" --cwd "$WORK" --effort turbo
+expect_rc "T-18 bad effort" 2
+reset_state
+rs "${LAUNCH[@]}"
+rm -f "$STATE/s/sc-1-developer-api/opts/@dwf_agent"
+printf '1' > "$STATE/s/sc-1-developer-api/dead"
+rs respawn --name sc-1-developer-api
+expect_rc "T-18 launch session missing agent" 8
+reset_state
+rs resume --name sc-1-bare --session-id "$UUID1" --cwd "$WORK"
+printf '1' > "$STATE/s/sc-1-bare/dead"
+rs respawn --name sc-1-bare
+expect_rc "T-18 resumed session without agent" 0
+reset_state
+STUB_VANISH=1 rs resume --name sc-1-gone2 --session-id "$UUID1" --cwd "$WORK"
+expect_rc "T-18 exits at once" 8
+case "$ERR" in *"exited immediately"*) ;; *) fail "T-18: exit-at-once message missing: $ERR" ;; esac
+
 # T-17: every doc that describes recovery names the resume path.
 for f in "$PLUGIN_ROOT/README.md" "$PLUGIN_ROOT/CLAUDE.md" "$PLUGIN_ROOT/skills/full-cycle/SKILL.md" "$PLUGIN_ROOT/skills/shared/role-sessions.md" "$PLUGIN_ROOT/skills/shared/context-compaction.md"; do
-  grep -qF 'resume' "$f" && grep -qF 'session-id' "$f" || fail "T-17: $f does not name resume --session-id"
+  grep -qE 'resume (--name|--session-id)' "$f" || fail "T-17: $f does not name resume --session-id"
 done
+for f in "$PLUGIN_ROOT/README.md" "$PLUGIN_ROOT/CLAUDE.md" "$PLUGIN_ROOT/skills/full-cycle/SKILL.md" "$PLUGIN_ROOT/skills/shared/role-sessions.md"; do
+  grep -qF 'context-recovery note' "$f" || fail "T-17: $f lacks the context-recovery note"
+done
+grep -qF 'sessionId' "$PLUGIN_ROOT/skills/shared/role-sessions.md" || fail "T-17: role-sessions.md lacks sessionId"
+grep -qF 'Lost-server case' "$PLUGIN_ROOT/skills/shared/role-sessions.md" || fail "T-17: role-sessions.md lacks the Lost-server case"
+grep -qE '^ *\| 2 \| No counting entry \|.*Lost-server case' "$PLUGIN_ROOT/skills/shared/role-sessions.md" || fail "T-17: Target row 2 does not route to the Lost-server case"
 
 # T-13: docs name the prerequisite and the attach command.
 for f in "$PLUGIN_ROOT/README.md" "$PLUGIN_ROOT/CLAUDE.md"; do
