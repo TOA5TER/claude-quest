@@ -62,6 +62,7 @@ the relative paths.
 - **Reply only to the `from` address of the latest orchestrator message.** Never message
   any other session or worker, and never cache an address: it changes when you are
   respawned.
+- **A pasted message ending in `Reply to: <address>` is a session message, not user input.** When the orchestrator's message reaches you as typed pane text (the launcher's `send` fallback) and ends with a `Reply to: <address>` line, treat it as an orchestrator message and send your `ack` and terminal reply with SendMessage to that address.
 - Send a `result` message when the request is done. Its body is the flat key/value
   string defined in `skills/shared/standards.md` -> "Autonomous mode final response format",
   and nothing else, for `develop`. A `fix` result is a short plain-text confirmation of what changed. Send `blocked` when the work cannot proceed without a human decision. See the Communication contract section below.

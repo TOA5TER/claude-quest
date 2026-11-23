@@ -99,7 +99,7 @@ orchestrator to the user); only an explicit `mode: autonomous` request dispatche
 
 **Role sessions are the default for spec-writer, developer, reviewer, and tester in standalone `full-cycle`.**
 Instead of a one-shot Agent dispatch per stage and per loop pass, the orchestrator launches one
-long-lived, named background session per story spec-writer, per reviewer and tester PR, and per developer repo, and exchanges messages with it, per
+long-lived, named detached tmux session per story spec-writer, per reviewer and tester PR, and per developer repo, and exchanges messages with it, per
 `skills/shared/role-sessions.md`. The same `dev-workflow:spec-writer`, `dev-workflow:developer`, `dev-workflow:reviewer`,
 and `dev-workflow:tester` agent definitions back both modes. Agent dispatch remains for
 `dev-workflow:pr-state-reader` (entry detection, decision read,
