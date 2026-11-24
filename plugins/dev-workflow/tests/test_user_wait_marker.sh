@@ -17,7 +17,7 @@ fail() {
 # Why: one general rule must carry the exact command and its edge cases so no wait is missed.
 SECTION="$(awk '/^## User Waits$/{f=1;next} /^## /{f=0} f' "$SKILL")"
 [ -n "$SECTION" ] || fail "full-cycle SKILL.md has no '## User Waits' section"
-for word in "every" "worker message" "AskUserQuestion"; do
+for word in "every" "worker message" "AskUserQuestion" "watcher" "task notification" "scheduled wake-up"; do
   case "$SECTION" in *"$word"*) ;; *) fail "User Waits section lacks the words: $word" ;; esac
 done
 case "$SECTION" in *"$CMD"*) ;; *) fail "User Waits section lacks the exact marker command" ;; esac

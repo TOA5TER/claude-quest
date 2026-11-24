@@ -528,6 +528,23 @@ for a in spec-writer developer reviewer tester; do
   grep -qF 'ending in `Reply to: <address>`' "$PLUGIN_ROOT/agents/$a.md" || fail "T-14: agents/$a.md lacks the Reply to rule"
 done
 
+# T-19: the Launch contract says the orchestrator launches every session itself and names the only exceptions.
+launch_sec="$(awk '/^## Launch contract/{f=1;next} /^## /{f=0} f' "$RSD")"
+[ -n "$launch_sec" ] || fail "T-19: Launch contract section not found"
+for phrase in "launches every role session itself" "in the current session" "remembered" "another session" "failed preflight check"; do
+  case "$launch_sec" in *"$phrase"*) ;; *) fail "T-19: Launch contract lacks '$phrase'" ;; esac
+done
+
+# T-20: the watcher ladder carries a Monitor command that prints only on change or heartbeat, and the command parses.
+ladder="$(awk '/^\*\*The watcher ladder\.\*\*/{f=1} /^\*\*Hook reminder\.\*\*/{f=0} f' "$RSD")"
+[ -n "$ladder" ] || fail "T-20: watcher ladder not found"
+for phrase in "every 30 seconds" "every five minutes" "1800000" "re-arm"; do
+  case "$ladder" in *"$phrase"*) ;; *) fail "T-20: watcher ladder lacks '$phrase'" ;; esac
+done
+watcher_cmd="$(printf '%s\n' "$ladder" | awk '/^ *```bash$/{if(!d){f=1;next}} /^ *```$/{if(f){f=0;d=1}} f' | sed -E 's/^ {0,8}//')"
+[ -n "$watcher_cmd" ] || fail "T-20: watcher ladder has no fenced bash block"
+printf '%s\n' "$watcher_cmd" | bash -n 2>/dev/null || fail "T-20: the watcher command does not pass bash -n"
+
 # PM-1: every DT-1 row yields exactly the config's flag for each role, and every other flag exits 10 with no session created.
 CFG=""
 pm_launch() {
