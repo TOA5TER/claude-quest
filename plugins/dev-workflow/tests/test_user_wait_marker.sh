@@ -22,8 +22,7 @@ for word in "every" "worker message" "AskUserQuestion"; do
 done
 case "$SECTION" in *"$CMD"*) ;; *) fail "User Waits section lacks the exact marker command" ;; esac
 
-# Why: the rule is placed where each wait happens, so a skipped site shows as a gray card.
-# Each anchor is text unique to one wait; the pointer must sit on the same line.
+# Why: the rule sits at each wait so a skipped site shows as a gray card; each anchor is unique to one wait.
 check_pointer() {
   local label="$1" anchor="$2"
   local matches

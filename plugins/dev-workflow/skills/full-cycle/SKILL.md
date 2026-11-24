@@ -123,7 +123,8 @@ When the orchestrator is about to end a turn in plain text while the next step o
 mkdir -p ~/.claude/attention-hub/needs-user-markers && touch ~/.claude/attention-hub/needs-user-markers/"${CLAUDE_CODE_SESSION_ID:?}"
 ```
 
-- This applies to every such turn, including a turn started by a worker message while the user's reply is still outstanding: a worker message fires the same hook as a user prompt and clears the marker, so set it again at the end of that turn.- A turn that ends on an `AskUserQuestion` needs no marker, because the hub already shows that turn red.
+- This applies to every such turn, including a turn started by a worker message while the user's reply is still outstanding: a worker message fires the same hook as a user prompt and clears the marker, so set it again at the end of that turn.
+- A turn that ends on an `AskUserQuestion` needs no marker, because the hub already shows that turn red.
 - A failure of the command (for example `CLAUDE_CODE_SESSION_ID` unset) never blocks or replaces the question to the user: send the question regardless.
 - The waits that name this section are: the spec-writer loop's relayed questions, the spec approval request and the `kind: stop` resolution; the hard gate's re-request for approval; the developer-stop row that asks the user; the Loop Safety Guard's request for more cycles; a COMMENTED or PENDING decision surfaced to the user; the resume hard stop for an unparseable state line; the Local Mode blocked-command stop, backstop stop and Stops paragraph; and the termination ask about stopping role sessions. Any other turn that ends waiting on the user follows the same rule.
 - The file is inert when the attention-hub plugin is not installed: nothing reads it and nothing else is affected.
