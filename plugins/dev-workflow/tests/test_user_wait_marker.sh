@@ -15,7 +15,7 @@ fail() {
   FAILURES=$((FAILURES + 1))
 }
 
-# Why: R-8 needs one general rule that carries the exact command and its edge cases.
+# Why: one general rule is needed so no wait is missed; it that carries the exact command and its edge cases.
 SECTION="$(awk '/^## User Waits$/{f=1;next} /^## /{f=0} f' "$SKILL")"
 [ -n "$SECTION" ] || fail "full-cycle SKILL.md has no '## User Waits' section"
 for word in "every" "worker message" "AskUserQuestion"; do
@@ -23,12 +23,15 @@ for word in "every" "worker message" "AskUserQuestion"; do
 done
 case "$SECTION" in *"$CMD"*) ;; *) fail "User Waits section lacks the exact marker command" ;; esac
 
-# Why: R-9 puts the rule where each wait happens, so a skipped site shows as a gray card.
+# Why: the rule is placed where each wait happens, so a skipped site shows as a gray card.
 # Each anchor is text unique to one wait; the pointer must sit on the same line.
 check_pointer() {
   local label="$1" anchor="$2"
-  if ! grep -F -- "$anchor" "$SKILL" | grep -qF -- "$POINTER"; then
-    fail "no user-wait pointer at: $label"
+  local matches
+  matches="$(grep -F -- "$anchor" "$SKILL" || true)"
+  [ -n "$matches" ] || { fail "anchor not found for: $label"; return; }
+  if printf '%s\n' "$matches" | grep -qvF -- "$POINTER"; then
+    fail "a line at '$label' lacks the user-wait pointer"
   fi
 }
 check_pointer "spec-writer loop step 1" "Ask the user the questions verbatim"
@@ -38,7 +41,7 @@ check_pointer "hard gate" "re-request explicit approval from the user"
 check_pointer "DT-1 row 1" "Stop that repo's pipeline and ask the user"
 check_pointer "resume hard stop" "hard stop and surface it to the user"
 check_pointer "COMMENTED / PENDING" "surface this to the user"
-check_pointer "Loop Safety Guard" "authorize more cycles"
+check_pointer "Loop Safety Guard" "and ask whether the user wants to authorize more cycles"
 check_pointer "Local Mode blocked command" "it is an unresolved block: stop and ask"
 check_pointer "Local Mode backstop" "is the backstop stop: stop and ask"
 check_pointer "Local Mode Stops" "the user is asked to act once, at Termination"

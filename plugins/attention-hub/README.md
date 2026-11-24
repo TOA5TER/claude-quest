@@ -85,7 +85,7 @@ The marker is `~/.claude/attention-hub/needs-user-markers/<session_id>`. Create 
 mkdir -p ~/.claude/attention-hub/needs-user-markers && touch ~/.claude/attention-hub/needs-user-markers/"${CLAUDE_CODE_SESSION_ID:?}"
 ```
 
-If `CLAUDE_CODE_SESSION_ID` is unset the command exits non-zero and writes nothing.
+If `CLAUDE_CODE_SESSION_ID` is unset the command exits non-zero and creates no marker file.
 
 - **Stop** leaves the marker in place, and so does the Notification hook's `idle_prompt` handling, which reports nothing while the marker exists. PostToolUse never removes it either, because the command above is itself a tool call.
 - **UserPromptSubmit** deletes the marker before it reports `working`, and **SessionEnd** deletes it with the session's other markers.

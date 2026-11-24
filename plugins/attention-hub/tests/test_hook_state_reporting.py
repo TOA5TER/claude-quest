@@ -298,22 +298,12 @@ def test_main_thread_events_still_report(base_hook_input):
     assert events[0]["state"] == "working"
 
 
-def needs_user_marker(home, session_id="test-session-123"):
-    return home / ".claude" / "attention-hub" / "needs-user-markers" / session_id
-
-
-def set_needs_user_marker(home, session_id="test-session-123"):
-    path = needs_user_marker(home, session_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.touch()
-    return path
-
 
 def test_user_prompt_submit_clears_needs_user_marker_then_stop_reports_done(
-        base_hook_input, transcript_without_ask, isolated_home):
-    # Why: T-5 — the user replying ends the wait: working is reported, the marker is
+        base_hook_input, transcript_without_ask, isolated_home, set_needs_user_marker):
+    # Why: the user replying ends the wait: working is reported, the marker is
     # gone, and the next plain Stop is gray again.
-    path = set_needs_user_marker(isolated_home)
+    path = set_needs_user_marker()
     events = hub_events(run_hook_capture_hub("attention_hub_user_prompt_submit.py", {
         **base_hook_input, "prompt": "approved",
     }))
@@ -325,19 +315,19 @@ def test_user_prompt_submit_clears_needs_user_marker_then_stop_reports_done(
     assert [e["state"] for e in events] == ["done"]
 
 
-def test_session_end_clears_needs_user_marker(base_hook_input, isolated_home):
-    # Why: T-6 — nothing may leak on disk once the session is gone.
-    path = set_needs_user_marker(isolated_home)
+def test_session_end_clears_needs_user_marker(base_hook_input, isolated_home, set_needs_user_marker):
+    # Why: nothing may leak on disk once the session is gone.
+    path = set_needs_user_marker()
     requests = run_hook_capture_hub("attention_hub_session_end.py", base_hook_input)
     assert not path.exists()
     assert [m for _, m, _ in requests] == ["DELETE"]
 
 
 def test_post_tool_use_leaves_needs_user_marker_and_reports_nothing(
-        base_hook_input, isolated_home):
-    # Why: T-8 — the orchestrator sets the marker with a Bash call whose PostToolUse
+        base_hook_input, isolated_home, set_needs_user_marker):
+    # Why: the orchestrator sets the marker with a Bash call whose PostToolUse
     # fires at once; clearing there would undo the marker before the turn ends.
-    path = set_needs_user_marker(isolated_home)
+    path = set_needs_user_marker()
     requests = run_hook_capture_hub("attention_hub_post_tool_use.py", {
         **base_hook_input, "tool_name": "Bash",
     })
