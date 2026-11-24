@@ -65,16 +65,23 @@ need_text "$rs_text" "role-sessions.md" \
 launch_contract="$(awk '/^## Launch contract/{p=1;next} /^## /{p=0} p{print}' "$RS" | normalise)"
 need_text "$launch_contract" "Launch contract" "--permission-mode"
 
+# Why: the permission flag must come from a fresh config read, never from memory or a role pairing.
+need_text "$launch_contract" "Launch contract" "immediately before every launch" "after a context compaction" "exit 10"
+need_text "$optional_config" "Optional config" "When permission_mode is plan"
+handshake="$(awk '/^\*\*Per-session handshake\.\*\*/{p=1} /^\*\*`crossSessionInbound` prerequisite\.\*\*/{p=0} p{print}' "$RS" | normalise)"
+need_text "$handshake" "Per-session handshake" "from-mode" "--force"
+forbid_text "$rs_text" "role-sessions.md" "plan is passed to the reviewer and tester only"
+
 # Why: users read the README, so it must carry the opt-in and the host prerequisite too.
 readme_text="$(whole "$README")"
-need_text "$readme_text" "README.md" \
+need_text "$readme_text" "README.md" "When permission_mode is plan" \
   "role_sessions.allow_bypass_permissions" \
   "skipDangerousModePermissionPrompt"
 
 # Why: the unconditional refusals are replaced by the opt-in rule and must not linger as contradictions.
 forbid_text "$rs_text" "role-sessions.md" \
   "bypassPermissions is refused, because role sessions accept inbound messages from any local session"
-forbid_text "$readme_text" "README.md" \
+forbid_text "$readme_text" "README.md" "plan applies only to the reviewer and tester;" \
   "bypassPermissions and any other value are refused"
 
 # Why: the auto-mode warning is not a fifth preflight check, so the numbered list must stay at four.

@@ -106,11 +106,14 @@ case "$sub" in
     echo
     ;;
   list-sessions)
+    fmt=""
+    while [ $# -gt 0 ]; do [ "$1" = "-F" ] && fmt="$2"; shift; done
     n=0
     for d in "$S"/*/; do
       [ -d "$d" ] || continue
       n=$((n + 1))
       nm="$(basename "$d")"
+      if [ "$fmt" = '#{session_name}' ]; then echo "$nm"; continue; fi
       sid=""
       [ -f "$d/opts/@dwf_session_id" ] && sid="$(cat "$d/opts/@dwf_session_id")"
       printf '%s%s%s%s%s%s%s%s%s%s%s\n' "$nm" "$US" "$sid" "$US" "$(cat "$d/dead")" "$US" "$(cat "$d/pid")" "$US" "$(cat "$d/cwd")" "$US" "$(cat "$d/opts/@dwf_cwd" 2> /dev/null)"
@@ -174,9 +177,18 @@ reset_state() {
 }
 
 OUT="" ERR="" RC=0
+CFG=""
+write_cfg() {
+  CFG="$TMPD/config.json"
+  if [ -z "$1" ]; then
+    printf '{}' > "$CFG"
+  else
+    printf '{"role_sessions":{"permission_mode":"%s"%s}}' "$1" "${2:+,\"allow_bypass_permissions\":$2}" > "$CFG"
+  fi
+}
 rs() {
   local errfile="$TMPD/stderr"
-  OUT="$(PATH="$BIN:$PATH" STUB_STATE="$STATE" ROLE_SESSION_ENTER_DELAY=0 "$SCRIPT" "$@" 2> "$errfile")"
+  OUT="$(PATH="$BIN:$PATH" STUB_STATE="$STATE" ROLE_SESSION_ENTER_DELAY=0 ROLE_SESSION_CONFIG="${CFG:-$TMPD/no-such-config.json}" "$SCRIPT" "$@" 2> "$errfile")"
   RC=$?
   ERR="$(cat "$errfile")"
 }
@@ -184,7 +196,7 @@ rs() {
 rs_path() {
   local path="$1" errfile="$TMPD/stderr"
   shift
-  OUT="$(PATH="$path" STUB_STATE="$STATE" ROLE_SESSION_ENTER_DELAY=0 bash "$SCRIPT" "$@" 2> "$errfile")"
+  OUT="$(PATH="$path" STUB_STATE="$STATE" ROLE_SESSION_ENTER_DELAY=0 ROLE_SESSION_CONFIG="${CFG:-$TMPD/no-such-config.json}" bash "$SCRIPT" "$@" 2> "$errfile")"
   RC=$?
   ERR="$(cat "$errfile")"
 }
@@ -226,7 +238,9 @@ if grep -q -- '--permission-mode' "$argv"; then fail "T-1: --permission-mode pre
 log_has "T-1 remain-on-exit" "remain-on-exit on"
 
 reset_state
+write_cfg bypassPermissions true
 rs "${LAUNCH[@]}" --effort high --permission-mode bypassPermissions
+CFG=""
 expect_rc "T-1 effort" 0
 argv="$STATE/s/sc-1-developer-api/argv"
 grep -qx -- 'high' "$argv" || fail "T-1: --effort high not passed"
@@ -372,7 +386,9 @@ expect_rc "T-8 missing reply-to" 2
 
 # T-9: respawn.
 reset_state
+write_cfg acceptEdits
 rs "${LAUNCH[@]}" --permission-mode acceptEdits --effort high
+CFG=""
 sid="${OUT##*session-id=}"
 rs respawn --name sc-1-developer-api
 expect_rc "T-9 alive" 0
@@ -414,7 +430,9 @@ expect_rc "T-10 missing" 6
 # T-16: resume starts claude --resume in a new tmux session; respawn without a session points to it.
 UUID1=3f2b8a10-5c6d-4e7f-9a01-b2c3d4e5f607
 reset_state
+write_cfg acceptEdits
 rs resume --name sc-1-developer-api --session-id "$UUID1" --cwd "$WORK" --agent dev-workflow:developer --model sonnet --settings '{"a":1}' --permission-mode acceptEdits
+CFG=""
 expect_rc "T-16 resume" 0
 [ "$OUT" = "launched sc-1-developer-api session-id=$UUID1" ] || fail "T-16: resume output '$OUT'"
 want=$'claude\n--name\nsc-1-developer-api\n--agent\ndev-workflow:developer\n--model\nsonnet\n--effort\nmedium\n--settings\n{"a":1}\n--permission-mode\nacceptEdits\n--resume\n'"$UUID1"
@@ -509,6 +527,127 @@ done
 for a in spec-writer developer reviewer tester; do
   grep -qF 'ending in `Reply to: <address>`' "$PLUGIN_ROOT/agents/$a.md" || fail "T-14: agents/$a.md lacks the Reply to rule"
 done
+
+# PM-1: every DT-1 row yields exactly the config's flag for each role, and every other flag exits 10 with no session created.
+CFG=""
+pm_launch() {
+  local role="$1" flag="$2" name="${3:-sc-9-$1-api}"
+  local a=(launch --name "$name" --cwd "$WORK" --agent "dev-workflow:$role" --model m --settings '{}' --prompt p)
+  [ -n "$flag" ] && a+=(--permission-mode "$flag")
+  rs "${a[@]}"
+}
+pm_row() {
+  local label="$1" cfgmode="$2" optin="$3" role="$4" exp="$5" wrong name="sc-9-$4-api"
+  reset_state
+  write_cfg "$cfgmode" "$optin"
+  pm_launch "$role" "$exp"
+  expect_rc "PM-1 $label $role ok" 0
+  if [ -n "$exp" ]; then
+    grep -qx -- "$exp" "$STATE/s/$name/argv" || fail "PM-1 $label $role: flag $exp missing from argv"
+    [ "$(cat "$STATE/s/$name/opts/@dwf_permission_mode")" = "$exp" ] || fail "PM-1 $label $role: stored permission mode differs"
+  else
+    grep -q -- '--permission-mode' "$STATE/s/$name/argv" && fail "PM-1 $label $role: flag present, expected none"
+  fi
+  for wrong in bypassPermissions acceptEdits plan ""; do
+    [ "$wrong" = "$exp" ] && continue
+    reset_state
+    pm_launch "$role" "$wrong"
+    expect_rc "PM-1 $label $role wrong '$wrong'" 10
+    expect_err "PM-1 $label $role wrong '$wrong'"
+    [ -d "$STATE/s/$name" ] && fail "PM-1 $label $role wrong '$wrong': session created"
+  done
+}
+for role in spec-writer developer reviewer tester; do
+  pm_row "missing-pm" "" "" "$role" ""
+  pm_row "bypass-true" bypassPermissions true "$role" bypassPermissions
+  for optin in false '"true"' 1 ""; do pm_row "bypass-optin-$optin" bypassPermissions "$optin" "$role" ""; done
+  pm_row "acceptEdits" acceptEdits "" "$role" acceptEdits
+  pm_row "default" default "" "$role" ""
+  pm_row "auto" auto "" "$role" ""
+done
+for role in reviewer tester; do pm_row "plan" plan "" "$role" plan; done
+for role in spec-writer developer; do pm_row "plan" plan "" "$role" ""; done
+
+reset_state
+rm -f "$TMPD/no-such-config.json"
+CFG=""
+pm_launch developer ""
+expect_rc "PM-1 missing config file" 0
+[ "$(cat "$STATE/s/sc-9-developer-api/opts/@dwf_config_mode")" = "none" ] || fail "PM-1: missing config did not store config mode none"
+
+# PM-2: a reviewer launched with plan under a bypass config is refused.
+reset_state
+write_cfg bypassPermissions true
+pm_launch developer bypassPermissions
+expect_rc "PM-2 developer" 0
+pm_launch reviewer plan
+expect_rc "PM-2 reviewer plan" 10
+case "$ERR" in *"permission mode 'plan' does not match config 'bypassPermissions' for role reviewer"*) ;; *) fail "PM-2: unexpected message: $ERR" ;; esac
+[ -d "$STATE/s/sc-9-reviewer-api" ] && fail "PM-2: reviewer session created"
+pm_launch reviewer ""
+expect_rc "PM-2 reviewer none" 10
+pm_launch reviewer bypassPermissions
+expect_rc "PM-2 reviewer bypass" 0
+grep -qx -- 'bypassPermissions' "$STATE/s/sc-9-reviewer-api/argv" || fail "PM-2: bypass flag missing from reviewer argv"
+
+# PM-3: a launch that disagrees with an earlier launch of the same story is refused.
+reset_state
+write_cfg acceptEdits
+pm_launch developer acceptEdits
+expect_rc "PM-3 first" 0
+write_cfg bypassPermissions true
+pm_launch reviewer bypassPermissions
+expect_rc "PM-3 prior launch" 10
+case "$ERR" in *"sc-9-developer-api"*) ;; *) fail "PM-3: message does not name the prior session: $ERR" ;; esac
+pm_launch reviewer bypassPermissions sc-8-reviewer-api
+expect_rc "PM-3 other story" 0
+pm_launch reviewer bypassPermissions sc-90-reviewer-api
+expect_rc "PM-3 shared prefix" 0
+
+# PM-4: an unreadable config is refused.
+reset_state
+CFG="$TMPD/config.json"
+printf '{oops' > "$CFG"
+pm_launch developer ""
+expect_rc "PM-4 invalid json" 10
+case "$ERR" in *"launch: cannot read config $CFG"*) ;; *) fail "PM-4: unexpected message: $ERR" ;; esac
+[ -d "$STATE/s/sc-9-developer-api" ] && fail "PM-4: session created"
+
+# PM-5: resume applies the same check; a resume without --agent skips it.
+reset_state
+write_cfg bypassPermissions true
+rs resume --name sc-9-reviewer-api --session-id "$UUID1" --cwd "$WORK" --agent dev-workflow:reviewer --permission-mode plan
+expect_rc "PM-5 resume mismatch" 10
+case "$ERR" in "role-session.sh: resume: "*) ;; *) fail "PM-5: message lacks the resume: prefix: $ERR" ;; esac
+rs resume --name sc-9-reviewer-api --session-id "$UUID1" --cwd "$WORK" --agent dev-workflow:reviewer --permission-mode bypassPermissions
+expect_rc "PM-5 resume match" 0
+[ "$(cat "$STATE/s/sc-9-reviewer-api/opts/@dwf_config_mode")" = "bypassPermissions" ] || fail "PM-5: config mode not stored on resume"
+
+# PM-6: respawn --force restarts a live pane with the flag recomputed from the config.
+reset_state
+write_cfg plan
+pm_launch reviewer plan
+expect_rc "PM-6 launch" 0
+write_cfg bypassPermissions true
+: > "$STATE/tmux.log"
+rs respawn --name sc-9-reviewer-api
+expect_rc "PM-6 no force" 0
+[ "$OUT" = "alive, not respawned" ] || fail "PM-6: no-force output '$OUT'"
+log_lacks "PM-6 no force" "respawn-pane"
+rs respawn --name sc-9-reviewer-api --force
+expect_rc "PM-6 force" 0
+case "$OUT" in "respawned sc-9-reviewer-api session-id="*) ;; *) fail "PM-6: force output '$OUT'" ;; esac
+log_has "PM-6" "respawn-pane -k"
+grep -qx -- 'bypassPermissions' "$STATE/s/sc-9-reviewer-api/respawn-argv" || fail "PM-6: recomputed flag missing"
+grep -qx -- 'plan' "$STATE/s/sc-9-reviewer-api/respawn-argv" && fail "PM-6: stale flag still passed"
+[ "$(cat "$STATE/s/sc-9-reviewer-api/opts/@dwf_config_mode")" = "bypassPermissions" ] || fail "PM-6: config mode not updated"
+[ "$(cat "$STATE/s/sc-9-reviewer-api/opts/@dwf_permission_mode")" = "bypassPermissions" ] || fail "PM-6: permission mode not updated"
+printf '{oops' > "$CFG"
+: > "$STATE/tmux.log"
+rs respawn --name sc-9-reviewer-api --force
+expect_rc "PM-6 invalid json" 10
+log_lacks "PM-6 invalid json" "respawn-pane"
+CFG=""
 
 if [ "$FAILURES" -gt 0 ]; then
   echo "$FAILURES failure(s)" >&2

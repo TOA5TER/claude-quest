@@ -25,6 +25,75 @@ tmarg() {
   esac
 }
 
+# Why: ROLE_SESSION_CONFIG lets tests point at a fixture instead of the real user config.
+config_read() {
+  CONFIG_PATH="${ROLE_SESSION_CONFIG:-$HOME/.claude/dev-workflow/config.json}"
+  CFG_PM="" CFG_OPT="false"
+  [ -e "$CONFIG_PATH" ] || return 0
+  local parsed=""
+  if command -v jq > /dev/null 2>&1; then
+    parsed="$(jq -r '((.role_sessions? | objects | .permission_mode | strings) // "") + "\u001f" + (if ((.role_sessions? | objects | .allow_bypass_permissions) // null) == true then "true" else "false" end)' "$CONFIG_PATH" 2> /dev/null)" || parsed=""
+  elif command -v python3 > /dev/null 2>&1; then
+    parsed="$(python3 -c '
+import json, sys
+d = json.load(open(sys.argv[1]))
+r = d.get("role_sessions") if isinstance(d, dict) else None
+r = r if isinstance(r, dict) else {}
+pm = r.get("permission_mode")
+pm = pm if isinstance(pm, str) else ""
+print(pm + "\x1f" + ("true" if r.get("allow_bypass_permissions") is True else "false"))
+' "$CONFIG_PATH" 2> /dev/null)" || parsed=""
+  fi
+  [ -n "$parsed" ] || die 10 "$SUB: cannot read config $CONFIG_PATH"
+  IFS="$US" read -r CFG_PM CFG_OPT <<< "$parsed"
+}
+
+compute_expected() {
+  EXP_FLAG="" EXP_MODE="none"
+  case "$CFG_PM" in
+    bypassPermissions)
+      if [ "$CFG_OPT" = "true" ]; then EXP_FLAG="bypassPermissions"; EXP_MODE="bypassPermissions"; fi
+      ;;
+    acceptEdits) EXP_FLAG="acceptEdits"; EXP_MODE="acceptEdits" ;;
+    plan)
+      EXP_MODE="plan"
+      case "$1" in reviewer | tester) EXP_FLAG="plan" ;; esac
+      ;;
+  esac
+}
+
+role_of_agent() {
+  local r="${1##*:}"
+  case "$r" in spec-writer | developer | reviewer | tester) printf '%s' "$r" ;; esac
+}
+
+check_permission_mode() {
+  CFG_STORE=""
+  local role given
+  role="$(role_of_agent "${OPT_agent:-}")"
+  [ -n "$role" ] || return 0
+  config_read
+  compute_expected "$role"
+  given="${OPT_permission_mode:-}"
+  [ "$given" = "$EXP_FLAG" ] || die 10 "$SUB: permission mode '${given:-none}' does not match config '${EXP_FLAG:-none}' for role $role (config: $CONFIG_PATH)"
+  case "$OPT_name" in
+    *-"$role"*)
+      local prefix sessions sname stored
+      prefix="${OPT_name%%-"$role"*}"
+      sessions="$(tmux list-sessions -F "#{session_name}" 2> /dev/null)" || sessions=""
+      while IFS= read -r sname; do
+        [ -n "$sname" ] || continue
+        case "$sname" in "$prefix"-*) ;; *) continue ;; esac
+        stored="$(stored_opt "$sname" @dwf_config_mode)"
+        if [ -n "$stored" ] && [ "$stored" != "$EXP_MODE" ]; then
+          die 10 "$SUB: config permission mode '$EXP_MODE' differs from '$stored' recorded by session '$sname' (stop it with the user's permission, or run: $PROG respawn --name $sname --force)"
+        fi
+      done <<< "$sessions"
+      ;;
+  esac
+  CFG_STORE="$EXP_MODE"
+}
+
 parse_opts() {
   local allowed="$1" key
   shift
@@ -33,6 +102,11 @@ parse_opts() {
       --user-approved)
         case " $allowed " in *" user-approved "*) ;; *) usage_die "unknown option $1" ;; esac
         OPT_user_approved=1
+        shift
+        ;;
+      --force)
+        case " $allowed " in *" force "*) ;; *) usage_die "unknown option $1" ;; esac
+        OPT_force=1
         shift
         ;;
       --*)
@@ -118,6 +192,7 @@ cmd_launch() {
   need_tmux
   need_claude
   session_exists "$OPT_name" && die 5 "launch: a tmux session named '$OPT_name' already exists"
+  check_permission_mode
 
   local argv=(claude) v
   tmarg "$OPT_name"; v="$REPLY"; argv+=(--name "$v")
@@ -148,6 +223,7 @@ store_launch_opts() {
     "@dwf_model=${OPT_model:-}" \
     "@dwf_effort=$effort" \
     "@dwf_permission_mode=${OPT_permission_mode:-}" \
+    "@dwf_config_mode=${CFG_STORE:-}" \
     "@dwf_settings=${OPT_settings:-}" \
     "@dwf_resumed=$resumed" \
     "@dwf_cwd=$cwd"; do
@@ -175,6 +251,7 @@ cmd_resume() {
   need_tmux
   need_claude
   session_exists "$OPT_name" && die 5 "resume: a tmux session named '$OPT_name' already exists"
+  check_permission_mode
 
   local argv=(claude)
   tmarg "$OPT_name"; v="$REPLY"; argv+=(--name "$v")
@@ -299,7 +376,7 @@ cmd_send() {
 }
 
 cmd_respawn() {
-  parse_opts "name" "$@"
+  parse_opts "name force" "$@"
   require_opts name
   check_name "$OPT_name"
   need_tmux
@@ -308,7 +385,7 @@ cmd_respawn() {
   local session_id agent model effort permission settings v
   session_id="$(stored_opt "$OPT_name" @dwf_session_id)"
   [ -n "$session_id" ] || die 8 "respawn: '$OPT_name' has no stored launch options"
-  if ! pane_dead "$OPT_name"; then
+  if ! pane_dead "$OPT_name" && [ "${OPT_force:-0}" != "1" ]; then
     echo "alive, not respawned"
     exit 0
   fi
@@ -319,6 +396,21 @@ cmd_respawn() {
   settings="$(stored_opt "$OPT_name" @dwf_settings)"
   if [ -z "$effort" ] || { [ "$(stored_opt "$OPT_name" @dwf_resumed)" != "1" ] && { [ -z "$agent" ] || [ -z "$model" ] || [ -z "$settings" ]; }; }; then
     die 8 "respawn: '$OPT_name' has incomplete stored launch options"
+  fi
+  local new_config_mode=""
+  if [ "${OPT_force:-0}" = "1" ]; then
+    local frole; frole="$(role_of_agent "$agent")"
+    if [ -n "$frole" ]; then
+      config_read
+      compute_expected "$frole"
+      permission="$EXP_FLAG"
+      new_config_mode="$EXP_MODE"
+    fi
+  fi
+  if [ -n "$new_config_mode" ]; then
+    tmux set-option -t "=$OPT_name:" @dwf_permission_mode "$permission" > /dev/null 2>&1 \
+      && tmux set-option -t "=$OPT_name:" @dwf_config_mode "$new_config_mode" > /dev/null 2>&1 \
+      || die 8 "respawn: tmux could not store the launch options for '$OPT_name'"
   fi
   local argv=(claude)
   tmarg "$OPT_name"; v="$REPLY"; argv+=(--name "$v")
