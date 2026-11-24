@@ -12,7 +12,7 @@ try:
     from attention_hub_client import (
         report_state, log_hub, get_session_name, clear_waiting_marker,
         background_work_entries, set_inflight_marker, clear_inflight_marker,
-        is_subagent_event,
+        is_subagent_event, has_needs_user_marker,
     )
 except ImportError:
     import importlib.util
@@ -30,6 +30,7 @@ except ImportError:
     background_work_entries = attention_hub_client.background_work_entries
     set_inflight_marker = attention_hub_client.set_inflight_marker
     clear_inflight_marker = attention_hub_client.clear_inflight_marker
+    has_needs_user_marker = attention_hub_client.has_needs_user_marker
 
 try:
     from attention_hub_transcript import extract_latest_message, has_ask_user_question
@@ -46,7 +47,7 @@ except ImportError:
 
 
 def main():
-    # Stop: needs_input, else working while background_tasks or session_crons
+    # Stop: needs_input (AskUserQuestion or a needs-user marker), else working while background_tasks or session_crons
     # hold an entry, else done. No macOS/Slack here -- that stays in notifications.
     try:
         input_data = json.load(sys.stdin)
@@ -72,6 +73,10 @@ def main():
         message = extract_latest_message(transcript_path)
 
         if has_ask_user_question(transcript_path):
+            hub_state = "needs_input"
+        elif has_needs_user_marker(session_id):
+            # A plain-text question leaves no trace in the transcript; the session
+            # asserts the wait itself. The marker stays until the user replies.
             hub_state = "needs_input"
         elif active_work:
             hub_state = "working"

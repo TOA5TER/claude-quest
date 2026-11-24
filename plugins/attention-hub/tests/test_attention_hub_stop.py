@@ -349,3 +349,52 @@ def test_subagent_originated_stop_leaves_inflight_marker_alone(
     stop_events(base_hook_input, transcript_without_ask,
                 agent_id="sub-1", background_tasks=[])
     assert (inflight_home / "test-session-123").is_file()
+
+
+def needs_user_marker(home, session_id="test-session-123"):
+    return home / ".claude" / "attention-hub" / "needs-user-markers" / session_id
+
+
+def set_needs_user_marker(home, session_id="test-session-123"):
+    path = needs_user_marker(home, session_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch()
+    return path
+
+
+def test_stop_with_needs_user_marker_reports_needs_input(
+        base_hook_input, transcript_without_ask, isolated_home):
+    # Why: T-1 — a plain-text question has no AskUserQuestion, so the marker is the
+    # only signal that the user must act and the card must be red.
+    set_needs_user_marker(isolated_home)
+    events = stop_events(base_hook_input, transcript_without_ask)
+    assert [e["state"] for e in events] == ["needs_input"]
+
+
+def test_stop_needs_user_marker_beats_background_work(
+        base_hook_input, transcript_without_ask, isolated_home):
+    # Why: T-2 — the orchestrator waits on the user while a watcher runs; the card
+    # must stay red and the in-flight marker must still follow the work lists.
+    set_needs_user_marker(isolated_home)
+    events = stop_events(base_hook_input, transcript_without_ask,
+                         background_tasks=[WORK["shell"]])
+    assert [e["state"] for e in events] == ["needs_input"]
+    assert (isolated_home / ".claude" / "attention-hub" / "inflight-markers"
+            / "test-session-123").is_file()
+
+
+def test_stop_without_needs_user_marker_keeps_done_and_working(
+        base_hook_input, transcript_without_ask):
+    # Why: T-3 — no marker means today's behavior, asserted next to the marker cases.
+    assert stop_events(base_hook_input, transcript_without_ask)[0]["state"] == "done"
+    assert stop_events(base_hook_input, transcript_without_ask,
+                       background_tasks=[WORK["shell"]])[0]["state"] == "working"
+
+
+def test_stop_leaves_needs_user_marker_in_place(
+        base_hook_input, transcript_without_ask, isolated_home):
+    # Why: T-4 — a later idle_prompt or Stop must still see the wait; only a user
+    # prompt or session end proves it is over.
+    path = set_needs_user_marker(isolated_home)
+    stop_events(base_hook_input, transcript_without_ask)
+    assert path.is_file()

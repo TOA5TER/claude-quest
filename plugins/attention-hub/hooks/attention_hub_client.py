@@ -195,6 +195,10 @@ def _inflight_marker_path(session_id):
     return _marker_path("inflight-markers", session_id)
 
 
+def _needs_user_marker_path(session_id):
+    return _marker_path("needs-user-markers", session_id)
+
+
 def set_inflight_marker(session_id):
     """Record that the session's last Stop listed background work. Never raises."""
     try:
@@ -262,6 +266,31 @@ def clear_waiting_marker(session_id):
     """
     try:
         path = _waiting_marker_path(session_id)
+        if path is None or not path.is_file():
+            return False
+        path.unlink()
+        return True
+    except Exception:
+        return False
+
+
+def has_needs_user_marker(session_id):
+    """True if the session asserted that its next step is the user's. Never raises.
+
+    Only the session itself creates this marker (a plain file write), so there is
+    deliberately no setter here.
+    """
+    try:
+        path = _needs_user_marker_path(session_id)
+        return path is not None and path.is_file()
+    except Exception:
+        return False
+
+
+def clear_needs_user_marker(session_id):
+    """Remove the needs-user marker; return True if it existed. Never raises."""
+    try:
+        path = _needs_user_marker_path(session_id)
         if path is None or not path.is_file():
             return False
         path.unlink()
