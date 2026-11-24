@@ -344,3 +344,16 @@ def test_transcript_recently_modified_is_bounded_and_safe(tmp_path):
     fifo = tmp_path / "fifo"
     os.mkfifo(fifo)
     assert client.transcript_recently_modified(str(fifo)) is False
+
+
+def test_idle_prompt_with_needs_user_marker_reports_nothing(
+        base_hook_input, transcript_without_ask, isolated_home, set_needs_user_marker):
+    # Why: a late idle_prompt would turn the red card gray; without the marker it reports done.
+    age(transcript_without_ask)
+    path = set_needs_user_marker()
+    payload = {**base_hook_input, "notification_type": "idle_prompt",
+               "transcript_path": transcript_without_ask}
+    assert hub_events(run_hook_capture_hub(payload)) == []
+    assert path.is_file()
+    path.unlink()
+    assert [e["state"] for e in hub_events(run_hook_capture_hub(payload))] == ["done"]

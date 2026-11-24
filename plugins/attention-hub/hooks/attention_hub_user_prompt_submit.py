@@ -9,7 +9,8 @@ import sys
 from pathlib import Path
 
 try:
-    from attention_hub_client import report_state, log_hub, get_session_name, clear_waiting_marker, is_subagent_event
+    from attention_hub_client import report_state, log_hub, get_session_name, clear_waiting_marker, is_subagent_event, \
+        clear_needs_user_marker
 except ImportError:
     import importlib.util
     hub_spec = importlib.util.spec_from_file_location(
@@ -23,6 +24,7 @@ except ImportError:
     log_hub = attention_hub_client.log_hub
     get_session_name = attention_hub_client.get_session_name
     clear_waiting_marker = attention_hub_client.clear_waiting_marker
+    clear_needs_user_marker = attention_hub_client.clear_needs_user_marker
 
 
 def main():
@@ -39,6 +41,7 @@ def main():
         # A new prompt supersedes any pending waiting state; consume the marker
         # so PostToolUse does not send a redundant "working" later.
         clear_waiting_marker(session_id)
+        clear_needs_user_marker(session_id)
 
         success = report_state(session_id, input_data.get("cwd", ""), "working",
                                session_name=get_session_name(input_data),

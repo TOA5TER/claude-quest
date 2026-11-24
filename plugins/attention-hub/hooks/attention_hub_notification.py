@@ -10,7 +10,7 @@ from pathlib import Path
 
 try:
     from attention_hub_client import report_state, log_hub, get_session_name, set_waiting_marker, has_inflight_marker, \
-        has_waiting_marker, transcript_recently_modified
+        has_waiting_marker, transcript_recently_modified, has_needs_user_marker
 except ImportError:
     import importlib.util
     hub_spec = importlib.util.spec_from_file_location(
@@ -26,6 +26,7 @@ except ImportError:
     has_inflight_marker = attention_hub_client.has_inflight_marker
     has_waiting_marker = attention_hub_client.has_waiting_marker
     transcript_recently_modified = attention_hub_client.transcript_recently_modified
+    has_needs_user_marker = attention_hub_client.has_needs_user_marker
 
 try:
     from attention_hub_transcript import extract_latest_message, has_ask_user_question
@@ -67,6 +68,9 @@ def main():
             # an idle_prompt must not overwrite any of them with waiting.
             if has_inflight_marker(session_id):
                 log_hub(f"Notification idle_prompt ignored for {session_id}: background work in flight")
+                sys.exit(0)
+            if has_needs_user_marker(session_id):
+                log_hub(f"Notification idle_prompt ignored for {session_id}: a user wait is asserted")
                 sys.exit(0)
             if has_waiting_marker(session_id) or has_ask_user_question(transcript_path):
                 log_hub(f"Notification idle_prompt ignored for {session_id}: a wait or question is pending")

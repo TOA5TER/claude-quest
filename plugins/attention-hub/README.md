@@ -6,8 +6,8 @@ A self-hosted, zero-dependency dashboard server *and* a full set of Claude Code 
 
 Many concurrent agent sessions (local, docker, remote servers) make per-machine notifications spammy and hard to track. The attention hub is a small server every session's reporting client posts state events to; its web dashboard shows each session as a color-coded card, and gathers the sessions of one story into a group with one row per session (see [Story groups](#story-groups)):
 
-- **Red** — `waiting` (blocked on a permission/question prompt) or `needs_input` (finished its turn by asking you something)
-- **Gray** — `done` (nothing in flight, waiting for you to start the next turn)
+- **Red** — `waiting` (blocked on a permission/question prompt) or `needs_input` (finished its turn by asking you something, or the session asserted a user wait with a needs-user marker, see [Asserting a user wait](#asserting-a-user-wait))
+- **Gray** — `done` (nothing in flight and no user wait asserted; waiting for you to start the next turn)
 - **Green** — `working` (busy, or work such as a background shell or a scheduled wakeup is still in flight)
 
 Each ungrouped card's title is the session name if one was reported, falling back to the session ID (a row inside a group shows its role and repo label instead) — and, when a dev-workflow checkpoint has stage data for it, a second line showing the stage. A session named `{story-id}-{role}-{repo}` reads only its own story's checkpoint: a developer, reviewer or tester card shows one `repo:stage` line for its repo, and the orchestrator and spec-writer cards show one line per repo of that story. An unnamed session shows its own repo's single line from the most recent matching checkpoint that is recent and not at a terminal stage. Cards show time in state, the latest message snippet, and last-update age, refresh every 3 seconds, and have a per-card dismiss control for crashed/abandoned sessions. Sessions silent for over 24 hours are pruned automatically.
@@ -65,15 +65,32 @@ Responses: `200` with the updated record, `400` for a missing/invalid state or m
 
 This plugin ships Claude Code hooks that report session state to the dashboard automatically once installed — no configuration needed, and no other plugin required:
 
-- **Notification hook**: Reports `waiting` and sets the waiting marker for `permission_prompt` and `elicitation_dialog`, the two notifications that mean you are blocked. An `idle_prompt` never reports `waiting`: it only says the prompt sat unanswered, and Stop already decided done, needs_input or working. It is ignored while the last Stop listed background work (in-flight marker), while a permission or elicitation wait is pending (waiting marker), and while an `AskUserQuestion` is still the latest message. It is also ignored when the session's transcript was written to in roughly the last 30 seconds, because a running turn keeps writing it; this stops a late `idle_prompt` from setting a card to `done` just after you submit a prompt. Otherwise it reports `done`, which also ends a card left at `working` by an interrupted turn (Esc sends no Stop), since an interrupted turn's transcript goes quiet. The 30-second window is a heuristic; the submitted prompt is itself written to the transcript, so a prompt just submitted always falls inside it, while an interrupted turn can be reported done only once its transcript has been quiet for that long.
-- **Stop hook**: Computes and reports `needs_input` (AskUserQuestion was used), `working` (a background task or scheduled wakeup is still in flight), or `done`, and keeps the in-flight marker in step with that list. The decision reads the Stop input's `background_tasks` and `session_crons` lists (see Active Work Tracking below)
+- **Notification hook**: Reports `waiting` and sets the waiting marker for `permission_prompt` and `elicitation_dialog`, the two notifications that mean you are blocked. An `idle_prompt` never reports `waiting`: it only says the prompt sat unanswered, and Stop already decided done, needs_input or working. It is ignored while the last Stop listed background work (in-flight marker), while a user wait is asserted (needs-user marker), while a permission or elicitation wait is pending (waiting marker), and while an `AskUserQuestion` is still the latest message. It is also ignored when the session's transcript was written to in roughly the last 30 seconds, because a running turn keeps writing it; this stops a late `idle_prompt` from setting a card to `done` just after you submit a prompt. Otherwise it reports `done`, which also ends a card left at `working` by an interrupted turn (Esc sends no Stop), since an interrupted turn's transcript goes quiet. The 30-second window is a heuristic; the submitted prompt is itself written to the transcript, so a prompt just submitted always falls inside it, while an interrupted turn can be reported done only once its transcript has been quiet for that long.
+- **Stop hook**: Computes and reports `needs_input` (AskUserQuestion was used, or the session's needs-user marker exists), `working` (a background task or scheduled wakeup is still in flight), or `done`, and keeps the in-flight marker in step with that list. The decision reads the Stop input's `background_tasks` and `session_crons` lists (see Active Work Tracking below)
 - **PostToolUse hook**: Reports `working` to the hub when a tool completes after the session was flagged `waiting` (a tool can only complete once a pending permission/question was answered). Gated by a per-session marker file, so on normal tool calls (no marker) it exits instantly with zero network activity
-- **UserPromptSubmit hook**: Reports `working` to the hub — answering a session automatically clears its needs-attention state
-- **SessionEnd hook**: Removes the session from the hub (and cleans up its waiting and in-flight markers)
+- **UserPromptSubmit hook**: Reports `working` to the hub and deletes the needs-user marker — answering a session automatically clears its needs-attention state
+- **SessionEnd hook**: Removes the session from the hub (and cleans up its waiting, in-flight and needs-user markers)
 
 The UserPromptSubmit, PostToolUse, Stop and SessionEnd hooks ignore events carrying `agent_id` (fired inside a subagent), so a subagent never overwrites its parent's row or creates one of its own. The Notification hook does not filter: a subagent's permission prompt blocks the parent, so it reports `waiting` on the parent's row. Sessions launched with `--agent` carry only `agent_type` on their main thread and are tracked normally.
 
-Transient hook state (waiting markers and in-flight markers) lives under `~/.claude/attention-hub/`.
+Transient hook state (waiting markers, in-flight markers and needs-user markers, in the `waiting-markers`, `inflight-markers` and `needs-user-markers` subfolders) lives under `~/.claude/attention-hub/`.
+
+### Asserting a user wait
+
+A session that ends its turn with a plain-text question (for example "approve these specs?") leaves nothing in its transcript that says the user must act, so the Stop hook reports `done` and the card turns gray. Only an `AskUserQuestion` is visible to it. A session closes that gap by asserting the wait itself: it creates an empty needs-user marker file, and the Stop hook reports `needs_input` (red) while the file exists, even while background work is in flight.
+
+The marker is `~/.claude/attention-hub/needs-user-markers/<session_id>`. Create it as the last tool call of the turn with this command (it needs no attention-hub install path, and it does nothing harmful when the plugin is absent):
+
+```bash
+mkdir -p ~/.claude/attention-hub/needs-user-markers && touch ~/.claude/attention-hub/needs-user-markers/"${CLAUDE_CODE_SESSION_ID:?}"
+```
+
+If `CLAUDE_CODE_SESSION_ID` is unset the command exits non-zero and creates no marker file.
+
+- **Stop** leaves the marker in place, and so does the Notification hook's `idle_prompt` handling, which reports nothing while the marker exists. PostToolUse never removes it either, because the command above is itself a tool call.
+- **UserPromptSubmit** deletes the marker before it reports `working`, and **SessionEnd** deletes it with the session's other markers.
+- A message from another session (for example a worker reply to an orchestrator) also fires UserPromptSubmit and so clears the marker. A session that is still waiting on the user after such a message must set the marker again before the turn ends.
+- Red means the user must act. Gray means nothing is in flight and no user wait is asserted.
 
 Installing this plugin alone gives a Claude Code session the complete waiting/needs_input/done/working lifecycle on the dashboard — no other plugin required. If the [`notifications`](../notifications) plugin is also installed, its own hooks handle macOS/Slack notifications independently, with zero shared code between the two plugins. Any other agent that wants to report state can also POST directly to the [HTTP API](#http-api) documented below.
 
@@ -84,7 +101,7 @@ The Active work list on a card comes from these lists in the Stop hook's input, 
 - `background_tasks` — one entry per in-flight shell, subagent, monitor, workflow, teammate, cloud session or MCP task. Each becomes an Active work entry with its ID, its type as the kind, its description as the label and its status verbatim. Any entry in the list counts as in flight; the hook never filters on status.
 - `session_crons` — one entry per pending scheduled wakeup (`/loop`, `ScheduleWakeup`, `CronCreate`). Each becomes an entry of kind `cron` keyed by the cron's own ID, with the prompt as the label and status `scheduled`.
 
-The state rule at each Stop is: `needs_input` when the transcript shows an `AskUserQuestion`, else `working` when either list has an entry, else `done`. A Stop with no `background_tasks` field is treated as nothing in flight and reports `done`; there is no marker fallback. Builds of Claude Code whose Stop input lacks these fields therefore report `done` with no background tracking. The fields were verified live on Claude Code 2.1.277, the minimum build this plugin has been checked against; earlier builds were not tested, and any build whose Stop input lacks the fields reports `done`. An unreachable task registry omits the fields too, with the same result.
+The state rule at each Stop is: `needs_input` when the transcript shows an `AskUserQuestion`, else `needs_input` when the session's needs-user marker exists, else `working` when either list has an entry, else `done`. A Stop with no `background_tasks` field is treated as nothing in flight and reports `done`; there is no marker fallback. Builds of Claude Code whose Stop input lacks these fields therefore report `done` with no background tracking. The fields were verified live on Claude Code 2.1.277, the minimum build this plugin has been checked against; earlier builds were not tested, and any build whose Stop input lacks the fields reports `done`. An unreachable task registry omits the fields too, with the same result.
 
 - **Refresh** — the list refreshes only at a Stop. A Stop that finds nothing in flight sends an explicit empty list, which clears the card's previous Active work; `UserPromptSubmit` and `PostToolUse` omit the field, so the hub keeps the list from the last Stop while the session works.
 - **Finished work is not shown** — the lists contain only in-flight work, so a task disappears from the card at the first Stop after it ends.

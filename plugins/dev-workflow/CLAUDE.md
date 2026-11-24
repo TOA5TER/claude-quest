@@ -124,6 +124,7 @@ Content is mostly Markdown skill definitions, plus a small number of static asse
 - `bash tests/test_local_mode.sh` — after touching `skills/shared/local-mode.md`, `skills/shared/pre-release-pin.md`, the Local Mode section of `skills/full-cycle/SKILL.md`, the `base-root:` dispatch rule in `skills/full-cycle/SKILL.md`, or the Local Mode and pin sections of `agents/developer.md` and `agents/pr-state-reader.md`
 - `bash tests/test_toiling_copy_control.sh` — after touching `skills/toiling/SKILL.md` or `skills/toiling/copy-control.html`
 - `bash tests/test_mandatory_steps.sh` — after touching the mandatory-step, `skipped-steps`, `mode: complete` or hand-off decision wording in `skills/developing/SKILL.md`, `agents/developer.md`, `skills/shared/standards.md`, `skills/shared/role-sessions.md`, `skills/shared/context-compaction.md`, `skills/full-cycle/SKILL.md` or `skills/toiling/SKILL.md`
+- `bash tests/test_user_wait_marker.sh` — after touching the User Waits wording or a pointer to it in `skills/full-cycle/SKILL.md`, or the needs-user marker wording in the attention-hub README or client
 - `bash tests/test_agent_names.sh` and `bash tests/test_pr_story_resolution.sh` — after any version bump (each pins the exact plugin version)
 
 Changes are made by editing `.md` files (and the occasional asset file) in `skills/` and `commands/`.

@@ -78,3 +78,16 @@ def base_hook_input():
         "cwd": "/fake/test-project",
         "permission_mode": "default",
     }
+
+
+@pytest.fixture
+def set_needs_user_marker(isolated_home):
+    """Create a session's needs-user marker the way the orchestrator's command
+    does, under the redirected HOME. Returns the marker path."""
+    def _set(session_id="test-session-123"):
+        path = (isolated_home / ".claude" / "attention-hub" / "needs-user-markers"
+                / session_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+        return path
+    return _set
