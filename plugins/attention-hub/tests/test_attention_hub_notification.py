@@ -346,11 +346,9 @@ def test_transcript_recently_modified_is_bounded_and_safe(tmp_path):
     assert client.transcript_recently_modified(str(fifo)) is False
 
 
-
 def test_idle_prompt_with_needs_user_marker_reports_nothing(
         base_hook_input, transcript_without_ask, isolated_home, set_needs_user_marker):
-    # Why: a late idle_prompt would turn the red card gray about a minute
-    # after the wait began; without the marker it still reports done.
+    # Why: a late idle_prompt would turn the red card gray; without the marker it reports done.
     age(transcript_without_ask)
     path = set_needs_user_marker()
     payload = {**base_hook_input, "notification_type": "idle_prompt",

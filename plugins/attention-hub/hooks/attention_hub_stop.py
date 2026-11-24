@@ -75,8 +75,7 @@ def main():
         if has_ask_user_question(transcript_path):
             hub_state = "needs_input"
         elif has_needs_user_marker(session_id):
-            # A plain-text question leaves no trace in the transcript; the session
-            # asserts the wait itself.
+            # A plain-text question leaves no transcript trace, so the session asserts the wait.
             hub_state = "needs_input"
         elif active_work:
             hub_state = "working"

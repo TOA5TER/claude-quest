@@ -351,11 +351,9 @@ def test_subagent_originated_stop_leaves_inflight_marker_alone(
     assert (inflight_home / "test-session-123").is_file()
 
 
-
 def test_stop_with_needs_user_marker_reports_needs_input(
         base_hook_input, transcript_without_ask, isolated_home, set_needs_user_marker):
-    # Why: a plain-text question has no AskUserQuestion, so the marker is the
-    # only signal that the user must act and the card must be red.
+    # Why: a plain-text question has no AskUserQuestion, so the marker is the only red signal.
     set_needs_user_marker()
     events = stop_events(base_hook_input, transcript_without_ask)
     assert [e["state"] for e in events] == ["needs_input"]
@@ -363,8 +361,7 @@ def test_stop_with_needs_user_marker_reports_needs_input(
 
 def test_stop_needs_user_marker_beats_background_work(
         base_hook_input, transcript_without_ask, isolated_home, set_needs_user_marker):
-    # Why: the orchestrator waits on the user while a watcher runs; the card
-    # must stay red and the in-flight marker must still follow the work lists.
+    # Why: the card must stay red while a watcher runs and the in-flight marker still follows the work lists.
     set_needs_user_marker()
     events = stop_events(base_hook_input, transcript_without_ask,
                          background_tasks=[WORK["shell"]])
@@ -383,8 +380,7 @@ def test_stop_without_needs_user_marker_keeps_done_and_working(
 
 def test_stop_leaves_needs_user_marker_in_place(
         base_hook_input, transcript_without_ask, isolated_home, set_needs_user_marker):
-    # Why: a later idle_prompt or Stop must still see the wait; only a user
-    # prompt or session end proves it is over.
+    # Why: only a user prompt or session end proves the wait is over.
     path = set_needs_user_marker()
     stop_events(base_hook_input, transcript_without_ask)
     assert path.is_file()

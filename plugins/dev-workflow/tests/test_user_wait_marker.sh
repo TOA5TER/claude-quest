@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Tests that full-cycle requires the needs-user marker at every user wait and that it
-# matches the attention-hub plugin's marker folder and README command.
+# Tests that full-cycle requires the needs-user marker at every user wait, matching attention-hub.
 set -uo pipefail
 
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

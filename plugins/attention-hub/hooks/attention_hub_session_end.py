@@ -40,7 +40,7 @@ def main():
         if not session_id:
             sys.exit(0)
 
-        # Drop the waiting marker so nothing leaks on disk.
+        # Drop every per-session marker so nothing leaks on disk.
         clear_waiting_marker(session_id)
         clear_inflight_marker(session_id)
         clear_needs_user_marker(session_id)

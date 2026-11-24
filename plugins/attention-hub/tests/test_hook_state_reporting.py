@@ -298,11 +298,9 @@ def test_main_thread_events_still_report(base_hook_input):
     assert events[0]["state"] == "working"
 
 
-
 def test_user_prompt_submit_clears_needs_user_marker_then_stop_reports_done(
         base_hook_input, transcript_without_ask, isolated_home, set_needs_user_marker):
-    # Why: the user replying ends the wait: working is reported, the marker is
-    # gone, and the next plain Stop is gray again.
+    # Why: the user replying ends the wait, so working is reported and the next plain Stop is gray.
     path = set_needs_user_marker()
     events = hub_events(run_hook_capture_hub("attention_hub_user_prompt_submit.py", {
         **base_hook_input, "prompt": "approved",
@@ -325,8 +323,7 @@ def test_session_end_clears_needs_user_marker(base_hook_input, isolated_home, se
 
 def test_post_tool_use_leaves_needs_user_marker_and_reports_nothing(
         base_hook_input, isolated_home, set_needs_user_marker):
-    # Why: the orchestrator sets the marker with a Bash call whose PostToolUse
-    # fires at once; clearing there would undo the marker before the turn ends.
+    # Why: the marker is set by a Bash call whose PostToolUse fires at once, so it must not clear there.
     path = set_needs_user_marker()
     requests = run_hook_capture_hub("attention_hub_post_tool_use.py", {
         **base_hook_input, "tool_name": "Bash",
