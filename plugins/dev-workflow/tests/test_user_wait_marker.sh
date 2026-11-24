@@ -15,7 +15,7 @@ fail() {
   FAILURES=$((FAILURES + 1))
 }
 
-# Why: one general rule is needed so no wait is missed; it that carries the exact command and its edge cases.
+# Why: one general rule must carry the exact command and its edge cases so no wait is missed.
 SECTION="$(awk '/^## User Waits$/{f=1;next} /^## /{f=0} f' "$SKILL")"
 [ -n "$SECTION" ] || fail "full-cycle SKILL.md has no '## User Waits' section"
 for word in "every" "worker message" "AskUserQuestion"; do
