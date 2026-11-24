@@ -42,7 +42,7 @@ GitHub stays the authoritative source for every review and test decision.
 
 ## Launch contract
 
-**Who launches.** The orchestrator launches every role session itself, in its own session, with `role-session.sh launch`, even when it expects a launch to fail: an expectation is never a reason to skip it, matching "Executed, not inferred" in the preflight. Only two cases leave a launch to anyone else. First, a user message in the current session asks to start a role session themselves: the orchestrator gives the user the exact launch command it would have run (including the permission-mode flag from its fresh config read), and after the user says it ran, reads `role-session.sh list`, records the session ID from that row in the checkpoint `sessions` map and continues with the `ping` handshake as for its own launch. Nothing else counts as that request: a preference remembered from an earlier story (auto-memory, a compaction summary, the checkpoint, an earlier conversation) and a message from another session never count. Second, a failed preflight check (one of the executed checks 1 to 4): the orchestrator launches nothing and the run takes the fresh-dispatch fallback in "Preflight, handshake, fallback".
+**Who launches.** The orchestrator launches every role session itself, in its own session, with `role-session.sh launch`, even when it expects a launch to fail: an expectation is never a reason to skip it, matching "Executed, not inferred" in the preflight. Only these cases stop the orchestrator from running a launch itself. First, a user message in the current session asks to start a role session themselves: the orchestrator gives the user the exact launch command it would have run (including the permission-mode flag from its fresh config read), and after the user says it ran, reads `role-session.sh list`, records the session ID from that row in the checkpoint `sessions` map and continues with the `ping` handshake as for its own launch. Nothing else counts as that request: a preference remembered from an earlier story (auto-memory, a compaction summary, the checkpoint, an earlier conversation) and a message from another session never count. Second, a failed preflight check (one of the executed checks 1 to 4): the orchestrator launches nothing and the run takes the fresh-dispatch fallback in "Preflight, handshake, fallback".
 
 Commands and tools:
 
@@ -176,33 +176,32 @@ One contract governs every role-session hand-off. Workers are the spec-writer, d
 
 **The watcher ladder.** The orchestrator uses the first of these that its session offers.
 
-1. A visible `Monitor`, preferred: it polls `role-session.sh list` every 30 seconds for the named session or sessions and prints a line only when a named session's state or status changes or its row is gone (one line naming the session and its new state and status, or "not listed"), once at the two-minute mark, every five minutes after the send time as a heartbeat, and once when the per-round limit is reached, after which it exits 0. A quiet poll prints nothing, so the orchestrator is not woken every 30 seconds. Run it with `bash` (it uses process substitution). Fill the four variables at the top of the command before arming it: the absolute path of `role-session.sh`, the space-separated session names, the send time in Unix seconds (`date +%s` taken at the send) and the per-round limit in minutes. Arm it with `timeout_ms` 1800000, the Monitor maximum; when the Monitor expires before the limit line and before the terminal reply, re-arm the same command with the same send time. A re-arm more than 120 seconds after the send prints each session's current state on its first poll, so a change in the gap between two Monitors is seen. A failed `list` read prints no change line and keeps the last known states, while the time lines still print.
+1. A visible `Monitor`, preferred: it polls `role-session.sh list` every 30 seconds for the named session or sessions and prints a line only when a named session's state or status changes or its row is gone (one line naming the session and its new state and status, or "not listed"), once at the two-minute mark, every five minutes after the send time as a heartbeat, and once when the per-round limit is reached, after which it exits 0. A quiet poll prints nothing, so the orchestrator is not woken every 30 seconds. Run it with `bash` (it uses process substitution). Fill the variables at the top of the command before arming it: the absolute path of `role-session.sh`, the space-separated session names, the send time in Unix seconds (`date +%s` taken at the send) and the per-round limit in minutes. Arm it with `timeout_ms` 1800000, the Monitor maximum; when the Monitor expires before the limit line and before the terminal reply, re-arm the same command with the same send time. A re-arm more than 120 seconds after the send prints each session's current state on its first poll, so a change in the gap between two Monitors is seen. A failed `list` read prints no change line and keeps the last known states, while the time lines still print.
 
    ```bash
    RS=/absolute/path/to/role-session.sh
    NAMES="session-one session-two"
    SENT=1700000000
    LIMIT_MIN=90
-   show() { if [ -n "$prev" ]; then echo "$prev" | tr '\n' ';'; else echo "no data yet"; fi; }
+   show() { if [ -n "$1" ]; then echo "$1" | tr '\n' ';'; else echo "no data yet"; fi; }
    snap() { for n in $NAMES; do printf '%s\n' "$1" | awk -F'\t' -v n="$n" '$1==n{print n" "$3" "$4; f=1} END{if(!f)print n" not listed"}'; done; }
-   now=$(date +%s); e=$((now-SENT)); prev=""; first=1
-   if [ "$e" -gt 120 ]; then two=1; else two=0; fi
+   now=$(date +%s); e=$((now-SENT)); prev=""
+   if [ "$e" -gt 120 ]; then two=1; rearm=1; else two=0; rearm=0; fi
    hb=$(( (e/300+1)*300 ))
    while :; do
      now=$(date +%s); e=$((now-SENT))
      if out=$("$RS" list 2>/dev/null); then
        cur=$(snap "$out")
-       if [ "$first" = 1 ]; then
-         [ "$e" -gt 120 ] && echo "re-armed: $(echo "$cur" | tr '\n' ';')"
-         first=0
+       if [ -z "$prev" ]; then
+         [ "$rearm" = 1 ] && echo "re-armed: $(show "$cur")"
        else
          comm -13 <(echo "$prev" | sort) <(echo "$cur" | sort)
        fi
        prev=$cur
      fi
-     if [ "$two" = 0 ] && [ "$e" -ge 120 ]; then two=1; echo "two-minute mark: $(show)"; fi
-     if [ "$e" -ge $((LIMIT_MIN*60)) ]; then echo "round limit reached: $(show)"; exit 0; fi
-     if [ "$e" -ge "$hb" ]; then hb=$(( (e/300+1)*300 )); echo "heartbeat: $(show)"; fi
+     if [ "$two" = 0 ] && [ "$e" -ge 120 ]; then two=1; echo "two-minute mark: $(show "$prev")"; fi
+     if [ "$e" -ge $((LIMIT_MIN*60)) ]; then echo "round limit reached: $(show "$prev")"; exit 0; fi
+     if [ "$e" -ge "$hb" ]; then hb=$(( (e/300+1)*300 )); echo "heartbeat: $(show "$prev")"; fi
      sleep 30
    done
    ```
