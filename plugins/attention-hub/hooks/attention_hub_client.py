@@ -379,6 +379,25 @@ def _stage_line(repo, entry):
     return f"{repo}:{stage}" if isinstance(stage, str) else ""
 
 
+def story_in_progress(story_id):
+    """True when a repo of the story is at a non-terminal stage, False when every stage is terminal.
+
+    None when the checkpoint is missing or unreadable, or no repo entry has a string stage.
+    Never raises.
+    """
+    checkpoint = _read_story_checkpoint(story_id)
+    if checkpoint is None:
+        return None
+    repos = checkpoint.get("repos")
+    if not isinstance(repos, dict):
+        return None
+    stages = [entry.get("stage") for entry in repos.values() if isinstance(entry, dict)]
+    stages = [stage for stage in stages if isinstance(stage, str)]
+    if not stages:
+        return None
+    return any(stage not in STAGE_TERMINAL_STAGES for stage in stages)
+
+
 def _read_story_checkpoint(story_id):
     """The story's checkpoint dict, or None on a bad id or any read or parse problem."""
     try:
@@ -641,6 +660,8 @@ def _issue_request(url, method, body, timeout, result):
         response = urllib.request.urlopen(req, timeout=timeout)
         try:
             result["ok"] = 200 <= getattr(response, "status", 200) < 300
+            if result["ok"] and result.get("want_body"):
+                result["body"] = response.read()
         finally:
             response.close()
     except urllib.error.HTTPError as e:
@@ -651,7 +672,7 @@ def _issue_request(url, method, body, timeout, result):
         result["ok"] = False
 
 
-def _request(url, method, body=None):
+def _request(url, method, body=None, want_body=False):
     """Issue an HTTP request to the hub with a bounded total wall clock.
 
     urlopen's timeout only covers socket operations — DNS resolution
@@ -659,8 +680,9 @@ def _request(url, method, body=None):
     URL could stall a hook well past the budget. The request runs in a daemon
     thread joined for HUB_TIMEOUT_SECONDS, capping total time regardless of
     where the delay occurs. Returns True on 2xx, False otherwise. Never raises.
+    With want_body, returns the response bytes on 2xx and None otherwise.
     """
-    result = {}
+    result = {"want_body": True} if want_body else {}
     try:
         worker = threading.Thread(
             target=_issue_request,
@@ -674,7 +696,9 @@ def _request(url, method, body=None):
         return False
     if "ok" not in result:
         log_hub(f"Hub request exceeded {HUB_TIMEOUT_SECONDS}s budget ({method} {url})")
-        return False
+        return None if want_body else False
+    if want_body:
+        return result.get("body") if result["ok"] else None
     return result["ok"]
 
 
@@ -686,6 +710,18 @@ def report_state(session_id, cwd, state, message=None, session_name=None, active
     payload = build_event_payload(session_id, cwd, state, message, session_name, active_work,
                                   supersedes=continued_from(transcript_path, session_id))
     return _request(f"{get_hub_url()}/api/events", "POST", payload)
+
+
+def list_sessions():
+    """Rows from GET /api/sessions, or [] when the hub is unreachable or answers badly. Never raises."""
+    try:
+        body = _request(f"{get_hub_url()}/api/sessions", "GET", want_body=True)
+        if not body:
+            return []
+        sessions = json.loads(body.decode("utf-8")).get("sessions")
+        return [row for row in sessions if isinstance(row, dict)] if isinstance(sessions, list) else []
+    except Exception:
+        return []
 
 
 def remove_session(session_id):

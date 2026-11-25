@@ -9,8 +9,9 @@ Many concurrent agent sessions (local, docker, remote servers) make per-machine 
 - **Red** — `waiting` (blocked on a permission/question prompt) or `needs_input` (finished its turn by asking you something, or the session asserted a user wait with a needs-user marker, see [Asserting a user wait](#asserting-a-user-wait))
 - **Gray** — `done` (nothing in flight and no user wait asserted; waiting for you to start the next turn)
 - **Green** — `working` (busy, or work such as a background shell or a scheduled wakeup is still in flight)
+- **Near black** — `suspended` (a story-named session ended while its story is still in progress; see [Story groups](#story-groups))
 
-Each ungrouped card's title is the session name if one was reported, falling back to the session ID (a row inside a group shows its role and repo label instead) — and, when a dev-workflow checkpoint has stage data for it, a second line showing the stage. A session named `{story-id}-{role}-{repo}` reads only its own story's checkpoint: a developer, reviewer or tester card shows one `repo:stage` line for its repo, and the orchestrator and spec-writer cards show one line per repo of that story. An unnamed session shows its own repo's single line from the most recent matching checkpoint that is recent and not at a terminal stage. Cards show time in state, the latest message snippet, and last-update age, refresh every 3 seconds, and have a per-card dismiss control for crashed/abandoned sessions. Sessions silent for over 24 hours are pruned automatically.
+Each ungrouped card's title is the session name if one was reported, falling back to the session ID (a row inside a group shows its role and repo label instead) — and, when a dev-workflow checkpoint has stage data for it, a second line showing the stage. A session named `{story-id}-{role}-{repo}` reads only its own story's checkpoint: a developer, reviewer or tester card shows one `repo:stage` line for its repo, and the orchestrator and spec-writer cards show one line per repo of that story. An unnamed session shows its own repo's single line from the most recent matching checkpoint that is recent and not at a terminal stage. Cards show time in state, the latest message snippet, and last-update age, refresh every 3 seconds, and have a per-card dismiss control for crashed/abandoned sessions. Sessions silent for over 24 hours are pruned automatically, except `suspended` rows.
 
 ### Story groups
 
@@ -28,7 +29,8 @@ Grouping is always on; there is no setting. A session whose name is a story id f
   - **Marker files** — the client does not clean up the old session's waiting marker file, because only that session's own hooks touch them. They stay under `~/.claude/attention-hub/` and are not read again unless that session reports again.
 - **Duplicate names** — sessions sharing a name on different hosts are separate rows with the same label, and both count toward the group color. A stale waiting duplicate keeps the group red until you dismiss it or it is pruned, unless another member is working.
 - **Renames** — membership is worked out from each session's current name on every listing and is never stored. A rename takes effect on the session's next reported event (any hook event), not on the dashboard's own refresh. A session can be renamed into a group, out of it, or into another one; a collision suffix the host appends (such as `-2`) still groups and becomes part of the label.
-- **Group color** — a group is **green** when any member is `working`, **gray** when every member is `done`, and **red** in every other case. A group with a waiting or `needs_input` member and no working member is red, including a mix of waiting and done. One agent working while the others wait is the normal case and does not mean the story is waiting on you. The header also shows how many members are waiting (`2 of 3 waiting`). Rows and ungrouped cards keep the red/gray/green colors above.
+- **Group color** — a group is judged on its live members (every member that is not `suspended`). It is **green** when any live member is `working`, **gray** when every live member is `done`, **suspended** (near black) when it has no live member, and **red** in every other case. A group with a waiting or `needs_input` live member and no working one is red, including a mix of waiting and done. One agent working while the others wait is the normal case and does not mean the story is waiting on you. The header also shows how many live members are waiting (`2 of 3 waiting`), or `all suspended` when none is live. Rows and ungrouped cards keep the red/gray/green colors above.
+- **Suspended sessions** — a group with suspended members shows a collapsed `N suspended` toggle button (with `aria-expanded`) below its live rows; expanding it lists the suspended rows with their usual detail, dismiss and force-status controls. Which sections are open survives the 3-second refresh and resets on a page reload. A suspended row is removed by dismissing it, by the finished-story cleanup above, or when the resumed session reports under the same name and host.
 - **Ordering** — groups and ungrouped cards are ordered alphabetically and never by status, so nothing moves when a state changes. Comparison ignores case and compares runs of digits by value (`sc-999` before `sc-1000`, `api2` before `api10`). Inside a group, rows are ranked by role: `orchestrator`, `developer`, `reviewer`, `tester` (case-insensitive), then every other role in alphabetical order, with an empty role first among those. Rows with the same role sort by repo. At the top level, groups sort by story id and ungrouped cards by their name (or session ID when unnamed), interleaved in one list; a group comes before a card with an equal key.
 - **Display** — headers, titles and labels are always shown as plain text, never as markup. Group headers have no dismiss or force-status controls; those stay on each row.
 - **Group title** — the header reads `<story id>: <story title>`, or just the story id when no title is known. The title comes from the optional `story_title` the reporting client reads from the story's dev-workflow checkpoint. When members carry different titles, the most recently updated member's title is shown.
@@ -69,7 +71,7 @@ This plugin ships Claude Code hooks that report session state to the dashboard a
 - **Stop hook**: Computes and reports `needs_input` (AskUserQuestion was used, or the session's needs-user marker exists), `working` (a background task or scheduled wakeup is still in flight), or `done`, and keeps the in-flight marker in step with that list. The decision reads the Stop input's `background_tasks` and `session_crons` lists (see Active Work Tracking below)
 - **PostToolUse hook**: Reports `working` to the hub when a tool completes after the session was flagged `waiting` (a tool can only complete once a pending permission/question was answered). Gated by a per-session marker file, so on normal tool calls (no marker) it exits instantly with zero network activity
 - **UserPromptSubmit hook**: Reports `working` to the hub and deletes the needs-user marker — answering a session automatically clears its needs-attention state
-- **SessionEnd hook**: Removes the session from the hub (and cleans up its waiting, in-flight and needs-user markers)
+- **SessionEnd hook**: Cleans up the session's waiting, in-flight and needs-user markers, then either reports `suspended` or removes the row. A story-named session whose story checkpoint has a repo at a stage other than `done` or `finished` is reported `suspended` with the message `session ended; story still in progress` and never deleted. Every other session (unnamed, not a story name, no readable checkpoint or no repo stage) is removed. When every repo stage is `done` or `finished`, the hook also removes the story's other `suspended` rows that were reported from the same host. It always exits 0, even when the hub is unreachable
 
 The UserPromptSubmit, PostToolUse, Stop and SessionEnd hooks ignore events carrying `agent_id` (fired inside a subagent), so a subagent never overwrites its parent's row or creates one of its own. The Notification hook does not filter: a subagent's permission prompt blocks the parent, so it reports `waiting` on the parent's row. Sessions launched with `--agent` carry only `agent_type` on their main thread and are tracked normally.
 
@@ -144,7 +146,7 @@ The server itself has no environment variables — it is configured entirely via
 | `--port` | `8765` | Port to listen on |
 | `--bind` | `0.0.0.0` | Bind address (`127.0.0.1` for localhost only) |
 | `--state-file` | `~/.claude/attention_hub_state.json` | JSON persistence file (sessions survive hub restarts) |
-| `--prune-hours` | `24` | Drop sessions silent for this many hours |
+| `--prune-hours` | `24` | Drop sessions silent for this many hours (`suspended` rows are never dropped by this) |
 
 Open `http://localhost:8765/` for the dashboard.
 
@@ -159,7 +161,7 @@ Reports (creates or updates) a session's state. Body is a JSON object:
 | Field | Required | Meaning |
 |-------|----------|---------|
 | `session_id` | yes | Stable identifier for the session; keys the dashboard row |
-| `state` | yes | One of `waiting`, `needs_input`, `done`, `working` |
+| `state` | yes | One of `waiting`, `needs_input`, `done`, `working`, `suspended` |
 | `project` | no | Project/repo name; stored, returned by the API, and shown in the card's expanded detail panel — not on the collapsed row |
 | `host` | no | Machine/host name |
 | `cwd` | no | Full working directory, stored and returned by the API; sticky across events that omit it. Not used to match superseded sessions, which key on `session_name` and `host` (see [Story groups](#story-groups)) |
@@ -186,8 +188,8 @@ Removes a session from the dashboard. `200` on success, `404` if unknown.
 
 Returns `{"sessions": [...], "groups": [...], "layout": [...]}`, all built from one snapshot of the store so they always agree.
 
-- `sessions` — every tracked session with computed `state_seconds` and `age_seconds`, plus each `active_work` entry annotated with a computed `duration_seconds` (frozen once `completed`, live otherwise). This flat list is sorted needs-attention first (red), then done (gray), then working (green), then by time in state.
-- `groups` — one entry per story id: `story_id`, `title` (the full header text, `sc-1000: <title>` or the bare id), `color` (`red`, `gray` or `green`), `session_ids` (in display order), `labels` (row label per session ID), `waiting` (members `waiting` or `needs_input`) and `total`.
+- `sessions` — every tracked session with computed `state_seconds` and `age_seconds`, plus each `active_work` entry annotated with a computed `duration_seconds` (frozen once `completed`, live otherwise). This flat list is sorted needs-attention first (red), then done (gray), then working (green), then suspended, then by time in state.
+- `groups` — one entry per story id: `story_id`, `title` (the full header text, `sc-1000: <title>` or the bare id), `color` (`red`, `gray`, `green` or `suspended`), `session_ids` (live members only, in display order), `suspended_session_ids` (suspended members in the same order), `labels` (row label per session ID, live or suspended), `waiting` (live members `waiting` or `needs_input`), `total` (live members) and `suspended` (the suspended count).
 - `layout` — the ordered top-level list the dashboard renders; each item is `{"type": "group", "story_id": ...}` or `{"type": "session", "session_id": ...}` for an ungrouped session.
 
 ## Security

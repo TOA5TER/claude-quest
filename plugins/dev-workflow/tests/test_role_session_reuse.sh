@@ -168,6 +168,15 @@ for f in "$RS" "$FC" "$CC" "$PLUGIN_ROOT/agents/spec-writer.md" "$PLUGIN_ROOT/ag
   forbid_text "$(whole "$f")" "$(basename "$f")" "claude --bg" "claude agents" "claude respawn" "claude stop" "claude rm"
 done
 
+# Why: the suspend rule is the one standing exception to the per-stop permission rule, so its triggers, command and resume wording must stay exact.
+rs_text="$(whole "$RS")"
+suspend_block="$(bullet_block "$RS" '- **Suspend.**')"
+[ -n "$suspend_block" ] || fail "role-sessions: Suspend bullet not found"
+need_text "$suspend_block" "Suspend bullet" "The spec-writer's finalize result arrives with status=success" "A PR's authoritative review decision reads approved and the run moves to testing-prs" "A repo's testing passes and at least one other repo of the story is not at stage done" "A repo's testing passes and every repo is at stage done" "role-session.sh suspend --name" "needs no --user-approved" "never retried with stop"
+need_text "$rs_text" "role-sessions" "standing permission" "Every other shutdown and stop still needs the user's explicit permission" "with no context-recovery note" "sessions already suspended are left out of the ask"
+fc_text="$(whole "$FC")"
+need_text "$fc_text" "full-cycle" "role-sessions.md → \"Suspend\" row 1" "role-sessions.md → \"Suspend\" row 2" "role-sessions.md → \"Suspend\" rows 3 and 4" "say they remain available for more work, and ask once"
+
 if [ "$FAILURES" -gt 0 ]; then
   echo "$FAILURES failure(s)" >&2
   exit 1

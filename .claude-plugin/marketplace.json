@@ -23,13 +23,13 @@
       "name": "attention-hub",
       "source": "./plugins/attention-hub",
       "description": "Self-hosted, zero-dependency dashboard server that tracks which coding-agent sessions are waiting on you",
-      "version": "1.8.0"
+      "version": "1.9.0"
     },
     {
       "name": "dev-workflow",
       "source": "./plugins/dev-workflow",
       "description": "Role-based development workflow subagents with pluggable PM and notes adapters (requires guardrails-git >= 1.2.0 for worktree support)",
-      "version": "2.75.0"
+      "version": "2.76.0"
     },
     {
       "name": "guardrails-git",

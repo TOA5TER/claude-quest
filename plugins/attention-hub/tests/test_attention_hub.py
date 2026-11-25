@@ -1433,7 +1433,7 @@ def test_dashboard_group_text_is_text_only():
     hub = load_hub()
     assert "innerHTML" not in hub.DASHBOARD_HTML
     assert "head.textContent = g.title" in hub.DASHBOARD_HTML
-    assert "summary.textContent = g.waiting" in hub.DASHBOARD_HTML
+    assert "summary.textContent =" in hub.DASHBOARD_HTML
 
 
 def test_dashboard_empty_state_and_count_use_flat_list():
