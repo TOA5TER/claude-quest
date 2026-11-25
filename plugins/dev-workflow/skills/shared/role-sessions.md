@@ -172,7 +172,7 @@ The orchestrator tracks cycle counts exactly as before, under the Loop Safety Gu
 
 ## Communication contract
 
-One contract governs every role-session hand-off. Workers are the spec-writer, developer, reviewer, and tester sessions; the orchestrator is the main session running the `full-cycle` skill. Each rule has a single owner and a single observable outcome. Worker rules R1 to R4 are restated in each worker agent file as the canonical rules below, in the order shown (R2, R1, R3, R4); orchestrator rules R5 to R8 live here and in the `full-cycle` skill.
+One contract governs every role-session hand-off. Workers are the spec-writer, developer, reviewer, and tester sessions; the orchestrator is the main session running the `full-cycle` skill. Each rule has a single owner and a single observable outcome. Worker rules R1 to R4 are restated in each worker agent file as the canonical rules below, in the order shown (R2, R1, R3, R4); orchestrator rules R5 to R9 live here and in the `full-cycle` skill.
 
 | Rule | Owner | Behavior |
 |------|-------|----------|
@@ -182,12 +182,13 @@ One contract governs every role-session hand-off. Workers are the spec-writer, d
 | R4 Send failure | Worker | If a send fails, retry once. If it still fails, make sure the outcome is where the orchestrator's recovery reads it (GitHub for the PR roles; the checkpoint and spec files, or the PM story for `finalize`, for the spec-writer), then end the turn with one plain line naming the unsent reply. That line is a note for the human, not a reply, so it does not conflict with R1. |
 | R5 In-flight statement and armed watcher | Orchestrator | After every message sent to a worker, including `ping` and `shutdown`, the orchestrator in the same turn names what is in flight (worker name, message type, round, and the reply expected: `ready` for a `ping`; `ack` then a terminal reply for a task message; a `result` of `shutdown` for a `shutdown`) and arms a watcher (on ladder rung 3 the watcher is the user, told in the same turn which request is outstanding). The turn may end only after both. For a `shutdown` the wait is a single two-minute window: after it the orchestrator proceeds to stop the sessions the user approved, whether or not the `result` arrived, and names any session that did not answer. |
 | R6 Same-turn hand-offs | Orchestrator | Each step of a multi-step hand-off completes in the turn the triggering event arrives: launch then `ping` in one turn; `ready` then the first task message in the turn the `ready` arrives (a "not reachable" error on the first `ping` after a launch is not treated as stopped; it is handled as "no `ready` yet" by the two-minute check below); on resume, `ping` of a reused session then the task message once `ready` arrives; a terminal reply then the authoritative GitHub read then the next send, or advancing the stage, in the turn the reply arrives; for a multi-repo story, every concurrent send in one turn. |
-| R7 Missing ack or reply | Orchestrator | Two minutes after a send with no `ack` (or no `ready` for a `ping`), read the session's listed state. Dead or no process: respawn once (or resume, when respawn exits 6) and re-send once, as in "Waiting and liveness". Blocked: apply the Blocked row there. Idle: apply the done-and-idle row there (read the role's recovery source per that row, then re-send once). Busy: do not re-send, as the "Still working" row already says (a `ping` that was not reachable at launch is re-sent once here); report to the user that the request has no `ack`, keep the watcher armed, and let the per-round limit keep running; the user's direction continues or ends the wait. A `ping` has a total limit of four minutes: a session still listed running or busy with no `ready` by then is reported to the user as a failed handshake, and the watcher is stopped. A missing terminal reply after an `ack` follows the "Waiting and liveness" table and per-round limits unchanged. The watcher is stopped when the terminal reply arrives or the request is abandoned. |
+| R7 Missing ack or reply | Orchestrator | Two minutes after a send with no `ack` (or no `ready` for a `ping`), read the session's listed state. Dead or no process: respawn once (or resume, when respawn exits 6) and re-send once, as in "Waiting and liveness". Blocked: apply the Blocked row there. Idle: apply the done-and-idle row there (read the role's recovery source per that row, then re-send once). Busy: do not re-send, as the "Still working" row already says (a `ping` that was not reachable at launch is re-sent once here); report to the user that the request has no `ack`, keep the watcher armed, and let the per-round limit keep running; the user's direction continues or ends the wait. A `ping` has a total limit of four minutes: a session still listed running or busy with no `ready` by then is reported to the user as a failed handshake, and the watcher is stopped. A missing terminal reply after an `ack` follows the "Waiting and liveness" table and per-round limits unchanged. Stopping the watcher follows R9. |
 | R8 Prohibited turn endings | Orchestrator | A turn must not end (a) after a launch with no `ping` sent, (b) after `ready` with no task sent, (c) after any send with nothing named in flight or neither a watcher armed nor, on ladder rung 3, the user told which request is outstanding, or (d) after a terminal reply with the authoritative state unread and no next action taken. |
+| R9 Watcher stop | Orchestrator | The orchestrator stops a request's watcher in the turn the terminal reply arrives, in the turn the request is abandoned, and on entering a user wait per `full-cycle` "User Waits". A watcher covering several sessions is stopped once every request it covers has its terminal reply. |
 
 **The watcher ladder.** The orchestrator uses the first of these that its session offers.
 
-1. A visible `Monitor`, preferred: it polls `role-session.sh list` every 30 seconds for the named session or sessions and prints a line only when a named session's state or status changes or its row is gone (one line naming the session and its new state and status, or "not listed"), once at the two-minute mark, every five minutes after the send time as a heartbeat, and once when the per-round limit is reached, after which it exits 0. A quiet poll prints nothing, so the orchestrator is not woken every 30 seconds. Run it with `bash` (it uses process substitution). Fill the variables at the top of the command before arming it: the absolute path of `role-session.sh`, the space-separated session names, the send time in Unix seconds (`date +%s` taken at the send) and the per-round limit in minutes. Arm it with `timeout_ms` 1800000, the Monitor maximum; when the Monitor expires before the limit line and before the terminal reply, re-arm the same command with the same send time. A re-arm more than 120 seconds after the send prints each session's current state on its first poll, so a change in the gap between two Monitors is seen. A failed `list` read prints no change line and keeps the last known states, while the time lines still print.
+1. A visible `Monitor`, preferred: it polls `role-session.sh list` every 30 seconds for the named session or sessions and prints a line only when a named session's state or status changes or its row is gone (one line naming the session and its new state and status, or "not listed"), once at the two-minute mark, every five minutes after the send time as a heartbeat, and once when the per-round limit is reached, after which it exits 0. The Monitor also prints `all terminal: ` plus the sessions' last states and exits 0 once every named session is terminal (the row is gone, the process is dead, the session is idle after this Monitor saw it busy, or it is idle at 120 seconds or later after the send); terminal states are evaluated only on a successful list read. An `all terminal` exit is not re-armed: it wakes the orchestrator to check its record for the terminal reply, and R7 applies when none arrived. A quiet poll prints nothing, so the orchestrator is not woken every 30 seconds. Run it with `bash` (it uses process substitution). Fill the variables at the top of the command before arming it: the absolute path of `role-session.sh`, the space-separated session names, the send time in Unix seconds (`date +%s` taken at the send) and the per-round limit in minutes. Arm it with `timeout_ms` 1800000, the Monitor maximum; when the Monitor expires before the limit line and before the terminal reply, re-arm the same command with the same send time. A re-arm more than 120 seconds after the send prints each session's current state on its first poll, so a change in the gap between two Monitors is seen. A failed `list` read prints no change line and keeps the last known states, while the time lines still print.
 
    ```bash
    RS=/absolute/path/to/role-session.sh
@@ -196,12 +197,14 @@ One contract governs every role-session hand-off. Workers are the spec-writer, d
    LIMIT_MIN=90
    show() { if [ -n "$1" ]; then echo "$1" | tr '\n' ';'; else echo "no data yet"; fi; }
    snap() { for n in $NAMES; do printf '%s\n' "$1" | awk -F'\t' -v n="$n" '$1==n{print n" "$3" "$4; f=1} END{if(!f)print n" not listed"}'; done; }
-   now=$(date +%s); e=$((now-SENT)); prev=""
+   now=$(date +%s); e=$((now-SENT)); prev=""; seen=" "
    if [ "$e" -gt 120 ]; then two=1; rearm=1; else two=0; rearm=0; fi
    hb=$(( (e/300+1)*300 ))
    while :; do
      now=$(date +%s); e=$((now-SENT))
+     ok=0
      if out=$("$RS" list 2>/dev/null); then
+       ok=1
        cur=$(snap "$out")
        if [ -z "$prev" ]; then
          [ "$rearm" = 1 ] && echo "re-armed: $(show "$cur")"
@@ -211,6 +214,19 @@ One contract governs every role-session hand-off. Workers are the spec-writer, d
        prev=$cur
      fi
      if [ "$two" = 0 ] && [ "$e" -ge 120 ]; then two=1; echo "two-minute mark: $(show "$prev")"; fi
+     if [ "$ok" = 1 ]; then
+       all=1
+       for n in $NAMES; do
+         row=$(printf '%s\n' "$cur" | awk -v n="$n" '$1==n{print; exit}')
+         case "$row" in
+           *" not listed"|*" dead "*) ;;
+           *" busy") seen="$seen$n "; all=0 ;;
+           *" idle") if [ "$e" -lt 120 ]; then case "$seen" in *" $n "*) ;; *) all=0 ;; esac; fi ;;
+           *) all=0 ;;
+         esac
+       done
+       if [ "$all" = 1 ]; then echo "all terminal: $(show "$prev")"; exit 0; fi
+     fi
      if [ "$e" -ge $((LIMIT_MIN*60)) ]; then echo "round limit reached: $(show "$prev")"; exit 0; fi
      if [ "$e" -ge "$hb" ]; then hb=$(( (e/300+1)*300 )); echo "heartbeat: $(show "$prev")"; fi
      sleep 30

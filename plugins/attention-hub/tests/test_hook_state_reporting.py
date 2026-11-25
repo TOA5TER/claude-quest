@@ -313,6 +313,41 @@ def test_user_prompt_submit_clears_needs_user_marker_then_stop_reports_done(
     assert [e["state"] for e in events] == ["done"]
 
 
+def test_task_notification_prompt_keeps_needs_user_marker_and_clears_waiting_marker(
+        base_hook_input, marker_home, isolated_home, set_needs_user_marker):
+    # Why: a finished background task is not an answer from the user, so the asserted wait must survive it.
+    path = set_needs_user_marker()
+    waiting = marker_home / base_hook_input["session_id"]
+    waiting.parent.mkdir(parents=True, exist_ok=True)
+    waiting.touch()
+    events = hub_events(run_hook_capture_hub("attention_hub_user_prompt_submit.py", {
+        **base_hook_input, "prompt": "<task-notification>\n<task-id>abc</task-id>\n</task-notification>",
+    }))
+    assert [e["state"] for e in events] == ["working"]
+    assert path.is_file()
+    assert not waiting.exists()
+
+
+def test_task_notification_detection_strips_leading_whitespace_only(
+        base_hook_input, isolated_home, set_needs_user_marker):
+    # Why: only a prompt that starts with the tag is a notification; mentions and missing prompts are the user's turn.
+    path = set_needs_user_marker()
+    hub_events(run_hook_capture_hub("attention_hub_user_prompt_submit.py", {
+        **base_hook_input, "prompt": "\n  <task-notification>\n<task-id>abc</task-id>",
+    }))
+    assert path.is_file()
+    hub_events(run_hook_capture_hub("attention_hub_user_prompt_submit.py", {
+        **base_hook_input, "prompt": "see <task-notification> above",
+    }))
+    assert not path.exists()
+    path = set_needs_user_marker()
+    hub_events(run_hook_capture_hub("attention_hub_user_prompt_submit.py", dict(base_hook_input)))
+    assert not path.exists()
+    path = set_needs_user_marker()
+    hub_events(run_hook_capture_hub("attention_hub_user_prompt_submit.py", {**base_hook_input, "prompt": 7}))
+    assert not path.exists()
+
+
 def test_session_end_clears_needs_user_marker(base_hook_input, isolated_home, set_needs_user_marker):
     # Why: nothing may leak on disk once the session is gone.
     path = set_needs_user_marker()

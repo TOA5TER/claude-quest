@@ -41,7 +41,10 @@ def main():
         # A new prompt supersedes any pending waiting state; consume the marker
         # so PostToolUse does not send a redundant "working" later.
         clear_waiting_marker(session_id)
-        clear_needs_user_marker(session_id)
+        prompt = input_data.get("prompt")
+        # A finished background task or Monitor event is not an answer from the user.
+        if not (isinstance(prompt, str) and prompt.lstrip().startswith("<task-notification>")):
+            clear_needs_user_marker(session_id)
 
         success = report_state(session_id, input_data.get("cwd", ""), "working",
                                session_name=get_session_name(input_data),

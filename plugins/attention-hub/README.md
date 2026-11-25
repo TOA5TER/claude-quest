@@ -70,7 +70,7 @@ This plugin ships Claude Code hooks that report session state to the dashboard a
 - **Notification hook**: Reports `waiting` and sets the waiting marker for `permission_prompt` and `elicitation_dialog`, the two notifications that mean you are blocked. An `idle_prompt` never reports `waiting`: it only says the prompt sat unanswered, and Stop already decided done, needs_input or working. It is ignored while the last Stop listed background work (in-flight marker), while a user wait is asserted (needs-user marker), while a permission or elicitation wait is pending (waiting marker), and while an `AskUserQuestion` is still the latest message. It is also ignored when the session's transcript was written to in roughly the last 30 seconds, because a running turn keeps writing it; this stops a late `idle_prompt` from setting a card to `done` just after you submit a prompt. Otherwise it reports `done`, which also ends a card left at `working` by an interrupted turn (Esc sends no Stop), since an interrupted turn's transcript goes quiet. The 30-second window is a heuristic; the submitted prompt is itself written to the transcript, so a prompt just submitted always falls inside it, while an interrupted turn can be reported done only once its transcript has been quiet for that long.
 - **Stop hook**: Computes and reports `needs_input` (AskUserQuestion was used, or the session's needs-user marker exists), `working` (a background task or scheduled wakeup is still in flight), or `done`, and keeps the in-flight marker in step with that list. The decision reads the Stop input's `background_tasks` and `session_crons` lists (see Active Work Tracking below)
 - **PostToolUse hook**: Reports `working` to the hub when a tool completes after the session was flagged `waiting` (a tool can only complete once a pending permission/question was answered). Gated by a per-session marker file, so on normal tool calls (no marker) it exits instantly with zero network activity
-- **UserPromptSubmit hook**: Reports `working` to the hub and deletes the needs-user marker — answering a session automatically clears its needs-attention state
+- **UserPromptSubmit hook**: Reports `working` to the hub and deletes the needs-user marker — answering a session automatically clears its needs-attention state. A prompt that starts with `<task-notification>` keeps the marker, because a finished background task or Monitor event is not an answer from the user
 - **SessionEnd hook**: Cleans up the session's waiting, in-flight and needs-user markers, then either reports `suspended` or removes the row. A story-named session whose story checkpoint has a repo at a stage other than `done` or `finished` is reported `suspended` with the message `session ended; story still in progress` and never deleted. Every other session (unnamed, not a story name, no readable checkpoint or no repo stage) is removed. When every repo stage is `done` or `finished`, the hook also removes the story's other `suspended` rows that were reported from the same host. It always exits 0, even when the hub is unreachable
 
 The UserPromptSubmit, PostToolUse, Stop and SessionEnd hooks ignore events carrying `agent_id` (fired inside a subagent), so a subagent never overwrites its parent's row or creates one of its own. The Notification hook does not filter: a subagent's permission prompt blocks the parent, so it reports `waiting` on the parent's row. Sessions launched with `--agent` carry only `agent_type` on their main thread and are tracked normally.
@@ -81,16 +81,22 @@ Transient hook state (waiting markers, in-flight markers and needs-user markers,
 
 A session that ends its turn with a plain-text question (for example "approve these specs?") leaves nothing in its transcript that says the user must act, so the Stop hook reports `done` and the card turns gray. Only an `AskUserQuestion` is visible to it. A session closes that gap by asserting the wait itself: it creates an empty needs-user marker file, and the Stop hook reports `needs_input` (red) while the file exists, even while background work is in flight.
 
-The marker is `~/.claude/attention-hub/needs-user-markers/<session_id>`. Create it as the last tool call of the turn with this command (it needs no attention-hub install path, and it does nothing harmful when the plugin is absent):
+The marker is `~/.claude/attention-hub/needs-user-markers/<session_id>`. Create it as the last tool call of the turn with this command (it needs no attention-hub install path, and it does nothing harmful when the plugin is absent). Use the bash form in a Bash tool call and the REPL form in a REPL script:
 
 ```bash
-mkdir -p ~/.claude/attention-hub/needs-user-markers && touch ~/.claude/attention-hub/needs-user-markers/"${CLAUDE_CODE_SESSION_ID:?}"
+mkdir -p ~/.claude/attention-hub/needs-user-markers && touch ~/.claude/attention-hub/needs-user-markers/"${CLAUDE_CODE_SESSION_ID:?}" && test -f ~/.claude/attention-hub/needs-user-markers/"${CLAUDE_CODE_SESSION_ID:?}" || exit 1
 ```
 
-If `CLAUDE_CODE_SESSION_ID` is unset the command exits non-zero and creates no marker file.
+```js
+await $`mkdir -p ~/.claude/attention-hub/needs-user-markers && touch ~/.claude/attention-hub/needs-user-markers/"$CLAUDE_CODE_SESSION_ID" && test -f ~/.claude/attention-hub/needs-user-markers/"$CLAUDE_CODE_SESSION_ID" || exit 1`
+```
+
+Never pass the command, or the session id, as a ${} value inside your own quotes: the helper quotes every ${} value itself, so the file is created under a name that carries the quote marks and the hub never sees it.
+
+Both forms end with a `test -f` on the exact marker path followed by `|| exit 1`, so both fail when the session id is unset or empty: the bash form exits non-zero and the REPL form throws. The `|| exit 1` is required because the REPL helper treats a failing last `test` command as an answer, not an error. The check does not catch a wrongly quoted name, because `touch` and `test -f` would receive the same wrong name; the warning above is the guard against that.
 
 - **Stop** leaves the marker in place, and so does the Notification hook's `idle_prompt` handling, which reports nothing while the marker exists. PostToolUse never removes it either, because the command above is itself a tool call.
-- **UserPromptSubmit** deletes the marker before it reports `working`, and **SessionEnd** deletes it with the session's other markers.
+- **UserPromptSubmit** deletes the marker before it reports `working`, except when the prompt is a `<task-notification>` (a finished background task or Monitor event is not an answer from the user), and **SessionEnd** deletes it with the session's other markers.
 - A message from another session (for example a worker reply to an orchestrator) also fires UserPromptSubmit and so clears the marker. A session that is still waiting on the user after such a message must set the marker again before the turn ends.
 - Red means the user must act. Gray means nothing is in flight and no user wait is asserted.
 
