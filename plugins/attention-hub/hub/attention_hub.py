@@ -612,7 +612,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   .state { min-width: 10rem; font-size: .9rem; }
   .red .state { color: #e5534b; }
   .gray .state { color: #9aa3ad; }
-  .suspended .state { color: #6e7681; }
+  .card.suspended .state { color: #6e7681; }
   .green .state { color: #46954a; }
   .snippet { flex: 1; color: #b4bac2; font-size: .85rem; overflow: hidden;
              text-overflow: ellipsis; white-space: nowrap; }
