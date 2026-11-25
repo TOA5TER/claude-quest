@@ -587,6 +587,52 @@ watcher_cmd="$(printf '%s\n' "$ladder" | awk '/^ *```bash$/{if(!d){f=1;next}} /^
 [ -n "$watcher_cmd" ] || fail "T-20: watcher ladder has no fenced bash block"
 printf '%s\n' "$watcher_cmd" | bash -n 2>/dev/null || fail "T-20: the watcher command does not pass bash -n"
 
+# T-21: the Communication contract has the R9 watcher-stop rule, and every rule range reads R5 to R9.
+grep -q '^| R9 Watcher stop | Orchestrator |' "$RSD" || fail "T-21: role-sessions.md lacks the R9 Watcher stop row"
+r7_row="$(grep '^| R7 ' "$RSD")"
+case "$r7_row" in *"The watcher is stopped when the terminal reply arrives"*) fail "T-21: R7 still carries the watcher-stop sentence" ;; esac
+grep -q "R5 to R8" "$RSD" "$PLUGIN_ROOT/skills/full-cycle/SKILL.md" && fail "T-21: a stale 'R5 to R8' remains"
+grep '^- \*\*Hand-off discipline' "$PLUGIN_ROOT/skills/full-cycle/SKILL.md" | grep -q "R9" || fail "T-21: full-cycle Hand-off discipline lacks R9"
+
+# T-22: the Monitor exits 0 with an all terminal line exactly when every named session is terminal.
+mon_rs="$TMPD/mon-rs.sh"
+mon_state="$TMPD/mon-state"
+cat > "$mon_rs" <<'MONSTUB'
+#!/usr/bin/env bash
+cat "$MON_STATE"
+MONSTUB
+chmod +x "$mon_rs"
+mon_run() {
+  local sent="$1" out="$2"
+  printf '%s\n' "$watcher_cmd" | sed -e "s|^RS=.*|RS=$mon_rs|" -e 's|^NAMES=.*|NAMES="mon-a"|' -e "s|^SENT=.*|SENT=$sent|" > "$TMPD/mon-cmd.sh"
+  MON_STATE="$mon_state" bash "$TMPD/mon-cmd.sh" > "$out" 2>&1 &
+  MON_PID=$!
+}
+mon_wait_exit() {
+  local i
+  for i in $(seq 1 50); do kill -0 "$MON_PID" 2>/dev/null || return 0; sleep 0.1; done
+  return 1
+}
+printf 'mon-a\towner\talive\tidle\tpath\tsid\n' > "$mon_state"
+mon_run "$(( $(date +%s) - 200 ))" "$TMPD/mon-idle.out"
+mon_wait_exit || { kill "$MON_PID" 2>/dev/null; fail "T-22: idle row at 200 seconds did not exit"; }
+grep -q '^all terminal:' "$TMPD/mon-idle.out" || fail "T-22: idle row printed no all terminal line"
+: > "$mon_state"
+mon_run "$(date +%s)" "$TMPD/mon-gone.out"
+mon_wait_exit || { kill "$MON_PID" 2>/dev/null; fail "T-22: missing row did not exit"; }
+grep -q '^all terminal:' "$TMPD/mon-gone.out" || fail "T-22: missing row printed no all terminal line"
+printf 'mon-a\towner\tdead\tidle\tpath\tsid\n' > "$mon_state"
+mon_run "$(date +%s)" "$TMPD/mon-dead.out"
+mon_wait_exit || { kill "$MON_PID" 2>/dev/null; fail "T-22: dead row did not exit"; }
+grep -q '^all terminal:' "$TMPD/mon-dead.out" || fail "T-22: dead row printed no all terminal line"
+printf 'mon-a\towner\talive\tbusy\tpath\tsid\n' > "$mon_state"
+mon_run "$(date +%s)" "$TMPD/mon-busy.out"
+sleep 3
+kill -0 "$MON_PID" 2>/dev/null || fail "T-22: busy row at send time exited early"
+grep -q '^all terminal:' "$TMPD/mon-busy.out" && fail "T-22: busy row printed an all terminal line"
+kill "$MON_PID" 2>/dev/null
+wait "$MON_PID" 2>/dev/null
+
 # PM-1: every DT-1 row yields exactly the config's flag for each role, and every other flag exits 10 with no session created.
 CFG=""
 pm_launch() {
