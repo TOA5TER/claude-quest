@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Starts, lists, checks, messages, respawns and stops dev-workflow role sessions, each one Claude running in a detached tmux session.
+# Starts, lists, checks, messages, respawns, suspends and stops dev-workflow role sessions, each one Claude running in a detached tmux session.
 set -uo pipefail
 
 PROG="role-session.sh"
@@ -429,6 +429,38 @@ cmd_respawn() {
   echo "respawned $OPT_name session-id=$session_id"
 }
 
+# Why: a bare tmux kill may not run Claude's SessionEnd hooks, so the pane is asked to exit first and killed once it has, or once the wait runs out.
+graceful_exit() {
+  local name="$1" dead waited=0 limit="${ROLE_SESSION_EXIT_WAIT:-20}"
+  case "$limit" in "" | *[!0-9]*) limit=20 ;; esac
+  session_exists "$name" || die 6 "$SUB: no tmux session named '$name'"
+  dead="$(tmux display-message -p -t "=$name:" '#{pane_dead}' 2> /dev/null)" || dead=""
+  if [ "$dead" != "1" ]; then
+    tmux send-keys -t "=$name:" -l '/exit' > /dev/null 2>&1 || die 8 "$SUB: tmux could not type /exit into '$name'"
+    sleep "${ROLE_SESSION_ENTER_DELAY:-0.3}"
+    tmux send-keys -t "=$name:" Enter > /dev/null 2>&1 || die 8 "$SUB: tmux could not press Enter in '$name'"
+    while [ "$waited" -lt "$limit" ]; do
+      dead="$(tmux display-message -p -t "=$name:" '#{pane_dead}' 2> /dev/null)" || break
+      [ "$dead" = "1" ] && break
+      sleep 1
+      waited=$((waited + 1))
+    done
+  fi
+  if session_exists "$name"; then
+    tmux kill-session -t "=$name" > /dev/null 2>&1 || die 8 "$SUB: tmux could not kill session '$name'"
+  fi
+}
+
+cmd_suspend() {
+  parse_opts "name" "$@"
+  require_opts name
+  check_name "$OPT_name"
+  need_tmux
+  need_session "$OPT_name"
+  graceful_exit "$OPT_name"
+  echo "suspended $OPT_name"
+}
+
 cmd_stop() {
   parse_opts "name user-approved" "$@"
   require_opts name
@@ -436,12 +468,12 @@ cmd_stop() {
   need_tmux
   need_session "$OPT_name"
   [ "${OPT_user_approved:-0}" = "1" ] || die 7 "stop: refusing to stop '$OPT_name' without --user-approved (the user must give permission first)"
-  tmux kill-session -t "=$OPT_name" > /dev/null 2>&1 || die 8 "stop: tmux could not kill session '$OPT_name'"
+  graceful_exit "$OPT_name"
   echo "stopped $OPT_name"
 }
 
 main() {
-  [ $# -ge 1 ] || usage_die "missing subcommand (launch, resume, list, status, send, respawn, stop)"
+  [ $# -ge 1 ] || usage_die "missing subcommand (launch, resume, list, status, send, respawn, suspend, stop)"
   SUB="$1"
   shift
   case "$SUB" in
@@ -451,6 +483,7 @@ main() {
     status) cmd_status "$@" ;;
     send) cmd_send "$@" ;;
     respawn) cmd_respawn "$@" ;;
+    suspend) cmd_suspend "$@" ;;
     stop) cmd_stop "$@" ;;
     *) die 2 "unknown subcommand '$SUB'" ;;
   esac

@@ -188,7 +188,7 @@ write_cfg() {
 }
 rs() {
   local errfile="$TMPD/stderr"
-  OUT="$(PATH="$BIN:$PATH" STUB_STATE="$STATE" ROLE_SESSION_ENTER_DELAY=0 ROLE_SESSION_CONFIG="${CFG:-$TMPD/no-such-config.json}" "$SCRIPT" "$@" 2> "$errfile")"
+  OUT="$(PATH="$BIN:$PATH" STUB_STATE="$STATE" ROLE_SESSION_ENTER_DELAY=0 ROLE_SESSION_EXIT_WAIT="${EXIT_WAIT:-0}" ROLE_SESSION_CONFIG="${CFG:-$TMPD/no-such-config.json}" "$SCRIPT" "$@" 2> "$errfile")"
   RC=$?
   ERR="$(cat "$errfile")"
 }
@@ -253,7 +253,7 @@ log_has "T-1 semicolon" "$(printf '%q' 'ends with a semicolon\;')"
 
 # T-2: no tmux on PATH.
 reset_state
-for sub in "launch --name n --cwd $WORK --agent a --model m --settings {} --prompt p" "list" "status --name n" "send --name n --reply-to r --message m" "resume --name n --session-id 3f2b8a10-5c6d-4e7f-9a01-b2c3d4e5f607 --cwd $WORK" "respawn --name n" "stop --name n"; do
+for sub in "launch --name n --cwd $WORK --agent a --model m --settings {} --prompt p" "list" "status --name n" "send --name n --reply-to r --message m" "resume --name n --session-id 3f2b8a10-5c6d-4e7f-9a01-b2c3d4e5f607 --cwd $WORK" "respawn --name n" "suspend --name n" "stop --name n"; do
   rs_path "$NOTMUX_PATH" $sub
   expect_rc "T-2 $sub" 3
   expect_err "T-2 $sub"
@@ -426,6 +426,48 @@ if [ -d "$STATE/s/sc-1-developer-api" ]; then fail "T-10: session still present"
 [ -d "$STATE/s/sc-1-developer-api-2" ] || fail "T-10: the prefix-sharing session was stopped too"
 rs stop --name nobody --user-approved
 expect_rc "T-10 missing" 6
+
+# T-13: stop types /exit and Enter before it kills, and still refuses without the flag.
+reset_state
+rs "${LAUNCH[@]}"
+: > "$STATE/tmux.log"
+rs stop --name sc-1-developer-api
+expect_rc "T-13 no flag" 7
+log_lacks "T-13 no flag" "send-keys"
+log_lacks "T-13 no flag" "kill-session"
+[ -d "$STATE/s/sc-1-developer-api" ] || fail "T-13: session removed without the flag"
+rs stop --name sc-1-developer-api --user-approved
+expect_rc "T-13 flag" 0
+[ "$OUT" = "stopped sc-1-developer-api" ] || fail "T-13: stop output '$OUT'"
+log_has "T-13 flag" "send-keys -t =sc-1-developer-api: -l /exit"
+exit_line="$(grep -nF -- '-l /exit' "$STATE/tmux.log" | head -1 | cut -d: -f1)"
+enter_line="$(grep -nF -- 'Enter' "$STATE/tmux.log" | head -1 | cut -d: -f1)"
+kill_line="$(grep -nF -- 'kill-session' "$STATE/tmux.log" | head -1 | cut -d: -f1)"
+{ [ -n "$exit_line" ] && [ -n "$enter_line" ] && [ -n "$kill_line" ] && [ "$exit_line" -lt "$enter_line" ] && [ "$enter_line" -lt "$kill_line" ]; } || fail "T-13: stop did not type /exit, press Enter, then kill"
+
+# T-12: suspend needs no --user-approved, exits the pane gracefully, then kills the session.
+reset_state
+rs "${LAUNCH[@]}"
+rs launch --name sc-1-developer-api-2 --cwd "$WORK" --agent a --model m --settings '{}' --prompt p
+: > "$STATE/tmux.log"
+rs suspend --name sc-1-developer-api
+expect_rc "T-12 live pane" 0
+[ "$OUT" = "suspended sc-1-developer-api" ] || fail "T-12: suspend output '$OUT'"
+log_has "T-12 live pane" "send-keys -t =sc-1-developer-api: -l /exit"
+log_has "T-12 live pane" "kill-session -t =sc-1-developer-api"
+exit_line="$(grep -nF -- '-l /exit' "$STATE/tmux.log" | head -1 | cut -d: -f1)"
+kill_line="$(grep -nF -- 'kill-session' "$STATE/tmux.log" | head -1 | cut -d: -f1)"
+[ "$exit_line" -lt "$kill_line" ] || fail "T-12: kill came before /exit"
+[ -d "$STATE/s/sc-1-developer-api-2" ] || fail "T-12: the prefix-sharing session was suspended too"
+printf '1' > "$STATE/s/sc-1-developer-api-2/dead"
+: > "$STATE/tmux.log"
+rs suspend --name sc-1-developer-api-2
+expect_rc "T-12 dead pane" 0
+log_lacks "T-12 dead pane" "send-keys"
+log_has "T-12 dead pane" "kill-session -t =sc-1-developer-api-2"
+rs suspend --name nobody
+expect_rc "T-12 missing" 6
+expect_err "T-12 missing"
 
 # T-16: resume starts claude --resume in a new tmux session; respawn without a session points to it.
 UUID1=3f2b8a10-5c6d-4e7f-9a01-b2c3d4e5f607

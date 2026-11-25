@@ -38,8 +38,8 @@ DEFAULT_BIND = "0.0.0.0"
 DEFAULT_PRUNE_HOURS = 24.0
 DEFAULT_STATE_FILE = str(Path.home() / ".claude" / "attention_hub_state.json")
 
-# Lower value sorts first in the API's flat sessions list: waiting, done, working.
-STATE_PRIORITY = {"waiting": 0, "needs_input": 0, "done": 1, "working": 2}
+# Lower value sorts first in the API's flat sessions list: waiting, done, working, suspended.
+STATE_PRIORITY = {"waiting": 0, "needs_input": 0, "done": 1, "working": 2, "suspended": 3}
 VALID_STATES = set(STATE_PRIORITY)
 
 # Server-side input caps: the hub trusts no client to truncate for it.
@@ -117,10 +117,14 @@ def build_groups(rows):
                                     _natural_key(e[0]["repo"]), e[0]["label"],
                                     e[1]["session_id"]))
         rows_in_group = [row for _, row in entries]
-        waiting = sum(row["state"] in WAITING_STATES for row in rows_in_group)
-        if any(row["state"] == "working" for row in rows_in_group):
+        live_rows = [row for row in rows_in_group if row["state"] != "suspended"]
+        suspended_rows = [row for row in rows_in_group if row["state"] == "suspended"]
+        waiting = sum(row["state"] in WAITING_STATES for row in live_rows)
+        if not live_rows:
+            color = "suspended"
+        elif any(row["state"] == "working" for row in live_rows):
             color = "green"
-        elif all(row["state"] == "done" for row in rows_in_group):
+        elif all(row["state"] == "done" for row in live_rows):
             color = "gray"
         else:
             color = "red"
@@ -131,10 +135,12 @@ def build_groups(rows):
             "story_id": story_id,
             "title": f"{story_id}: {title}" if title else story_id,
             "color": color,
-            "session_ids": [row["session_id"] for row in rows_in_group],
+            "session_ids": [row["session_id"] for row in live_rows],
+            "suspended_session_ids": [row["session_id"] for row in suspended_rows],
             "labels": {row["session_id"]: parsed["label"] for parsed, row in entries},
             "waiting": waiting,
-            "total": len(rows_in_group),
+            "total": len(live_rows),
+            "suspended": len(suspended_rows),
         })
         top_level.append((_ordering_key(story_id), 0, "",
                           {"type": "group", "story_id": story_id}))
@@ -342,7 +348,8 @@ class AttentionStore:
 
     def _prune_locked(self, now):
         stale = [sid for sid, record in self._sessions.items()
-                 if now - record["last_update"] > self._prune_seconds]
+                 if record["state"] != "suspended"
+                 and now - record["last_update"] > self._prune_seconds]
         for sid in stale:
             del self._sessions[sid]
         if stale:
@@ -594,6 +601,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   .card.red { border-left-color: #e5534b; }
   .card.gray { border-left-color: #9aa3ad; }
   .card.green { border-left-color: #46954a; }
+  .card.suspended { border-left-color: #30363d; }
   .row { display: flex; align-items: center; gap: .9rem; padding: .7rem .9rem;
          cursor: pointer; }
   .who { flex: 0 0 16rem; min-width: 0; }
@@ -604,6 +612,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   .state { min-width: 10rem; font-size: .9rem; }
   .red .state { color: #e5534b; }
   .gray .state { color: #9aa3ad; }
+  .card.suspended .state { color: #6e7681; }
   .green .state { color: #46954a; }
   .snippet { flex: 1; color: #b4bac2; font-size: .85rem; overflow: hidden;
              text-overflow: ellipsis; white-space: nowrap; }
@@ -637,13 +646,20 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   .group.red { border-left-color: #e5534b; }
   .group.green { border-left-color: #46954a; }
   .group.gray { border-left-color: #9aa3ad; }
+  .group.suspended { border-left-color: #30363d; }
   .group-head { display: flex; align-items: baseline; gap: .9rem; padding: .35rem .5rem .5rem; }
   .group-title { flex: 1; min-width: 0; font-weight: 700; overflow: hidden;
                  text-overflow: ellipsis; white-space: nowrap; }
   .group-summary { color: #8b939e; font-size: .85rem; white-space: nowrap; }
   .group.red .group-summary { color: #e5534b; }
   .group.gray .group-summary { color: #9aa3ad; }
+  .group.suspended .group-summary { color: #6e7681; }
+  button.suspended-toggle { background: none; border: 1px solid #30363d; color: #6e7681;
+                            border-radius: 6px; padding: .15rem .55rem; cursor: pointer;
+                            margin: .35rem 0 0 .5rem; }
+  button.suspended-toggle:hover { color: #9aa3ad; border-color: #6e7681; }
   .members { display: flex; flex-direction: column; gap: .35rem; }
+  .members[hidden] { display: none; }
   @media (max-width: 40rem) {
     .row { flex-wrap: wrap; }
     .who { flex: 1 1 100%; }
@@ -662,13 +678,17 @@ const STATE_LABEL = {
   needs_input: "needs your input",
   done: "done, awaiting review",
   working: "working",
+  suspended: "suspended",
 };
-const STATE_COLOR = { waiting: "red", needs_input: "red", done: "gray", working: "green" };
-const FORCE_STATES = ["working", "done", "needs_input", "waiting"];
+const STATE_COLOR = { waiting: "red", needs_input: "red", done: "gray", working: "green",
+                      suspended: "suspended" };
+const FORCE_STATES = ["working", "done", "needs_input", "waiting", "suspended"];
 
 // Expanded card IDs live OUTSIDE render(): the 3s poll re-render replaces all
 // children, and re-applying this set is what keeps open cards open.
 const expandedIds = new Set();
+// Same reason: story IDs whose suspended section is open, reset by a page reload.
+const expandedSuspended = new Set();
 
 function fmtDuration(seconds) {
   const s = Math.max(0, Math.floor(seconds));
@@ -843,7 +863,7 @@ function buildCard(s, label) {
   return card;
 }
 
-function buildGroup(g, members) {
+function buildGroup(g, members, suspendedMembers) {
   const group = document.createElement("div");
   group.className = "group " + (g.color || "");
 
@@ -855,7 +875,8 @@ function buildGroup(g, members) {
   head.title = g.title;
   const summary = document.createElement("div");
   summary.className = "group-summary";
-  summary.textContent = g.waiting + " of " + g.total + " waiting";
+  summary.textContent = g.total === 0 ? "all suspended"
+    : g.waiting + " of " + g.total + " waiting";
   header.append(head, summary);
 
   const rows = document.createElement("div");
@@ -863,7 +884,30 @@ function buildGroup(g, members) {
   for (const s of members) {
     rows.append(buildCard(s, (g.labels || {})[s.session_id]));
   }
-  group.append(header, rows);
+  group.append(header);
+  if (members.length) group.append(rows);
+  if (suspendedMembers.length) {
+    const toggle = document.createElement("button");
+    toggle.className = "suspended-toggle";
+    toggle.textContent = suspendedMembers.length + " suspended";
+    const hidden = document.createElement("div");
+    hidden.className = "members";
+    for (const s of suspendedMembers) {
+      hidden.append(buildCard(s, (g.labels || {})[s.session_id]));
+    }
+    const sync = () => {
+      const open = expandedSuspended.has(g.story_id);
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      hidden.hidden = !open;
+    };
+    toggle.addEventListener("click", () => {
+      if (expandedSuspended.has(g.story_id)) expandedSuspended.delete(g.story_id);
+      else expandedSuspended.add(g.story_id);
+      sync();
+    });
+    sync();
+    group.append(toggle, hidden);
+  }
   return group;
 }
 
@@ -879,12 +923,20 @@ function render(data) {
     if (!byId.has(id)) expandedIds.delete(id);
   }
   const groups = new Map((data.groups || []).map((g) => [g.story_id, g]));
+  for (const id of expandedSuspended) {
+    const g = groups.get(id);
+    if (!g || !(g.suspended_session_ids || []).length) expandedSuspended.delete(id);
+  }
   for (const item of data.layout || []) {
     if (item.type === "group") {
       const g = groups.get(item.story_id);
       if (!g) continue;
       const members = (g.session_ids || []).map((id) => byId.get(id)).filter(Boolean);
-      if (members.length) container.append(buildGroup(g, members));
+      const suspended = (g.suspended_session_ids || []).map((id) => byId.get(id))
+        .filter(Boolean);
+      if (members.length || suspended.length) {
+        container.append(buildGroup(g, members, suspended));
+      }
     } else {
       const s = byId.get(item.session_id);
       if (s) container.append(buildCard(s));

@@ -562,8 +562,8 @@ def test_http_listing_has_groups_and_layout(hub_server):
     data = listing(hub_server)
     assert set(data) == {"sessions", "groups", "layout"}
     g = data["groups"][0]
-    assert set(g) == {"story_id", "title", "color", "session_ids", "labels",
-                      "waiting", "total"}
+    assert set(g) == {"story_id", "title", "color", "session_ids", "suspended_session_ids",
+                      "labels", "waiting", "total", "suspended"}
 
 
 @pytest.mark.parametrize("raw", [{"a": 1}, ["x"], 42])
