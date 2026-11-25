@@ -432,6 +432,8 @@ cmd_respawn() {
 # Why: a bare tmux kill may not run Claude's SessionEnd hooks, so the pane is asked to exit first and killed once it has, or once the wait runs out.
 graceful_exit() {
   local name="$1" dead waited=0 limit="${ROLE_SESSION_EXIT_WAIT:-20}"
+  case "$limit" in "" | *[!0-9]*) limit=20 ;; esac
+  session_exists "$name" || die 6 "$SUB: no tmux session named '$name'"
   dead="$(tmux display-message -p -t "=$name:" '#{pane_dead}' 2> /dev/null)" || dead=""
   if [ "$dead" != "1" ]; then
     tmux send-keys -t "=$name:" -l '/exit' > /dev/null 2>&1 || die 8 "$SUB: tmux could not type /exit into '$name'"

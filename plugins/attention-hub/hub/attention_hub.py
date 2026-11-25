@@ -659,6 +659,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                             margin: .35rem 0 0 .5rem; }
   button.suspended-toggle:hover { color: #9aa3ad; border-color: #6e7681; }
   .members { display: flex; flex-direction: column; gap: .35rem; }
+  .members[hidden] { display: none; }
   @media (max-width: 40rem) {
     .row { flex-wrap: wrap; }
     .who { flex: 1 1 100%; }
@@ -883,7 +884,8 @@ function buildGroup(g, members, suspendedMembers) {
   for (const s of members) {
     rows.append(buildCard(s, (g.labels || {})[s.session_id]));
   }
-  group.append(header, rows);
+  group.append(header);
+  if (members.length) group.append(rows);
   if (suspendedMembers.length) {
     const toggle = document.createElement("button");
     toggle.className = "suspended-toggle";

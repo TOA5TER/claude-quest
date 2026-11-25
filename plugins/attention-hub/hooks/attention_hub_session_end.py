@@ -50,9 +50,7 @@ def remove_finished_story_suspended(session_id, story_id):
 
 
 def main():
-    # SessionEnd: the session is gone. A story-named session of a story still in progress is
-    # reported suspended; every other row is removed. Never block or error the session,
-    # even when the hub is unreachable.
+    # Never block or error the session, even when the hub is unreachable.
     try:
         input_data = json.load(sys.stdin)
         if is_subagent_event(input_data):

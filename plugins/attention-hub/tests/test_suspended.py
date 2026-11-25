@@ -120,6 +120,7 @@ def test_dashboard_has_suspended_label_colors_and_toggle():
     assert 'toggle.setAttribute("aria-expanded"' in html
     assert '" suspended"' in html
     assert '"all suspended"' in html
+    assert ".members[hidden] { display: none; }" in html
     assert "const expandedSuspended = new Set();" in html
     assert expandedSuspended_is_module_level(html)
 
