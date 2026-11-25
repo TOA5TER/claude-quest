@@ -5,8 +5,8 @@ set -uo pipefail
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SKILL="$PLUGIN_ROOT/skills/full-cycle/SKILL.md"
 HUB="$PLUGIN_ROOT/../attention-hub"
-CMD='mkdir -p ~/.claude/attention-hub/needs-user-markers && touch ~/.claude/attention-hub/needs-user-markers/"${CLAUDE_CODE_SESSION_ID:?}" && test -f ~/.claude/attention-hub/needs-user-markers/"${CLAUDE_CODE_SESSION_ID:?}"'
-REPL_SHELL='mkdir -p ~/.claude/attention-hub/needs-user-markers && touch ~/.claude/attention-hub/needs-user-markers/"$CLAUDE_CODE_SESSION_ID" && test -f ~/.claude/attention-hub/needs-user-markers/"$CLAUDE_CODE_SESSION_ID"'
+CMD='mkdir -p ~/.claude/attention-hub/needs-user-markers && touch ~/.claude/attention-hub/needs-user-markers/"${CLAUDE_CODE_SESSION_ID:?}" && test -f ~/.claude/attention-hub/needs-user-markers/"${CLAUDE_CODE_SESSION_ID:?}" || exit 1'
+REPL_SHELL='mkdir -p ~/.claude/attention-hub/needs-user-markers && touch ~/.claude/attention-hub/needs-user-markers/"$CLAUDE_CODE_SESSION_ID" && test -f ~/.claude/attention-hub/needs-user-markers/"$CLAUDE_CODE_SESSION_ID" || exit 1'
 REPL_CMD='await $`'"$REPL_SHELL"'`'
 WARN='Never pass the command, or the session id, as a ${} value inside your own quotes: the helper quotes every ${} value itself, so the file is created under a name that carries the quote marks and the hub never sees it.'
 REPO_ROOT="$(cd "$PLUGIN_ROOT/../.." && pwd)"
@@ -33,8 +33,10 @@ case "$REPL_CMD" in *'${'*) fail "the REPL form contains \${" ;; esac
 case "$SECTION" in *"$REPL_CMD"*) ;; *) fail "User Waits section lacks the exact REPL marker command" ;; esac
 case "$SECTION" in *"$WARN"*) ;; *) fail "User Waits section lacks the \${} warning sentence" ;; esac
 for form in "$CMD" "$REPL_SHELL"; do
-  last="${form##*&& }"
-  case "$last" in "test -f ~/.claude/attention-hub/needs-user-markers/"*) ;; *) fail "marker form does not end with a test -f on the marker path: $form" ;; esac
+  case "$form" in *" || exit 1") ;; *) fail "marker form does not end with || exit 1 (the REPL helper reads a bare failing test as an answer): $form" ;; esac
+  body="${form% || exit 1}"
+  last="${body##*&& }"
+  case "$last" in "test -f ~/.claude/attention-hub/needs-user-markers/"*) ;; *) fail "marker form does not have a test -f on the marker path before || exit 1: $form" ;; esac
 done
 
 # Why: both forms must create exactly the session-id file, and fail loudly when the id is missing.

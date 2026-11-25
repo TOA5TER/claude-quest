@@ -625,6 +625,13 @@ printf 'mon-a\towner\tdead\tidle\tpath\tsid\n' > "$mon_state"
 mon_run "$(date +%s)" "$TMPD/mon-dead.out"
 mon_wait_exit || { kill "$MON_PID" 2>/dev/null; fail "T-22: dead row did not exit"; }
 grep -q '^all terminal:' "$TMPD/mon-dead.out" || fail "T-22: dead row printed no all terminal line"
+printf 'mon-a\towner\talive\tidle\tpath\tsid\n' > "$mon_state"
+mon_run "$(date +%s)" "$TMPD/mon-early-idle.out"
+sleep 3
+kill -0 "$MON_PID" 2>/dev/null || fail "T-22: idle row before 120 seconds with no busy seen exited early"
+grep -q '^all terminal:' "$TMPD/mon-early-idle.out" && fail "T-22: early idle row printed an all terminal line"
+kill "$MON_PID" 2>/dev/null
+wait "$MON_PID" 2>/dev/null
 printf 'mon-a\towner\talive\tbusy\tpath\tsid\n' > "$mon_state"
 mon_run "$(date +%s)" "$TMPD/mon-busy.out"
 sleep 3

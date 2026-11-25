@@ -84,16 +84,16 @@ A session that ends its turn with a plain-text question (for example "approve th
 The marker is `~/.claude/attention-hub/needs-user-markers/<session_id>`. Create it as the last tool call of the turn with this command (it needs no attention-hub install path, and it does nothing harmful when the plugin is absent). Use the bash form in a Bash tool call and the REPL form in a REPL script:
 
 ```bash
-mkdir -p ~/.claude/attention-hub/needs-user-markers && touch ~/.claude/attention-hub/needs-user-markers/"${CLAUDE_CODE_SESSION_ID:?}" && test -f ~/.claude/attention-hub/needs-user-markers/"${CLAUDE_CODE_SESSION_ID:?}"
+mkdir -p ~/.claude/attention-hub/needs-user-markers && touch ~/.claude/attention-hub/needs-user-markers/"${CLAUDE_CODE_SESSION_ID:?}" && test -f ~/.claude/attention-hub/needs-user-markers/"${CLAUDE_CODE_SESSION_ID:?}" || exit 1
 ```
 
 ```js
-await $`mkdir -p ~/.claude/attention-hub/needs-user-markers && touch ~/.claude/attention-hub/needs-user-markers/"$CLAUDE_CODE_SESSION_ID" && test -f ~/.claude/attention-hub/needs-user-markers/"$CLAUDE_CODE_SESSION_ID"`
+await $`mkdir -p ~/.claude/attention-hub/needs-user-markers && touch ~/.claude/attention-hub/needs-user-markers/"$CLAUDE_CODE_SESSION_ID" && test -f ~/.claude/attention-hub/needs-user-markers/"$CLAUDE_CODE_SESSION_ID" || exit 1`
 ```
 
 Never pass the command, or the session id, as a ${} value inside your own quotes: the helper quotes every ${} value itself, so the file is created under a name that carries the quote marks and the hub never sees it.
 
-Both forms end with a `test -f` on the exact marker path, so both fail when the file at that path is missing (the variable is unset or the file name is wrong): the bash form exits non-zero and the REPL form throws.
+Both forms end with a `test -f` on the exact marker path followed by `|| exit 1`, so both fail when the session id is unset or empty: the bash form exits non-zero and the REPL form throws. The `|| exit 1` is required because the REPL helper treats a failing last `test` command as an answer, not an error. The check does not catch a wrongly quoted name, because `touch` and `test -f` would receive the same wrong name; the warning above is the guard against that.
 
 - **Stop** leaves the marker in place, and so does the Notification hook's `idle_prompt` handling, which reports nothing while the marker exists. PostToolUse never removes it either, because the command above is itself a tool call.
 - **UserPromptSubmit** deletes the marker before it reports `working`, except when the prompt is a `<task-notification>` (a finished background task or Monitor event is not an answer from the user), and **SessionEnd** deletes it with the session's other markers.
